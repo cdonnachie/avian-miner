@@ -1856,6 +1856,13 @@ static void update_submit_stats( struct work *work, const void *hash )
 bool submit_solution( struct work *work, const void *hash,
                       struct thr_info *thr )
 {
+#ifdef HAVE_AVIAN_SV2
+   // Only --avian-selftest makes this true. It lets the self-test read the
+   // hash the real scanhash computed without a share going anywhere.
+   if ( unlikely( avian_selftest_capture( hash ) ) )
+      return true;
+#endif
+
 // Job went stale during hashing of a valid share.
 //   if ( !opt_quiet && work_restart[ thr->id ].restart )
 //      applog( LOG_INFO, CL_LBL "Share may be stale, submitting anyway..." CL_N );
@@ -2229,15 +2236,20 @@ static void *miner_thread( void *userdata )
        if ( have_sv2 )
        {
           // Pushed, like stratum: there is nothing to fetch. A thread
-          // that has run out of nonces waits for the next job rather
-          // than rolling into another thread's range.
+          // that has run out of nonces rolls ntime if the job allows
+          // it, which buys a fresh nonce range without asking the pool
+          // for anything, and otherwise waits rather than rolling into
+          // another thread's range.
           if ( unlikely( ( *nonceptr >= end_nonce )
                         && !work_restart[thr_id].restart ) )
           {
-             if ( !thr_id )
-                applog( LOG_INFO, "Nonce range exhausted, waiting for work" );
-             while ( !work_restart[thr_id].restart )
-                sleep( 1 );
+             if ( !avian_sv2_roll_ntime() )
+             {
+                if ( !thr_id )
+                   applog( LOG_INFO, "Nonce range exhausted, waiting for work" );
+                while ( !work_restart[thr_id].restart )
+                   sleep( 1 );
+             }
           }
        }
        else
@@ -3668,7 +3680,7 @@ int main(int argc, char *argv[])
 
 #ifdef HAVE_AVIAN_SV2
    if ( opt_avian_selftest )
-      exit( avian_minotaurx_selftest() );
+      exit( avian_pow_selftest() );
 #endif
    
 	if ( !opt_benchmark && !have_sv2 )

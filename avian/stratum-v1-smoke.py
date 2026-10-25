@@ -12,6 +12,7 @@ the miner's v1 plumbing, not whether this script can build a real Avian
 template. A share arriving at all is the assertion.
 
 Usage: avian/stratum-v1-smoke.py [path-to-cpuminer]
+ALGO=x16rt or minotaurx (default) picks the algorithm the miner hashes with.
 """
 
 import json
@@ -114,7 +115,7 @@ def main():
     thread.start()
 
     miner = subprocess.Popen(
-        [MINER, "-a", "minotaurx", "-t", "2", "-o",
+        [MINER, "-a", os.environ.get("ALGO", "minotaurx"), "-t", "2", "-o",
          "stratum+tcp://127.0.0.1:%d" % port, "-u", "smoke", "-p", "x"],
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     print("== started %s" % MINER)

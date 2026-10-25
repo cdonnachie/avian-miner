@@ -7,6 +7,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "avian/ntime.h"
 #include "avian/sv2.h"
 
 #include "avian_sv2.h"
@@ -61,6 +62,14 @@ static AvianSv2Client *g_client = NULL;
  * the same search. Threads do not need their own: std_get_new_work already
  * gives each one its own slice of the nonce. */
 static uint64_t g_extranonce_counter = 0;
+
+/* Which algorithm to ask the pool for. -a selects it, the same flag that
+ * selects the hasher, so the two cannot disagree. */
+static int32_t avian_sv2_pow_type(void)
+{
+    return opt_algo == ALGO_X16RT ? AVIAN_SV2_POW_X16RT
+                                  : AVIAN_SV2_POW_MINOTAURX;
+}
 
 static struct job_slot *find_job(uint64_t token)
 {
@@ -255,6 +264,51 @@ static bool install_job(const AvianMiningJob *job)
     return true;
 }
 
+bool avian_sv2_roll_ntime(void)
+{
+    AvianMiningJob job;
+    struct job_slot *slot;
+    uint64_t token;
+    uint32_t current, next;
+
+    pthread_rwlock_wrlock(&g_work_lock);
+    if (!g_work.job_id) {
+        pthread_rwlock_unlock(&g_work_lock);
+        return false;
+    }
+    token = strtoull(g_work.job_id, NULL, 16);
+    current = bswap_32(g_work.data[algo_gate.ntime_index]);
+
+    pthread_mutex_lock(&g_jobs_lock);
+    slot = find_job(token);
+    if (slot) {
+        job = slot->job;
+    }
+    pthread_mutex_unlock(&g_jobs_lock);
+    if (!slot) {
+        pthread_rwlock_unlock(&g_work_lock);
+        return false;
+    }
+
+    next = avian_sv2_next_ntime(&job, current);
+    if (next == 0) {
+        pthread_rwlock_unlock(&g_work_lock);
+        return false;
+    }
+    /* Only the header changes. nTime is not in the coinbase, so the
+     * merkle root is the same on a standard channel and on an extended
+     * one, and no library call is needed to rebuild anything. */
+    g_work.data[algo_gate.ntime_index] = bswap_32(next);
+    pthread_rwlock_unlock(&g_work_lock);
+
+    if (opt_debug) {
+        applog(LOG_DEBUG, "SV2: rolled ntime to %08x, limit %08x", next,
+               avian_sv2_ntime_limit(&job));
+    }
+    restart_threads();
+    return true;
+}
+
 bool avian_sv2_submit(struct work *work)
 {
     uint64_t token;
@@ -341,7 +395,7 @@ static AvianSv2Client *connect_once(bool extended)
     memset(&config, 0, sizeof(config));
     config.pool = opt_sv2_url;
     config.authority_hex = opt_sv2_authority;
-    config.pow_type = AVIAN_SV2_POW_MINOTAURX;
+    config.pow_type = avian_sv2_pow_type();
     config.user_identity = opt_sv2_user;
     config.nominal_hash_rate = 1000.0f;
     config.extended = extended ? 1 : 0;
@@ -370,7 +424,14 @@ void *avian_sv2_thread(void *userdata)
         proper_exit(1);
     }
 
-    applog(LOG_INFO, "SV2: libavian-sv2 %s", avian_sv2_version());
+    if (opt_algo != ALGO_X16RT && opt_algo != ALGO_MINOTAURX) {
+        applog(LOG_ERR, "SV2: Avian is x16rt and minotaurx; -a names "
+                        "neither, so there is no pool to talk to");
+        proper_exit(1);
+    }
+    applog(LOG_INFO, "SV2: libavian-sv2 %s, mining %s",
+           avian_sv2_version(),
+           opt_algo == ALGO_X16RT ? "x16rt" : "minotaurx");
 
     /* Extended first, because then the miner assembles its own coinbase and
      * can confirm what it is committing to. A pool that cannot spare the

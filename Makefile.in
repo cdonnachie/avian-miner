@@ -92,7 +92,7 @@ target_triplet = @target@
 bin_PROGRAMS = cpuminer$(EXEEXT)
 @HAVE_WINDOWS_TRUE@am__append_1 = compat/winansi.c
 @USE_ASM_TRUE@am__append_2 = asm/neoscrypt_asm.S
-@HAVE_AVIAN_SV2_TRUE@am__append_3 = avian/sv2.c avian/selftest.c
+@HAVE_AVIAN_SV2_TRUE@am__append_3 = avian/sv2.c avian/selftest.c avian/ntime.c
 @ARCH_ARM64_TRUE@am__append_4 = -flax-vector-conversions
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -229,12 +229,13 @@ am__cpuminer_SOURCES_DIST = dummy.cpp cpu-miner.c util.c api.c \
 	algo/yespower/yescrypt-r8g.c algo/yespower/yespower-opt.c \
 	algo/yespower/yespower-ref.c \
 	algo/yespower/yespower-blake2b-ref.c compat/winansi.c \
-	asm/neoscrypt_asm.S avian/sv2.c avian/selftest.c
+	asm/neoscrypt_asm.S avian/sv2.c avian/selftest.c avian/ntime.c
 am__dirstamp = $(am__leading_dot)dirstamp
 @HAVE_WINDOWS_TRUE@am__objects_1 = compat/cpuminer-winansi.$(OBJEXT)
 @USE_ASM_TRUE@am__objects_2 = asm/cpuminer-neoscrypt_asm.$(OBJEXT)
 @HAVE_AVIAN_SV2_TRUE@am__objects_3 = avian/cpuminer-sv2.$(OBJEXT) \
-@HAVE_AVIAN_SV2_TRUE@	avian/cpuminer-selftest.$(OBJEXT)
+@HAVE_AVIAN_SV2_TRUE@	avian/cpuminer-selftest.$(OBJEXT) \
+@HAVE_AVIAN_SV2_TRUE@	avian/cpuminer-ntime.$(OBJEXT)
 am_cpuminer_OBJECTS = cpuminer-dummy.$(OBJEXT) \
 	cpuminer-cpu-miner.$(OBJEXT) cpuminer-util.$(OBJEXT) \
 	cpuminer-api.$(OBJEXT) cpuminer-sysinfos.$(OBJEXT) \
@@ -766,6 +767,7 @@ am__depfiles_remade = ./$(DEPDIR)/cpuminer-algo-gate-api.Po \
 	algo/yespower/$(DEPDIR)/cpuminer-yespower-ref.Po \
 	algo/yespower/crypto/$(DEPDIR)/cpuminer-hmac-blake2b.Po \
 	asm/$(DEPDIR)/cpuminer-neoscrypt_asm.Po \
+	avian/$(DEPDIR)/cpuminer-ntime.Po \
 	avian/$(DEPDIR)/cpuminer-selftest.Po \
 	avian/$(DEPDIR)/cpuminer-sv2.Po \
 	compat/$(DEPDIR)/cpuminer-winansi.Po \
@@ -2184,6 +2186,8 @@ avian/cpuminer-sv2.$(OBJEXT): avian/$(am__dirstamp) \
 	avian/$(DEPDIR)/$(am__dirstamp)
 avian/cpuminer-selftest.$(OBJEXT): avian/$(am__dirstamp) \
 	avian/$(DEPDIR)/$(am__dirstamp)
+avian/cpuminer-ntime.$(OBJEXT): avian/$(am__dirstamp) \
+	avian/$(DEPDIR)/$(am__dirstamp)
 
 cpuminer$(EXEEXT): $(cpuminer_OBJECTS) $(cpuminer_DEPENDENCIES) $(EXTRA_cpuminer_DEPENDENCIES) 
 	@rm -f cpuminer$(EXEEXT)
@@ -2503,6 +2507,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@algo/yespower/$(DEPDIR)/cpuminer-yespower-ref.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@algo/yespower/crypto/$(DEPDIR)/cpuminer-hmac-blake2b.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@asm/$(DEPDIR)/cpuminer-neoscrypt_asm.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@avian/$(DEPDIR)/cpuminer-ntime.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@avian/$(DEPDIR)/cpuminer-selftest.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@avian/$(DEPDIR)/cpuminer-sv2.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@compat/$(DEPDIR)/cpuminer-winansi.Po@am__quote@ # am--include-marker
@@ -6186,6 +6191,20 @@ avian/cpuminer-selftest.obj: avian/selftest.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(cpuminer_CPPFLAGS) $(CPPFLAGS) $(cpuminer_CFLAGS) $(CFLAGS) -c -o avian/cpuminer-selftest.obj `if test -f 'avian/selftest.c'; then $(CYGPATH_W) 'avian/selftest.c'; else $(CYGPATH_W) '$(srcdir)/avian/selftest.c'; fi`
 
+avian/cpuminer-ntime.o: avian/ntime.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(cpuminer_CPPFLAGS) $(CPPFLAGS) $(cpuminer_CFLAGS) $(CFLAGS) -MT avian/cpuminer-ntime.o -MD -MP -MF avian/$(DEPDIR)/cpuminer-ntime.Tpo -c -o avian/cpuminer-ntime.o `test -f 'avian/ntime.c' || echo '$(srcdir)/'`avian/ntime.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) avian/$(DEPDIR)/cpuminer-ntime.Tpo avian/$(DEPDIR)/cpuminer-ntime.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='avian/ntime.c' object='avian/cpuminer-ntime.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(cpuminer_CPPFLAGS) $(CPPFLAGS) $(cpuminer_CFLAGS) $(CFLAGS) -c -o avian/cpuminer-ntime.o `test -f 'avian/ntime.c' || echo '$(srcdir)/'`avian/ntime.c
+
+avian/cpuminer-ntime.obj: avian/ntime.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(cpuminer_CPPFLAGS) $(CPPFLAGS) $(cpuminer_CFLAGS) $(CFLAGS) -MT avian/cpuminer-ntime.obj -MD -MP -MF avian/$(DEPDIR)/cpuminer-ntime.Tpo -c -o avian/cpuminer-ntime.obj `if test -f 'avian/ntime.c'; then $(CYGPATH_W) 'avian/ntime.c'; else $(CYGPATH_W) '$(srcdir)/avian/ntime.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) avian/$(DEPDIR)/cpuminer-ntime.Tpo avian/$(DEPDIR)/cpuminer-ntime.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='avian/ntime.c' object='avian/cpuminer-ntime.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(cpuminer_CPPFLAGS) $(CPPFLAGS) $(cpuminer_CFLAGS) $(CFLAGS) -c -o avian/cpuminer-ntime.obj `if test -f 'avian/ntime.c'; then $(CYGPATH_W) 'avian/ntime.c'; else $(CYGPATH_W) '$(srcdir)/avian/ntime.c'; fi`
+
 .cpp.o:
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)depbase=`echo $@ | sed 's|[^/]*$$|$(DEPDIR)/&|;s|\.o$$||'`;\
 @am__fastdepCXX_TRUE@	$(CXXCOMPILE) -MT $@ -MD -MP -MF $$depbase.Tpo -c -o $@ $< &&\
@@ -6964,6 +6983,7 @@ distclean: distclean-recursive
 	-rm -f algo/yespower/$(DEPDIR)/cpuminer-yespower-ref.Po
 	-rm -f algo/yespower/crypto/$(DEPDIR)/cpuminer-hmac-blake2b.Po
 	-rm -f asm/$(DEPDIR)/cpuminer-neoscrypt_asm.Po
+	-rm -f avian/$(DEPDIR)/cpuminer-ntime.Po
 	-rm -f avian/$(DEPDIR)/cpuminer-selftest.Po
 	-rm -f avian/$(DEPDIR)/cpuminer-sv2.Po
 	-rm -f compat/$(DEPDIR)/cpuminer-winansi.Po
@@ -7272,6 +7292,7 @@ maintainer-clean: maintainer-clean-recursive
 	-rm -f algo/yespower/$(DEPDIR)/cpuminer-yespower-ref.Po
 	-rm -f algo/yespower/crypto/$(DEPDIR)/cpuminer-hmac-blake2b.Po
 	-rm -f asm/$(DEPDIR)/cpuminer-neoscrypt_asm.Po
+	-rm -f avian/$(DEPDIR)/cpuminer-ntime.Po
 	-rm -f avian/$(DEPDIR)/cpuminer-selftest.Po
 	-rm -f avian/$(DEPDIR)/cpuminer-sv2.Po
 	-rm -f compat/$(DEPDIR)/cpuminer-winansi.Po

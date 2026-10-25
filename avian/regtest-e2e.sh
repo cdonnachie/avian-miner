@@ -11,7 +11,19 @@
 # Loopback only, regtest only. Usage:
 #
 #   avian/regtest-e2e.sh [path-to-avian-build/bin] [path-to-avian-sv2]
+#
+# ALGO=x16rt or ALGO=minotaurx (default) picks the algorithm, end to end:
+# the node's -sv2powalgo, the pool's --algo and the miner's -a all follow it,
+# and the powtype assertion checks the node agrees.
+# CHANNEL=standard asks for a standard channel, RECONNECT=1 also restarts
+# the pool under the miner.
 set -u
+
+ALGO="${ALGO:-minotaurx}"
+case "$ALGO" in
+  x16rt|minotaurx) ;;
+  *) echo "ALGO must be x16rt or minotaurx, not $ALGO"; exit 2 ;;
+esac
 
 BIN="${1:-$HOME/avian-build/bin}"
 SV2="${2:-/mnt/c/development/avian-sv2}"
@@ -66,12 +78,12 @@ done
 
 mkdir -p "$LOGDIR"
 
-echo "== starting aviand on regtest"
+echo "== starting aviand on regtest, serving $ALGO"
 # -listen=0 because the P2P port is not wanted and binding it can collide with
 # another regtest node on the same machine.
 "$AVIAND" -regtest "-datadir=$DATADIR" "-rpcport=$RPC_PORT" -rpcuser=e2e \
     -rpcpassword=e2e -listen=0 -fallbackfee=0.0001 \
-    -sv2 "-sv2bind=127.0.0.1:$SV2_PORT" -sv2powalgo=minotaurx \
+    -sv2 "-sv2bind=127.0.0.1:$SV2_PORT" "-sv2powalgo=$ALGO" \
     -sv2maxrejects=1000 -debug=sv2 > "$LOGDIR/node.log" 2>&1 &
 NODE_PID=$!
 
@@ -107,7 +119,7 @@ echo "== starting the pool"
     --mining-bind "127.0.0.1:$MINING_PORT" \
     --pool-key "$DATADIR/pool-authority-key" \
     --coinbase-tag "Sv2/cpuminer-avian e2e//" \
-    --algo minotaurx > "$LOGDIR/pool.log" 2>&1 &
+    --algo "$ALGO" > "$LOGDIR/pool.log" 2>&1 &
 POOL_PID=$!
 
 POOL_KEY=""
@@ -129,8 +141,8 @@ if [ "${CHANNEL:-extended}" = "standard" ]; then
     CHANNEL_ARG="--sv2-standard"
 fi
 
-echo "== starting cpuminer-avian over Stratum v2 (${CHANNEL:-extended} channel)"
-"$MINER" -a minotaurx -t 4 $CHANNEL_ARG \
+echo "== starting cpuminer-avian over Stratum v2 ($ALGO, ${CHANNEL:-extended} channel)"
+"$MINER" -a "$ALGO" -t 4 $CHANNEL_ARG \
     "--sv2=127.0.0.1:$MINING_PORT" \
     "--sv2-authority=$POOL_KEY" \
     "--sv2-user=$PAYOUT.e2e" \
@@ -164,12 +176,14 @@ else
     rc=1
 fi
 
-# 2. It is a MinotaurX block, not an X16RT one that happened to validate.
+# 2. It is the algorithm asked for, not the other one that happened to
+#    validate. The pow type lives in nVersion bits 16-23, so a miner that
+#    got this wrong would be mining against the other algorithm's limit.
 POWTYPE=$(rpc getblock "$HASH" 1 | grep -o '"powtype": *"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
-if [ "$POWTYPE" = "minotaurx" ]; then
-    echo "  ok   getblock reports powtype minotaurx"
+if [ "$POWTYPE" = "$ALGO" ]; then
+    echo "  ok   getblock reports powtype $ALGO"
 else
-    echo "  FAIL getblock reports powtype '${POWTYPE:-none}', not minotaurx"
+    echo "  FAIL getblock reports powtype '${POWTYPE:-none}', not $ALGO"
     rc=1
 fi
 
@@ -239,7 +253,7 @@ if [ "${RECONNECT:-0}" = "1" ] && [ "$rc" -eq 0 ]; then
         --mining-bind "127.0.0.1:$MINING_PORT" \
         --pool-key "$DATADIR/pool-authority-key" \
         --coinbase-tag "Sv2/cpuminer-avian e2e//" \
-        --algo minotaurx >> "$LOGDIR/pool.log" 2>&1 &
+        --algo "$ALGO" >> "$LOGDIR/pool.log" 2>&1 &
     POOL_PID=$!
 
     HEIGHT2="$AFTER_FIRST"
@@ -273,4 +287,4 @@ if [ "$rc" -ne 0 ]; then
     echo "logs in $LOGDIR"
     exit 1
 fi
-echo "OK: aviand -> pool -> cpuminer-avian -> pool -> aviand, MinotaurX, paid"
+echo "OK: aviand -> pool -> cpuminer-avian -> pool -> aviand, $ALGO, paid"

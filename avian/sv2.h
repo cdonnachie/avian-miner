@@ -43,8 +43,22 @@ void *avian_sv2_thread(void *userdata);
  * an error. */
 bool avian_sv2_submit(struct work *work);
 
-/* Checks this build's MinotaurX against hashes a real Avian node produced.
- * Returns 0 when they agree. */
-int avian_minotaurx_selftest(void);
+/* Advances the current job's nTime by one second, if the job's window and
+ * its algorithm both allow it, and restarts the miner threads on the fresh
+ * nonce range that buys. False means there is nothing left to roll and the
+ * only thing to do is wait for another job, which is the answer on every
+ * chain a developer can run: nBits is a function of nTime there, so the node
+ * pins ntime_min == ntime_max. See avian/ntime.h for the two bounds. */
+bool avian_sv2_roll_ntime(void);
+
+/* Checks this build's proof of work, for whichever of x16rt and minotaurx
+ * opt_algo names, against hashes a real Avian node produced. Returns 0 when
+ * they agree. */
+int avian_pow_selftest(void);
+
+/* submit_solution's first call. False in every ordinary run, so nothing about
+ * mining changes; the self-test uses it to take the hash the miner computed
+ * without a share going anywhere. */
+bool avian_selftest_capture(const void *hash);
 
 #endif /* AVIAN_SV2_BACKEND_H */

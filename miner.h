@@ -981,7 +981,7 @@ Options:\n\
       --sv2-standard            ask for a standard channel instead of an extended one\n\
       --sv2-extranonce-size=N   least extranonce to accept on an extended channel\n\
       --sv2-expect-payout=ADDR  check the assembled coinbase pays this address\n\
-      --avian-selftest          check MinotaurX against hashes a real node reported\n\
+      --avian-selftest          check -a's proof of work against hashes a real node reported\n\
   -b, --api-bind=address[:port]   IP address for the miner API, default port is 4048)\n\
       --api-remote      allow remote control\n\
       --max-temp=N      only mine if cpu temp is less than specified value (linux)\n\

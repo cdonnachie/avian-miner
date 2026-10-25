@@ -307,7 +307,7 @@ endif
 
 cpuminer_LDFLAGS = @LDFLAGS@
 if HAVE_AVIAN_SV2
-  cpuminer_SOURCES += avian/sv2.c avian/selftest.c
+  cpuminer_SOURCES += avian/sv2.c avian/selftest.c avian/ntime.c
 endif
 
 cpuminer_LDADD	= $(EXTRA_LIBS) @LIBCURL@ -ljansson @PTHREAD_LIBS@ @WS2_LIBS@ -lgmp @AVIAN_SV2_LIBS@ -ldl
