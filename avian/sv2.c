@@ -114,7 +114,12 @@ static void check_payout(const AvianMiningJob *job, const uint8_t *extranonce,
         return;
     }
 
-    want_len = address_to_script(want, sizeof(want), opt_sv2_expect_payout);
+    /* pk_buffer_size, not sizeof(want): address_to_script uses its size
+     * argument as the base58 decode length as well as the output capacity, so
+     * anything but 25 (or 26 for sapling) makes the checksum fail and the
+     * address silently look invalid. cpu-miner.c says as much where
+     * pk_buffer_size is declared. */
+    want_len = address_to_script(want, pk_buffer_size, opt_sv2_expect_payout);
     if (want_len == 0 || want_len > sizeof(want)) {
         applog(LOG_ERR, "SV2: cannot turn %s into a script, so the payout "
                         "cannot be verified", opt_sv2_expect_payout);
@@ -122,11 +127,15 @@ static void check_payout(const AvianMiningJob *job, const uint8_t *extranonce,
         return;
     }
 
-    if (avian_sv2_client_job_coinbase(g_client, job->job_id, extranonce,
-                                      extranonce_len, NULL, 0, &needed)
-            != AVIAN_SV2_OK
-        || needed == 0) {
-        applog(LOG_ERR, "SV2: could not read the coinbase: %s",
+    /* The sizing call's status is ignored on purpose. The header documents
+     * calling with capacity 0 to size a buffer, but that path returns
+     * AVIAN_SV2_INVALID_ARGUMENT because the capacity is too small, and sets
+     * no error message. *written is still filled in, so that is what to
+     * believe. */
+    avian_sv2_client_job_coinbase(g_client, job->job_id, extranonce,
+                                  extranonce_len, NULL, 0, &needed);
+    if (needed == 0) {
+        applog(LOG_ERR, "SV2: the job has no coinbase to read: %s",
                avian_sv2_last_error(g_client));
         return;
     }

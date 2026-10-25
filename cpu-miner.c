@@ -3726,7 +3726,9 @@ int main(int argc, char *argv[])
 	pthread_mutex_init( &stratum.work_lock, NULL );
 
    flags = CURL_GLOBAL_ALL;
-   if ( !opt_benchmark )
+   // rpc_url is NULL when work comes from somewhere that is not a URL, which
+   // is the case for Stratum v2 as well as for a benchmark.
+   if ( !opt_benchmark && rpc_url )
      if ( strncasecmp( rpc_url, "https:", 6 )
        && strncasecmp( rpc_url, "stratum+ssl://", 14 )
        && strncasecmp( rpc_url, "stratum+tcps://", 15 ) )
