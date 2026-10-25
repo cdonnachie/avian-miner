@@ -239,7 +239,16 @@ static bool install_job(const AvianMiningJob *job)
     memset(&g_work, 0, sizeof(g_work));
     header_to_work_data(header, g_work.data);
     /* share_target and work->target are both uint256's internal order, which
-     * on a little-endian host is the same bytes. */
+     * on a little-endian host is the same bytes.
+     *
+     * Copied, not derived from a difficulty, and that is load-bearing rather
+     * than a shortcut. Stratum v1 fills the same field in stratum_gen_work by
+     * dividing the pool's advertised difficulty by opt_target_factor, and
+     * register_x16rt_algo sets that factor to 256 because Veil's X16RT uses
+     * Veil's difficulty convention. An Avian miner reaching the target that
+     * way would be hashing against one 256 times too easy, and the symptom
+     * would be a flood of shares the pool rejects rather than an error.
+     * Taking the pool's target as the bytes it sent cannot drift. */
     memcpy(g_work.target, job->share_target, 32);
     g_work.targetdiff = hash_to_diff(g_work.target);
     g_work.stratum_diff = g_work.targetdiff;
