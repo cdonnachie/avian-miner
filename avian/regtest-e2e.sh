@@ -221,6 +221,52 @@ else
     rc=1
 fi
 
+# A restart of the pool, because this is the first real miner and the job
+# tokens exist precisely so a nonce found before a reconnect is not applied to
+# whatever job holds that id afterwards.
+#   RECONNECT=1 avian/regtest-e2e.sh
+if [ "${RECONNECT:-0}" = "1" ] && [ "$rc" -eq 0 ]; then
+    echo
+    echo "== restarting the pool under the miner"
+    MARK=$(wc -l < "$LOGDIR/miner.log")
+    AFTER_FIRST=$(rpc getblockcount)
+    kill "$POOL_PID" 2>/dev/null
+    wait "$POOL_PID" 2>/dev/null
+    sleep 2
+    "$SV2/target/release/avian-sv2-pool" \
+        --datadir "$DATADIR" --chain regtest \
+        --connect "127.0.0.1:$SV2_PORT" \
+        --mining-bind "127.0.0.1:$MINING_PORT" \
+        --pool-key "$DATADIR/pool-authority-key" \
+        --coinbase-tag "Sv2/cpuminer-avian e2e//" \
+        --algo minotaurx >> "$LOGDIR/pool.log" 2>&1 &
+    POOL_PID=$!
+
+    HEIGHT2="$AFTER_FIRST"
+    for _ in $(seq 1 120); do
+        HEIGHT2=$(rpc getblockcount)
+        [ -n "$HEIGHT2" ] && [ "$HEIGHT2" -gt "$AFTER_FIRST" ] && break
+        kill -0 "$MINER_PID" 2>/dev/null || break
+        sleep 1
+    done
+
+    if ! kill -0 "$MINER_PID" 2>/dev/null; then
+        echo "  FAIL the miner died when the pool went away"
+        rc=1
+    elif [ "$HEIGHT2" -gt "$AFTER_FIRST" ]; then
+        echo "  ok   the miner reconnected and mined again (height $HEIGHT2)"
+    else
+        echo "  FAIL the miner never mined again after the pool came back"
+        rc=1
+    fi
+    if tail -n +"$MARK" "$LOGDIR/miner.log" | grep -q "reconnected"; then
+        echo "  ok   the miner logged the reconnection as a reconnection"
+    else
+        echo "  FAIL the miner did not log a reconnection"
+        rc=1
+    fi
+fi
+
 echo
 if [ "$rc" -ne 0 ]; then
     echo "FAIL"
