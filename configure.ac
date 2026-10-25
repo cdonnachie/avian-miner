@@ -99,6 +99,29 @@ AM_CONDITIONAL([ARCH_ARM64], [test x$have_arm64 = xtrue])
 AM_CONDITIONAL([MINGW], [test "x$OS" = "xWindows_NT"])
 AM_CONDITIONAL([HAVE_APPLE], [test x$have_apple = xtrue])
 
+# The avian-sv2 workspace, where libavian-sv2 has been built. Without it the
+# Stratum v2 backend is left out and the miner builds and runs exactly as
+# upstream, Stratum v1 and all.
+AC_ARG_WITH([avian-sv2],
+   [  --with-avian-sv2=PATH    root of the avian-sv2 workspace, built with
+                           cargo build --release -p avian-sv2])
+
+if test -n "$with_avian_sv2" ; then
+   AVIAN_SV2_CFLAGS="-I$with_avian_sv2/crates/avian-sv2/include"
+   if test -f "$with_avian_sv2/target/release/libavian_sv2.a" ; then
+      AVIAN_SV2_LIBS="$with_avian_sv2/target/release/libavian_sv2.a"
+   elif test -f "$with_avian_sv2/target/debug/libavian_sv2.a" ; then
+      AVIAN_SV2_LIBS="$with_avian_sv2/target/debug/libavian_sv2.a"
+   else
+      AC_MSG_ERROR([no libavian_sv2.a under $with_avian_sv2/target; build it with cargo build --release -p avian-sv2])
+   fi
+   AC_DEFINE([HAVE_AVIAN_SV2], [1], [Define to 1 to build the Stratum v2 backend.])
+   have_avian_sv2=true
+fi
+AM_CONDITIONAL([HAVE_AVIAN_SV2], [test x$have_avian_sv2 = xtrue])
+AC_SUBST(AVIAN_SV2_CFLAGS)
+AC_SUBST(AVIAN_SV2_LIBS)
+
 # libcurl install path (for mingw : --with-curl=/usr/local)
 AC_ARG_WITH([curl],
    [  --with-curl=PATH         prefix where curl is installed [default=/usr]])

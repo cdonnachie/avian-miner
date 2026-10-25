@@ -70,6 +70,9 @@
 
 #include "miner.h"
 #include "algo-gate-api.h"
+#ifdef HAVE_AVIAN_SV2
+#include "avian/sv2.h"
+#endif
 #include "algo/sha/sha256-hash.h"
 
 #ifdef WIN32
@@ -97,11 +100,17 @@ bool have_gbt = true;
 bool allow_getwork = true;
 bool want_stratum = true;    // pretty useless
 bool have_stratum = false;
+// Defined here rather than in the backend so the two places main() tests it
+// compile with or without libavian-sv2.
+bool have_sv2 = false;
 bool stratum_down = true;
 bool allow_mininginfo = true;
 bool use_syslog = false;
 bool use_colors = true;
 static bool opt_background = false;
+#ifdef HAVE_AVIAN_SV2
+static bool opt_avian_selftest = false;
+#endif
 bool opt_quiet = false;
 bool opt_randomize = false;
 static int opt_retries = -1;
@@ -218,7 +227,7 @@ static char const short_options[] =
 #endif
 	"a:b:Bc:CDf:hK:m:n:N:p:Px:qr:R:s:t:T:o:u:O:V";
 
-static struct work g_work __attribute__ ((aligned (64))) = {{ 0 }};
+struct work g_work __attribute__ ((aligned (64))) = {{ 0 }};
 time_t g_work_time = 0;
 pthread_rwlock_t g_work_lock;
 static bool   submit_old = false;
@@ -1799,6 +1808,12 @@ static bool submit_work( struct thr_info *thr, const struct work *work_in )
 {
 	struct workio_cmd *wc;
 
+#ifdef HAVE_AVIAN_SV2
+   if ( have_sv2 )
+      return avian_sv2_submit( (struct work *)work_in );
+#endif
+
+
    /* fill out work request message */
 	wc = (struct workio_cmd *) calloc(1, sizeof(*wc));
 	if (!wc)
@@ -2182,6 +2197,17 @@ static void *miner_thread( void *userdata )
       exit (1);
    }
 
+#ifdef HAVE_AVIAN_SV2
+   // Same reason as the stratum wait below: until a job arrives g_work
+   // is zeroed, and hashing a zeroed header wastes the first scan.
+   if ( have_sv2 ) while ( unlikely( !g_work.job_id ) )
+   {
+      if ( opt_debug )
+         applog( LOG_INFO, "Thread %d waiting for the first SV2 job", thr_id );
+      sleep(1);
+   }
+#endif
+
    // wait for stratum to send first job
    if ( have_stratum ) while ( unlikely( !stratum.job.job_id ) )
    {
@@ -2199,6 +2225,23 @@ static void *miner_thread( void *userdata )
        struct timeval tv_start, tv_end, diff;
        int nonce_found = 0;
 
+#ifdef HAVE_AVIAN_SV2
+       if ( have_sv2 )
+       {
+          // Pushed, like stratum: there is nothing to fetch. A thread
+          // that has run out of nonces waits for the next job rather
+          // than rolling into another thread's range.
+          if ( unlikely( ( *nonceptr >= end_nonce )
+                        && !work_restart[thr_id].restart ) )
+          {
+             if ( !thr_id )
+                applog( LOG_INFO, "Nonce range exhausted, waiting for work" );
+             while ( !work_restart[thr_id].restart )
+                sleep( 1 );
+          }
+       }
+       else
+#endif
        if ( have_stratum ) 
        {
           while ( unlikely( stratum_down ) )
@@ -3070,6 +3113,34 @@ void parse_arg(int key, char *arg )
          }
       break;
 
+#ifdef HAVE_AVIAN_SV2
+   case 1200:  // sv2
+      free( opt_sv2_url );
+      opt_sv2_url = strdup( arg );
+      have_sv2 = true;
+      break;
+   case 1201:  // sv2-authority
+      free( opt_sv2_authority );
+      opt_sv2_authority = strdup( arg );
+      break;
+   case 1202:  // sv2-user
+      free( opt_sv2_user );
+      opt_sv2_user = strdup( arg );
+      break;
+   case 1203:  // sv2-standard
+      opt_sv2_standard = true;
+      break;
+   case 1204:  // sv2-extranonce-size
+      opt_sv2_extranonce_size = atoi( arg );
+      break;
+   case 1205:  // sv2-expect-payout
+      free( opt_sv2_expect_payout );
+      opt_sv2_expect_payout = strdup( arg );
+      break;
+   case 1206:  // avian-selftest
+      opt_avian_selftest = true;
+      break;
+#endif
 	case 'b':  // api-bind
       opt_api_enabled = true;
       p = strstr(arg, ":");
@@ -3594,8 +3665,13 @@ int main(int argc, char *argv[])
    if ( !register_algo_gate( opt_algo, &algo_gate ) )  exit(1);
 
    if ( !check_cpu_capability() ) exit(1);
+
+#ifdef HAVE_AVIAN_SV2
+   if ( opt_avian_selftest )
+      exit( avian_minotaurx_selftest() );
+#endif
    
-	if ( !opt_benchmark )
+	if ( !opt_benchmark && !have_sv2 )
    {
       if ( !short_url )
       {
@@ -3771,7 +3847,8 @@ int main(int argc, char *argv[])
 	work_restart = (struct work_restart*) calloc(opt_n_threads, sizeof(*work_restart));
 	if (!work_restart)
 		return 1;
-	thr_info = (struct thr_info*) calloc(opt_n_threads + 4, sizeof(*thr));
+	// + 5 rather than + 4: the Stratum v2 backend takes the last slot.
+	thr_info = (struct thr_info*) calloc(opt_n_threads + 5, sizeof(*thr));
 	if (!thr_info)
 		return 1;
 	thr_hashrates = (double *) calloc(opt_n_threads, sizeof(double));
@@ -3798,7 +3875,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* ESET-NOD32 Detects these 2 thread_create... */
-	if (want_longpoll && !have_stratum)
+	if (want_longpoll && !have_stratum && !have_sv2)
    {
       if ( opt_debug )
          applog(LOG_INFO,"Creating long poll thread");
@@ -3842,6 +3919,28 @@ int main(int argc, char *argv[])
 		if (have_stratum)
 			tq_push(thr_info[stratum_thr_id].q, strdup(rpc_url));
 	}
+
+#ifdef HAVE_AVIAN_SV2
+   if ( have_sv2 )
+   {
+      if ( opt_debug )
+         applog( LOG_INFO, "Creating Stratum v2 thread" );
+
+      /* init Stratum v2 thread info */
+      int sv2_thr_id = opt_n_threads + 4;
+      thr = &thr_info[sv2_thr_id];
+      thr->id = sv2_thr_id;
+      thr->q = tq_new();
+      if ( !thr->q )
+         return 1;
+      err = thread_create( thr, avian_sv2_thread );
+      if ( err )
+      {
+         applog( LOG_ERR, "Stratum v2 thread create failed" );
+         return 1;
+      }
+   }
+#endif
 
 	if ( opt_api_enabled )
    {

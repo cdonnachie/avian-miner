@@ -29,7 +29,7 @@ EXTRA_DIST = example-cfg.json nomacro.pl
 
 SUBDIRS = compat
 
-ALL_INCLUDES = @PTHREAD_FLAGS@ -fno-strict-aliasing $(EXTRA_INCLUDES) -I.
+ALL_INCLUDES = @PTHREAD_FLAGS@ -fno-strict-aliasing $(EXTRA_INCLUDES) -I. @AVIAN_SV2_CFLAGS@
 
 bin_PROGRAMS = cpuminer
 
@@ -306,7 +306,11 @@ else
 endif
 
 cpuminer_LDFLAGS = @LDFLAGS@
-cpuminer_LDADD	= $(EXTRA_LIBS) @LIBCURL@ -ljansson @PTHREAD_LIBS@ @WS2_LIBS@ -lgmp
+if HAVE_AVIAN_SV2
+  cpuminer_SOURCES += avian/sv2.c avian/selftest.c
+endif
+
+cpuminer_LDADD	= $(EXTRA_LIBS) @LIBCURL@ -ljansson @PTHREAD_LIBS@ @WS2_LIBS@ -lgmp @AVIAN_SV2_LIBS@ -ldl
 cpuminer_CPPFLAGS = @LIBCURL_CPPFLAGS@ $(ALL_INCLUDES)
 cpuminer_CFLAGS = -Wno-pointer-sign -Wno-pointer-to-int-cast $(disable_flags)
 

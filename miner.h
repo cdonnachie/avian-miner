@@ -792,6 +792,7 @@ extern const char *getwork_req;
 extern bool allow_getwork;
 extern bool want_stratum;
 extern bool have_stratum;
+extern bool have_sv2;
 extern char *opt_cert;
 extern char *opt_proxy;
 extern long opt_proxy_type;
@@ -974,6 +975,13 @@ Options:\n\
       --benchmark       run in offline benchmark mode\n\
       --cpu-affinity    set process affinity to cpu core(s), mask 0x3 for cores 0 and 1\n\
       --cpu-priority    set process priority (default: 0 idle, 2 normal to 5 highest) (deprecated)\n\
+      --sv2=HOST:PORT           mine over Stratum v2 against an Avian pool\n\
+      --sv2-authority=HEX       the pool's authority public key, 64 hex characters\n\
+      --sv2-user=IDENTITY       address.workername, or a bare address, for solo mining\n\
+      --sv2-standard            ask for a standard channel instead of an extended one\n\
+      --sv2-extranonce-size=N   least extranonce to accept on an extended channel\n\
+      --sv2-expect-payout=ADDR  check the assembled coinbase pays this address\n\
+      --avian-selftest          check MinotaurX against hashes a real node reported\n\
   -b, --api-bind=address[:port]   IP address for the miner API, default port is 4048)\n\
       --api-remote      allow remote control\n\
       --max-temp=N      only mine if cpu temp is less than specified value (linux)\n\
@@ -1055,6 +1063,13 @@ static struct option const options[] = {
         { "stratum-keepalive", 0, NULL, 1029 },
         { "version", 0, NULL, 'V' },
         { "bell", 0, NULL, 1031 },
+        { "sv2", 1, NULL, 1200 },
+        { "sv2-authority", 1, NULL, 1201 },
+        { "sv2-user", 1, NULL, 1202 },
+        { "sv2-standard", 0, NULL, 1203 },
+        { "sv2-extranonce-size", 1, NULL, 1204 },
+        { "sv2-expect-payout", 1, NULL, 1205 },
+        { "avian-selftest", 0, NULL, 1206 },
         { 0, 0, 0, 0 }
 };
 
