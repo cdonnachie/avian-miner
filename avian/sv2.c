@@ -500,6 +500,21 @@ void *avian_sv2_thread(void *userdata)
            avian_sv2_version(),
            opt_algo == ALGO_X16RT ? "x16rt" : "minotaurx");
 
+    /* Say which of the two the connection is going to be. A wrong authority
+     * key is not the dangerous case: the certificate fails to verify and the
+     * handshake stops. The dangerous case is the missing one, because
+     * everything then works, looks identical, and authenticates nobody. The
+     * miner is the only thing in a position to point that out. */
+    if (opt_sv2_authority) {
+        applog(LOG_INFO, "SV2: an authority key is set, so the pool's "
+                         "certificate is checked during the handshake");
+    } else {
+        applog(LOG_WARNING, "SV2: no --sv2-authority given. The connection is "
+                            "encrypted but the pool is not authenticated, so "
+                            "anything that can reroute the traffic can take "
+                            "the hashrate. Ask the operator for the key.");
+    }
+
     /* Extended first, because then the miner assembles its own coinbase and
      * can confirm what it is committing to. A pool that cannot spare the
      * extranonce says so, and a standard channel still mines. */
