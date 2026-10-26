@@ -115,10 +115,26 @@ static int height_from_coinbase(const uint8_t *coinbase, size_t len)
     if (len < script_at + 1) {
         return 0;
     }
-    size_t push = coinbase[script_at];
+    const uint8_t opcode = coinbase[script_at];
+
+    /* Heights 1 to 16 are a single OP_1..OP_16 byte, because that is the
+     * minimal encoding CScriptNum produces and BIP34 requires minimal. Only
+     * from 17 up is it a length-prefixed push.
+     *
+     * Missing this is why the height looked broken: every submission on a
+     * young chain said "Block 0" and then the number became correct once the
+     * chain passed 16, which reads like a race rather than an encoding. */
+    if (opcode >= 0x51 && opcode <= 0x60) {
+        return opcode - 0x50;
+    }
+    if (opcode == 0x00) {
+        return 0;
+    }
+
     /* A push of more than four bytes is not a height, and a height needs at
      * least one. Either way, better to say nothing than to print a number
      * read out of the wrong field. */
+    size_t push = opcode;
     if (push < 1 || push > 4 || len < script_at + 1 + push) {
         return 0;
     }
