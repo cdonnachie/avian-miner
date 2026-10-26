@@ -506,6 +506,17 @@ void *avian_sv2_thread(void *userdata)
      * everything then works, looks identical, and authenticates nobody. The
      * miner is the only thing in a position to point that out. */
     if (opt_sv2_authority) {
+        /* Checked here rather than at connect time. A key that cannot be
+         * parsed is a typo in the local configuration, and nothing about
+         * dialling the pool, failing, and retrying on the other channel type
+         * can help: it only reports the typo as though the pool were at
+         * fault, twice. */
+        if (avian_sv2_check_authority(opt_sv2_authority) != AVIAN_SV2_OK) {
+            applog(LOG_ERR, "SV2: --sv2-authority is neither a base58 nor a "
+                            "64-character hex public key. Ask the pool "
+                            "operator for the key they publish.");
+            proper_exit(1);
+        }
         applog(LOG_INFO, "SV2: an authority key is set, so the pool's "
                          "certificate is checked during the handshake");
     } else {
