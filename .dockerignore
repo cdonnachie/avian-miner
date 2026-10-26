@@ -1,0 +1,34 @@
+# Docker sends the whole context to the daemon before the build starts. The
+# image runs autogen.sh and configure from scratch, and deletes any stale
+# objects it finds first, so every generated file here is transferred only to
+# be thrown away.
+#
+# This matters for the named build context the miner image uses
+# (--build-context cpuminer-avian=../cpuminer-avian). Building through
+# scripts/stage-sources.sh in avian-sv2-deploy sidesteps it by exporting
+# tracked files only, but building straight from a checkout does not.
+*.o
+*.a
+*.lo
+*.la
+**/.deps/
+**/.libs/
+
+# configure output. autogen.sh regenerates what the build needs.
+autom4te.cache/
+config.log
+config.status
+cpuminer-config.h
+Makefile
+stamp-h1
+
+# The binary itself, which is the largest single file a working checkout has.
+cpuminer
+
+# Not read by any build here: nothing uses git describe.
+.git/
+.gitignore
+
+*.swp
+*~
+.DS_Store
