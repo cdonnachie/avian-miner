@@ -449,10 +449,9 @@ static void drain_submissions(void)
     }
 }
 
-static AvianSv2Client *connect_once(bool extended)
+static AvianSv2Client *connect_once(bool extended, int32_t *status)
 {
     AvianSv2ClientConfig config;
-    int32_t status = 0;
     AvianSv2Client *client;
 
     memset(&config, 0, sizeof(config));
@@ -468,7 +467,7 @@ static AvianSv2Client *connect_once(bool extended)
      * accident; a miner is the case that means to. */
     config.allow_public_pool = 1;
 
-    client = avian_sv2_client_connect(&config, &status);
+    client = avian_sv2_client_connect(&config, status);
     if (!client) {
         applog(LOG_ERR, "SV2: %s channel refused: %s",
                extended ? "extended" : "standard",
@@ -529,17 +528,29 @@ void *avian_sv2_thread(void *userdata)
     /* Extended first, because then the miner assembles its own coinbase and
      * can confirm what it is committing to. A pool that cannot spare the
      * extranonce says so, and a standard channel still mines. */
+    int32_t status = 0;
     if (!opt_sv2_standard) {
-        g_client = connect_once(true);
-        if (!g_client) {
+        g_client = connect_once(true, &status);
+        /* Only retry as a standard channel when the pool refused the extended
+         * one. AVIAN_SV2_INVALID_ARGUMENT means this miner's own settings are
+         * wrong, and asking for a different channel type cannot change that:
+         * it waits out a second connect timeout and prints the same reason
+         * again, which reads as though the pool were at fault. */
+        if (!g_client && status != AVIAN_SV2_INVALID_ARGUMENT) {
             applog(LOG_WARNING, "SV2: falling back to a standard channel");
+            g_client = connect_once(false, &status);
         }
+    } else {
+        g_client = connect_once(false, &status);
     }
     if (!g_client) {
-        g_client = connect_once(false);
-    }
-    if (!g_client) {
-        applog(LOG_ERR, "SV2: could not open a channel on %s", opt_sv2_url);
+        if (status == AVIAN_SV2_INVALID_ARGUMENT) {
+            applog(LOG_ERR, "SV2: nothing was retried, because that is a "
+                            "problem with the settings rather than with the "
+                            "pool. Check --sv2 and --sv2-user.");
+        } else {
+            applog(LOG_ERR, "SV2: could not open a channel on %s", opt_sv2_url);
+        }
         proper_exit(1);
     }
 
