@@ -100,6 +100,35 @@ static void header_to_work_data(const uint8_t *header, uint32_t *data)
     }
 }
 
+/* The block height, from the BIP34 push that opens the coinbase scriptSig.
+ *
+ * Only on an extended channel, because that is where the miner is given the
+ * coinbase at all; a standard channel sends a finished merkle root and
+ * nothing to parse. Without this every submission printed "Block 0", and on a
+ * solo pool, where the whole proposition is that consensus pays the miner for
+ * blocks it finds, that is the one number a user looks for. */
+static int height_from_coinbase(const uint8_t *coinbase, size_t len)
+{
+    /* version(4) + input count(1) + prevout(36) + script length(1), then the
+     * scriptSig, which opens with the height push. */
+    const size_t script_at = 4 + 1 + 36 + 1;
+    if (len < script_at + 1) {
+        return 0;
+    }
+    size_t push = coinbase[script_at];
+    /* A push of more than four bytes is not a height, and a height needs at
+     * least one. Either way, better to say nothing than to print a number
+     * read out of the wrong field. */
+    if (push < 1 || push > 4 || len < script_at + 1 + push) {
+        return 0;
+    }
+    uint32_t height = 0;
+    for (size_t i = 0; i < push; i++) {
+        height |= (uint32_t)coinbase[script_at + 1 + i] << (i * 8);
+    }
+    return (int)height;
+}
+
 /* What the pool committed to pay, read out of the coinbase the miner itself
  * assembled. This is the whole point of an extended channel: on a standard one
  * the pool hands over a finished merkle root and the miner can only take its
@@ -223,6 +252,26 @@ static bool install_job(const AvianMiningJob *job)
 
     check_payout(job, extranonce, extranonce_len);
 
+    int height = 0;
+    if (job->extended) {
+        size_t needed = 0;
+        avian_sv2_client_job_coinbase(g_client, job->job_id, extranonce,
+                                      extranonce_len, NULL, 0, &needed);
+        if (needed > 0) {
+            uint8_t *coinbase = (uint8_t *)malloc(needed);
+            if (coinbase != NULL) {
+                size_t written = 0;
+                if (avian_sv2_client_job_coinbase(g_client, job->job_id, extranonce,
+                                                  extranonce_len, coinbase, needed,
+                                                  &written)
+                    == AVIAN_SV2_OK) {
+                    height = height_from_coinbase(coinbase, written);
+                }
+                free(coinbase);
+            }
+        }
+    }
+
     pthread_mutex_lock(&g_jobs_lock);
     token = g_next_token++;
     slot = &g_jobs[token % JOB_SLOTS];
@@ -251,6 +300,11 @@ static bool install_job(const AvianMiningJob *job)
      * Taking the pool's target as the bytes it sent cannot drift. */
     memcpy(g_work.target, job->share_target, 32);
     g_work.targetdiff = hash_to_diff(g_work.target);
+    /* So a submission does not report "Block 0". Only an extended channel can
+     * answer this, because only there does the miner hold the coinbase; on a
+     * standard channel the pool sends a finished merkle root and the height is
+     * not in anything the miner is given. Zero there is honest. */
+    g_work.height = height;
     g_work.stratum_diff = g_work.targetdiff;
     g_work.job_id = strdup(token_hex);
     if (extranonce_len) {
@@ -409,6 +463,10 @@ static AvianSv2Client *connect_once(bool extended)
     config.nominal_hash_rate = 1000.0f;
     config.extended = extended ? 1 : 0;
     config.min_extranonce_size = (uint32_t)opt_sv2_extranonce_size;
+    /* A miner's whole job is to dial a pool somewhere else. The library
+     * defaults to loopback so that a zeroed config cannot reach the network by
+     * accident; a miner is the case that means to. */
+    config.allow_public_pool = 1;
 
     client = avian_sv2_client_connect(&config, &status);
     if (!client) {
@@ -488,6 +546,32 @@ void *avian_sv2_thread(void *userdata)
                        event.accepted_count);
             }
             break;
+        case AVIAN_SV2_EVENT_BLOCK_FOUND: {
+            /* The pool telling the miner something the Mining Protocol has no
+             * way to say. A miner is given a share target and never the
+             * network target, so it cannot work this out for itself. */
+            char printed[65];
+            /* A block hash prints reversed. */
+            for (int b = 0; b < 32; b++) {
+                snprintf(printed + b * 2, 3, "%02x", event.block_hash[31 - b]);
+            }
+            if (event.block_confirmed) {
+                applog(LOG_NOTICE,
+                       "*** BLOCK CONFIRMED *** %s is the chain tip. "
+                       "Share %u was yours and it paid you.",
+                       printed, event.sequence_number);
+            } else {
+                /* Not "accepted". The pool has forwarded it and nothing has
+                 * confirmed it yet, and no confirmation is unresolved rather
+                 * than failure: a pool cannot tell a block that lost a race
+                 * from one still propagating. */
+                applog(LOG_NOTICE,
+                       "*** BLOCK FOUND *** share %u produced %s, submitted to the "
+                       "node; waiting to see it become the tip",
+                       event.sequence_number, printed);
+            }
+            break;
+        }
         case AVIAN_SV2_EVENT_SHARE_REJECTED:
             applog(LOG_WARNING, "SV2: share rejected: %s", event.message);
             break;
