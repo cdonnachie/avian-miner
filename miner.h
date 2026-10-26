@@ -976,7 +976,9 @@ Options:\n\
       --cpu-affinity    set process affinity to cpu core(s), mask 0x3 for cores 0 and 1\n\
       --cpu-priority    set process priority (default: 0 idle, 2 normal to 5 highest) (deprecated)\n\
       --sv2=HOST:PORT           mine over Stratum v2 against an Avian pool\n\
-      --sv2-authority=HEX       the pool's authority public key, 64 hex characters\n\
+      --sv2-authority=KEY       the pool's authority public key, base58 or 64 hex\n\
+                                characters. Pins the pool's identity, so without it\n\
+                                the connection is encrypted but not authenticated\n\
       --sv2-user=IDENTITY       address.workername, or a bare address, for solo mining\n\
       --sv2-standard            ask for a standard channel instead of an extended one\n\
       --sv2-extranonce-size=N   least extranonce to accept on an extended channel\n\
