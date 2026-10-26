@@ -194,21 +194,10 @@ static const uint8_t x16r_algo_cost[ X16R_HASH_FUNC_COUNT ] =
    0               // SHA_512
 };
 
-void x16rt_log_hash_order( const uint32_t ntime )
+void x16rt_log_hash_order( const char *order, const uint32_t ntime )
 {
-   static char last[ X16R_HASH_FUNC_COUNT + 1 ] = { 0 };
-   uint32_t timeHash[8];
-   char order[ X16R_HASH_FUNC_COUNT + 1 ];
    char line[ X16R_HASH_FUNC_COUNT * 20 + 1 ];
    int len = 0;
-
-   x16rt_getTimeHash( ntime, &timeHash );
-   x16rt_getAlgoString( &timeHash[0], order );
-
-   /* The order follows the 128-second epoch, not the job, so a run of jobs
-    * shares one. Print it when it changes and not once per job. */
-   if ( !memcmp( order, last, sizeof( order ) ) ) return;
-   memcpy( last, order, sizeof( order ) );
 
    for ( int i = 0; i < X16R_HASH_FUNC_COUNT; i++ )
    {
@@ -233,8 +222,8 @@ void x16rt_log_hash_order( const uint32_t ntime )
       if ( len >= (int)sizeof( line ) ) break;
    }
 
-   applog( LOG_BLUE, "Hash order %s", order );
-   applog( LOG_BLUE, "%s", line );
+   applog( LOG_INFO, "Hash order %s, Ntime %08x", order, ntime );
+   applog( LOG_INFO, "%s", line );
 }
 
 void veil_build_extraheader( struct work* g_work, struct stratum_ctx* sctx )

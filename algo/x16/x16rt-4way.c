@@ -31,8 +31,7 @@ int scanhash_x16rt_8way( struct work *work, uint32_t max_nonce,
       x16rt_getAlgoString( &timeHash[0], x16r_hash_order );
       s_ntime = masked_ntime;
       if ( !opt_quiet && !thr_id )
-          applog( LOG_INFO, "Hash order %s, Ntime %08x",
-                            x16r_hash_order, bswap_32( pdata[17] ) );
+          x16rt_log_hash_order( x16r_hash_order, bswap_32( pdata[17] ) );
    }
 
    x16r_8way_prehash( vdata, pdata, x16r_hash_order );
@@ -85,8 +84,7 @@ int scanhash_x16rt_4way( struct work *work, uint32_t max_nonce,
       x16rt_getAlgoString( &timeHash[0], x16r_hash_order );
       s_ntime = masked_ntime;
       if ( !opt_quiet && !thr_id )
-          applog( LOG_INFO, "Hash order %s, Ntime %08x",
-                            x16r_hash_order, bswap_32( pdata[17] ) );
+          x16rt_log_hash_order( x16r_hash_order, bswap_32( pdata[17] ) );
    }
 
    x16r_4way_prehash( vdata, pdata, x16r_hash_order );
@@ -138,8 +136,7 @@ int scanhash_x16rt_2x64( struct work *work, uint32_t max_nonce,
       x16rt_getAlgoString( &timeHash[0], x16r_hash_order );
       s_ntime = masked_ntime;
       if ( !opt_quiet && !thr_id )
-          applog( LOG_INFO, "Hash order %s, Ntime %08x",
-                            x16r_hash_order, bswap_32( pdata[17] ) );
+          x16rt_log_hash_order( x16r_hash_order, bswap_32( pdata[17] ) );
    }
 
    x16r_2x64_prehash( vdata, pdata, x16r_hash_order );

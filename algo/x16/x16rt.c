@@ -26,9 +26,8 @@ int scanhash_x16rt( struct work *work, uint32_t max_nonce,
       x16rt_getTimeHash( masked_ntime, &timeHash );
       x16rt_getAlgoString( &timeHash[0], x16r_hash_order );
       s_ntime = masked_ntime;
-      if ( !thr_id )
-          applog( LOG_INFO, "hash order: %s time: (%08x) time hash: (%08x)",
-                        x16r_hash_order, bswap_32( pdata[17] ), timeHash );
+      if ( !opt_quiet && !thr_id )
+          x16rt_log_hash_order( x16r_hash_order, bswap_32( pdata[17] ) );
    }
    
    x16r_prehash( edata, pdata, x16r_hash_order );
