@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include "avian/ntime.h"
+#include "algo/x16/x16r-gate.h"
 #include "avian/sv2.h"
 
 #include "avian_sv2.h"
@@ -323,6 +324,11 @@ static bool install_job(const AvianMiningJob *job)
         applog(LOG_BLUE, "SV2 job %u, %s channel, diff %.5g%s", job->job_id,
                job->extended ? "extended" : "standard", g_work.targetdiff,
                job->ntime_min == job->ntime_max ? ", ntime pinned" : "");
+        /* X16RT only. MinotaurX runs a fixed chain, so there is no order to
+         * report. This prints only when the order changes, which is every
+         * 128 seconds at most rather than every job. */
+        if (opt_algo == ALGO_X16RT)
+            x16rt_log_hash_order(job->ntime_min);
     }
     return true;
 }

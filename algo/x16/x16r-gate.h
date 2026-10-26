@@ -113,6 +113,11 @@ void x16rt_getAlgoString( const uint32_t *timeHash, char *output );
 
 void x16rt_getTimeHash( const uint32_t timeStamp, void* timeHash );
 
+// Decode the current epoch's order into names and log it, coloured by
+// what each function costs this build. Prints only when the order
+// changes, so it is safe to call on every job.
+void x16rt_log_hash_order( const uint32_t ntime );
+
 bool register_x16r_algo( algo_gate_t* gate );
 bool register_x16rv2_algo( algo_gate_t* gate );
 bool register_x16s_algo( algo_gate_t* gate );
