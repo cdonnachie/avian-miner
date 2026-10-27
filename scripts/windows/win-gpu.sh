@@ -86,6 +86,15 @@ eval "$OLD CPPFLAGS=\"\${CPPFLAGS:-} -DHAVE_CUDA\"" > /tmp/win-gpu-cfg.log 2>&1 
 echo "  configured"
 
 echo
+echo "=== rebuild everything, not just what changed ==="
+# Adding -DHAVE_CUDA changes how cpu-miner.c and x16r-gate.c compile, but
+# automake does not make objects depend on CPPFLAGS, so make leaves the ones
+# the SV2 stage already built. The result links the DLL and still reports
+# "this build has no GPU backend", because the miner's own code was compiled
+# without the define while the newly added files were compiled with it.
+make clean > /dev/null 2>&1
+
+echo
 echo "=== make ==="
 if make -j"$(nproc)" > /tmp/win-gpu-make.log 2>&1; then
     echo "  BUILD OK"
@@ -108,5 +117,13 @@ if objdump -p avian-miner.exe 2>/dev/null | grep -qi "avian_cuda"; then
     echo "  ok   present in the import table"
 else
     echo "  FAIL not in the import table"; fail=1
+fi
+# Importing the DLL is not the same as being able to reach it. If cpu-miner.c
+# was compiled without HAVE_CUDA the binary still links the backend and then
+# refuses --gpu, which is exactly what a stale object produced.
+if strings avian-miner.exe 2>/dev/null | grep -q "no GPU backend"; then
+    echo "  FAIL compiled without HAVE_CUDA: --gpu will be refused"; fail=1
+else
+    echo "  ok   compiled with HAVE_CUDA"
 fi
 exit $fail
