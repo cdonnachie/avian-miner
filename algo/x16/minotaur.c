@@ -175,8 +175,23 @@ static int get_hash( void *output, const void *input, TortureGarden *garden,
             sph_whirlpool_close( &garden->whirlpool, hash );          
             break;
         case 16: // minotaurx only, yespower hardcoded for last node
+            // yespower_binary_t is 32 bytes, so this fills half of hash and
+            // the caller then reads hash[63] to pick the next child. That is
+            // harmless today only because yespower is assigned to node 21
+            // alone and node 21 has no children, so the garbage cannot steer
+            // anything. Clear the tail rather than rely on that: it is one
+            // edit away from being a consensus bug, and it is an
+            // uninitialised read under a sanitiser either way.
+            memset( hash + 32, 0, 32 );
             rc = yespower_tls( input, 64, &minotaurx_yespower_params,
                                (yespower_binary_t*)hash, thr_id );
+            break;
+        default:
+            // algo comes from hash[i] % 16, plus the explicit 16 for node 21,
+            // so this is unreachable. Without it an out-of-range algo would
+            // memcpy 64 bytes of uninitialised stack out as a hash.
+            applog( LOG_ERR, "minotaur: algo %u out of range", algo );
+            return 0;
     }
 
     memcpy(output, hash, 64);
