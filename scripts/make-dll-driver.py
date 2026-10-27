@@ -57,13 +57,7 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
          * lead the chain. Read it here, report it, and start clean, so the
          * error is attributed to the batch that caused it rather than to an
          * unrelated kernel one epoch in sixteen later. */
-        {
-                cudaError_t stale = cudaGetLastError();
-                if (stale != cudaSuccess)
-                        applog(LOG_ERR, "GPU #%d: a previous batch left \\"%s\\" "
-                                        "unreported", dev_id,
-                                        cudaGetErrorString(stale));
-        }
+        avian_phase_check(dev_id, "a previous batch");
 
         memcpy(pdata_copy, job->data, sizeof(pdata_copy));
         memcpy(ptarget_copy, job->target, sizeof(ptarget_copy));
@@ -153,19 +147,40 @@ TAIL_NEW = '''                        /* The miner verifies and submits. A candi
 '''
 
 BATCH_END = '''
-/* Synchronise and say whether the batch left anything behind. Naming the
- * batch that caused an error is the whole point: without this the error
- * waits, silent, until skein512_cpu_setBlock_80 reads it and the miner dies
- * in a kernel that had nothing to do with it. */
-static void avian_batch_end(int dev_id)
+/* Read the pending CUDA error, say which phase of the batch left it, and
+ * then shut up about it.
+ *
+ * A CUDA error is sticky until something reads it, and almost nothing in
+ * the vendored kernels does. The one exception is skein512_cpu_setBlock_80,
+ * which calls cudaGetLastError() and aborts on whatever it finds, so an
+ * error left by any batch killed the miner the next time SKEIN happened to
+ * lead the chain. Reading it here keeps that from happening and names the
+ * phase responsible.
+ *
+ * Capped deliberately. This fires every batch, which at a few hundred
+ * batches a second buries every other line in the log and is worse than the
+ * silence it replaced. */
+static void avian_phase_check(int dev_id, const char *phase)
 {
-        cudaError_t err = cudaDeviceSynchronize();
+        static int complained = 0;
+        cudaError_t err = cudaGetLastError();
 
         if (err == cudaSuccess)
-                err = cudaGetLastError();
-        if (err != cudaSuccess)
-                applog(LOG_ERR, "GPU #%d: the batch ended with \\"%s\\"",
-                       dev_id, cudaGetErrorString(err));
+                return;
+        if (complained < 3)
+        {
+                applog(LOG_ERR, "GPU #%d: %s left \\"%s\\"",
+                       dev_id, phase, cudaGetErrorString(err));
+                if (++complained == 3)
+                        applog(LOG_ERR, "GPU #%d: further CUDA errors will not "
+                                        "be reported", dev_id);
+        }
+}
+
+static void avian_batch_end(int dev_id)
+{
+        cudaDeviceSynchronize();
+        avian_phase_check(dev_id, "the candidate search");
 }
 
 '''
@@ -184,6 +199,32 @@ def main(src, dst):
     s = sub_once(s, PROLOGUE_OLD, BATCH_END + PROLOGUE_NEW, "prologue")
     s = sub_once(s, ORDER_OLD, ORDER_NEW, "order derivation")
 
+    # cudaDeviceReset() destroys the primary context, and with it every
+    # module and __constant__ symbol registration made before it, including
+    # the ones avian_cuda_device_count() set up when it took the device
+    # inventory. Afterwards cudaMemcpyToSymbol can fail with "invalid
+    # argument", and almost nothing in the vendored kernels reads a CUDA
+    # error, so it sat unnoticed until skein512_cpu_setBlock_80, the one
+    # entry point that calls cudaGetLastError(), aborted the miner one epoch
+    # in sixteen. Resetting the device is an application's business, not a
+    # library's, and this code is a library now.
+    old_reset = """                if (opt_cudaschedule == -1 && gpu_threads == 1)
+                {
+                        cudaDeviceReset();
+                        // reduce cpu usage
+                        cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync);
+                }
+"""
+    new_reset = """                if (opt_cudaschedule == -1 && gpu_threads == 1)
+                {
+                        /* No cudaDeviceReset() here: see make-dll-driver.py.
+                         * It would tear down the context this library's own
+                         * caller already set up. */
+                        cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync);
+                }
+"""
+    s = sub_once(s, old_reset, new_reset, "device reset")
+
     # The CPU fallback is dead code now (its condition starts with 0) and it
     # called back into the miner, which this boundary does not allow.
     m = re.search(r"\n        if \(0 && algo80 == SIMD && cpu_fallback\).*?\n        \}\n",
@@ -194,7 +235,27 @@ def main(src, dst):
 
     # One batch per call: the miner owns the loop, because it is the miner
     # that knows whether a new job has landed.
-    s = sub_once(s, "        do {\n", "        {\n", "batch loop open")
+    # Three checks, so the log says which phase of the batch is at fault
+    # rather than only that something is. Device setup and buffer allocation
+    # happen once, the chain runs every batch, and the candidate search is
+    # last, so between them they cover everything a batch does.
+    s = sub_once(s, "        do {\n",
+                 "        {\n"
+                 "                avian_phase_check(dev_id, \"device setup\");\n",
+                 "batch loop open")
+    # The 80-byte setBlock switch runs before the batch loop, so a check
+    # placed inside the loop is already too late: skein512_cpu_setBlock_80
+    # reads the error first and aborts. This one sits between the target
+    # upload and that switch, which is the last gap left.
+    s = sub_once(s, "        cuda_check_cpu_setTarget(ptarget);\n",
+                 "        cuda_check_cpu_setTarget(ptarget);\n"
+                 "        avian_phase_check(dev_id, \"the target upload\");\n",
+                 "target upload check")
+
+    chain_end = "\n                if (!addstart)\n                {\n"
+    s = sub_once(s, chain_end,
+                 "\n                avian_phase_check(dev_id, \"the hash chain\");\n"
+                 + chain_end, "chain-end check")
     s = sub_once(s,
                  "                pdata[19] += throughput;\n"
                  "                } while (!work_restart[thr_id].restart && "
