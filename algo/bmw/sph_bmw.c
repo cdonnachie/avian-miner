@@ -628,6 +628,9 @@ static const sph_u32 final_s[16] = {
 static void
 bmw32_init(sph_bmw_small_context *sc, const sph_u32 *iv)
 {
+	/* Without this the rest of the context is whatever was on the
+	 * stack. Avian Core zeroes it (269b9dd0b); this is the same fix. */
+	memset(sc, 0, sizeof(sph_bmw_small_context));
 	memcpy(sc->H, iv, sizeof sc->H);
 	sc->ptr = 0;
 #if SPH_64
@@ -780,6 +783,9 @@ static const sph_u64 final_b[16] = {
 static void
 bmw64_init(sph_bmw_big_context *sc, const sph_u64 *iv)
 {
+	/* Without this the rest of the context is whatever was on the
+	 * stack. Avian Core zeroes it (269b9dd0b); this is the same fix. */
+	memset(sc, 0, sizeof(sph_bmw_big_context));
 	memcpy(sc->H, iv, sizeof sc->H);
 	sc->ptr = 0;
 	sc->bit_count = 0;
