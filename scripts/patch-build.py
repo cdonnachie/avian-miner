@@ -125,7 +125,8 @@ for base, _, files in os.walk(os.path.join(root, "cuda", "upstream")):
         if f.endswith(".cu"):
             cu.append(os.path.relpath(os.path.join(base, f), root).replace(os.sep, "/"))
 cu.sort()
-sources = ["cuda/device.cu", "algo/x16/x16rt-cuda.cu"] + cu
+sources = ["cuda/device.cu", "cuda/avian-cuda-support.cu",
+           "algo/x16/x16rt-cuda-batch.cu"] + cu
 
 MAKEFILE = """
 if HAVE_CUDA
@@ -149,8 +150,9 @@ NVCC_FLAGS = @NVCC_ARCH@ -std=c++14 -w $(NVCC_INCLUDES)
 .cu.o:
 	@NVCC@ $(NVCC_FLAGS) -c -o $@ $<
 
-cpuminer_LDADD += $(CUDA_OBJECTS) @CUDA_LDFLAGS@ @CUDA_LIBS@
-cpuminer_SOURCES += algo/x16/x16rt-cuda-gate.c
+avian_miner_LDADD += $(CUDA_OBJECTS) @CUDA_LDFLAGS@ @CUDA_LIBS@
+avian_miner_SOURCES += algo/x16/x16rt-cuda-gate.c \
+                       algo/x16/x16rt-cuda-host.c
 EXTRA_DIST = $(CUDA_SOURCES)
 CLEANFILES = $(CUDA_OBJECTS)
 endif
