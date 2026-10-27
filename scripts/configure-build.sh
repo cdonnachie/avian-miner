@@ -65,7 +65,6 @@ python3 "$MINER/scripts/add-hashrate-option.py" "$MINER"
 # SIMD-first chains go to the CPU: the 80-byte SIMD kernel reports only
 # bad candidates, so the GPU would spend one epoch in sixteen on work
 # that is entirely discarded.
-python3 "$MINER/scripts/simd-fallback.py" "$MINER"
 
 # --avian-selftest lives behind HAVE_AVIAN_SV2, and it is how the GPU backend
 # gets checked against hashes a real Avian node produced, so the Rust library
