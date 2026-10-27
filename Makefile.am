@@ -31,11 +31,11 @@ SUBDIRS = compat
 
 ALL_INCLUDES = @PTHREAD_FLAGS@ -fno-strict-aliasing $(EXTRA_INCLUDES) -I. @AVIAN_SV2_CFLAGS@
 
-bin_PROGRAMS = cpuminer
+bin_PROGRAMS = avian-miner
 
 dist_man_MANS = cpuminer.1
 
-cpuminer_SOURCES = \
+avian_miner_SOURCES = \
   dummy.cpp \
   cpu-miner.c \
   util.c \
@@ -295,41 +295,52 @@ cpuminer_SOURCES = \
   algo/yespower/yespower-blake2b-ref.c
 
 if HAVE_WINDOWS
-   cpuminer_SOURCES += compat/winansi.c
+   avian_miner_SOURCES += compat/winansi.c
 endif
 
 if USE_ASM
    disable_flags =
-   cpuminer_SOURCES += asm/neoscrypt_asm.S
+   avian_miner_SOURCES += asm/neoscrypt_asm.S
 else
    disable_flags = -DNOASM
 endif
 
-cpuminer_LDFLAGS = @LDFLAGS@
+avian_miner_LDFLAGS = @LDFLAGS@
 if HAVE_AVIAN_SV2
-  cpuminer_SOURCES += avian/sv2.c avian/selftest.c avian/ntime.c
+  avian_miner_SOURCES += avian/sv2.c avian/selftest.c avian/ntime.c
 endif
 
-cpuminer_LDADD	= $(EXTRA_LIBS) @LIBCURL@ -ljansson @PTHREAD_LIBS@ @WS2_LIBS@ -lgmp @AVIAN_SV2_LIBS@ -ldl
-cpuminer_CPPFLAGS = @LIBCURL_CPPFLAGS@ $(ALL_INCLUDES)
-cpuminer_CFLAGS = -Wno-pointer-sign -Wno-pointer-to-int-cast $(disable_flags)
+avian_miner_LDADD	= $(EXTRA_LIBS) @LIBCURL@ -ljansson @PTHREAD_LIBS@ @WS2_LIBS@ -lgmp @AVIAN_SV2_LIBS@
+
+if HAVE_WINDOWS
+# No libdl on Windows: dynamic loading there is LoadLibrary. These are what
+# the Rust static library's std needs, and they come after it because ld
+# resolves static archives in the order given, so the -lws2_32 earlier on
+# the line has already been passed over by the time it is asked for.
+avian_miner_LDADD += -lws2_32 -lbcrypt -luserenv -lntdll -ladvapi32 -lsecur32
+else
+# Rust's std uses dlopen on Linux.
+avian_miner_LDADD += -ldl
+endif
+avian_miner_CPPFLAGS = @LIBCURL_CPPFLAGS@ $(ALL_INCLUDES)
+avian_miner_CFLAGS = -Wno-pointer-sign -Wno-pointer-to-int-cast $(disable_flags)
 
 if ARCH_ARM64
-   cpuminer_CFLAGS += -flax-vector-conversions
+   avian_miner_CFLAGS += -flax-vector-conversions
 endif
 
 if HAVE_WINDOWS
 
 # use to profile an object
 # gprof_cflags = -pg -g3
-# cpuminer_LDFLAGS += -pg
-# cpuminer_CFLAGS += -fno-inline-functions -static
+# avian_miner_LDFLAGS += -pg
+# avian_miner_CFLAGS += -fno-inline-functions -static
 
 # copy/paste from generated Makefile
-common_ccflags = $(DEFS) $(ALL_INCLUDES) $(cpuminer_CPPFLAGS) $(CPPFLAGS) $(cpuminer_CFLAGS) $(CFLAGS)
+common_ccflags = $(DEFS) $(ALL_INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS)
 
 # special CFLAGS (if you find a simpler way to do that tell me ;)
-cpuminer-neoscrypt.o: neoscrypt.c
+avian_miner-neoscrypt.o: neoscrypt.c
 	@echo "CUSTOM ${@}: ${filter %.o,${^}} ${filter %.c,${^}}"
 	$(CC) $(common_ccflags) -g -O3 $(gprof_cflags) -MT $@ -MD -MP -c -o $@ $<
 
