@@ -1226,6 +1226,11 @@ void x16_simd512_gpu_compress_64_maxwell_echo512_final(const uint32_t* __restric
 	__shared__ uint32_t sharedMemory[1024 * 8];
 
 	aes_gpu_init256_32(sharedMemory);
+	/* The shared AES table is filled cooperatively and every read of it
+	 * is cross-thread, so the fill must complete for the whole block
+	 * before any thread reads. Without this, 12 to 26 percent of threads
+	 * on Volta and later read a slice nobody has written yet. */
+	__syncthreads();
 
 	const uint32_t P[48] = {
 		0xe7e9f5f5, 0xf5e7e9f5, 0xb3b36b23, 0xb3dbe7af, 0xa4213d7e, 0xf5e7e9f5, 0xb3b36b23, 0xb3dbe7af,
