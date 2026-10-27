@@ -17,7 +17,13 @@ $VCVARS = "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxilia
 $S = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad"
 
 New-Item -ItemType Directory -Force -Path $OUT | Out-Null
-Copy-Item "$S\avian-cuda-support.cu" "$W\cuda\avian-cuda-support.cu" -Force
+# The support file is NOT copied in from the scratchpad. It used to be, and
+# that one line overwrote the staged copy with a stale one on every DLL
+# build, so the DLL kept a version of avian_cuda_device_count that never
+# called cuda_detect_devices. device_sm then stayed 0, Keccak's launch was
+# rejected for exceeding its own launch bound, and every chain containing
+# Keccak hashed the previous stage's value. prep-windows-cuda.sh stages
+# cuda/** from the WSL tree, which is the authority, so nothing is copied.
 
 # Every kernel, the device helper, the batch driver and the support file.
 $cu = @()
