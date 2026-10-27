@@ -3,8 +3,12 @@
 # CUDA backend. The link is the real test: everything so far only proved the
 # pieces compile on their own.
 set -eu
-S=/mnt/c/Users/craig/AppData/Local/Temp/claude/c--development-Avian-v5-0/9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635/scratchpad
-MINER=${MINER:-$HOME/avian-gpu/cpuminer-avian}
+# Self-locating, so a fresh clone builds. This used to point at a session
+# scratchpad, which meant the committed script could not build the
+# committed tree: the sources it copied only existed on one machine.
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+S=$SCRIPT_DIR
+MINER=${MINER:-$(cd "$SCRIPT_DIR/.." && pwd)}
 SV2=${SV2:-$HOME/avian-gpu/avian-sv2}
 # The pinned upstream checkout the driver is generated from. Was missing, and
 # with set -u that aborted the script just before the generate step, so make
@@ -19,16 +23,13 @@ done
 export PATH="$CUDA_PREFIX/bin:$HOME/.cargo/bin:$PATH"
 echo "using $CUDA_PREFIX ($(nvcc --version | tail -1))"
 
-python3 "$S/fix-device.py" "$S/device.cu"
-python3 "$S/patch-throughput.py" "$S/device.cu" 2>/dev/null \
+python3 "$S/fix-device.py" "$MINER/cuda/device.cu"
+python3 "$S/patch-throughput.py" "$MINER/cuda/device.cu" 2>/dev/null \
     || echo "   (throughput scaling already applied)"
 # And undone: measured on a 3090, upstream's floor is both faster and the only
 # setting that produces no bad candidates. See revert-throughput.py.
-python3 "$S/revert-throughput.py" "$S/device.cu" 2>/dev/null \
+python3 "$S/revert-throughput.py" "$MINER/cuda/device.cu" 2>/dev/null \
     || echo "   (throughput already at the floor)"
-cp "$S/x16rt-cuda-gate.c" "$S/x16rt-cuda.h" "$MINER/algo/x16/"
-cp "$S/avian-cuda-shim.h" "$S/avian-cuda-device.h" "$S/device.cu" "$MINER/cuda/"
-cp "$S/patch-build.py" "$S/gen-driver.py" "$S/add-tracer.py" "$MINER/scripts/"
 
 # Regenerate the driver from upstream. Easy to forget, and forgetting it means
 # make happily recompiles the previous generation and the fixes never land.
@@ -42,8 +43,6 @@ python3 "$MINER/scripts/gen-driver.py" "$SRC/x16r/x16r.cu" "$MINER/algo/x16/x16r
 # Linux links the same batch function, so one implementation is exercised by
 # every test instead of a Windows-only path nothing covers.
 echo "== splitting the driver =="
-cp "$S/avian-cuda-api.h" "$MINER/cuda/"
-cp "$S/x16rt-cuda-host.c" "$MINER/algo/x16/"
 python3 "$S/make-dll-driver.py" "$MINER/algo/x16/x16rt-cuda.cu" \
                                 "$MINER/algo/x16/x16rt-cuda-batch.cu" \
     || { echo "the driver split failed"; exit 1; }
