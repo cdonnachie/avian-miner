@@ -77,6 +77,30 @@ static const struct vector X16RT[] = {
      "7f22b17f6bef8f58071e92bdbd82e6ebbd6b3de0ea86cf4b4cf541ff4e076871906b"
      "0089de6affff7f2004000000",
      "f73cd553a1b33f4b21c6002e3e7cc525a2300f7d82b44f8bcd56414ac25b672f"},
+
+    /* The six above are real blocks from six epochs, which looks like
+     * thorough coverage and is not: X16RT picks one of sixteen leading
+     * functions and none of those six leads with SIMD, so a defect that
+     * only fired when SIMD led the chain passed this test 6 of 6 for as
+     * long as it existed. The rest are synthetic, chosen so every one leads
+     * with SIMD, with expected hashes taken from Avian Core's own code, so
+     * they check consensus exactly as the real blocks do. */
+    {"000000209a60579f75d212352cd90372c4bdb57e202a48651cb80f6e2165424ef96b"
+     "dbfacea8b3abfd3271e34554311642604514d84f1fc2685a41f9cf9f2c204e8fcd5c"
+     "807be768ffff041d00000100",
+     "3e6bdc070e5aef8ade4255077b4b0c3c627b495eda6461d75c664e9d45a54dcf"},
+    {"000000209a60579f75d212352cd90372c4bdb57e202a48651cb80f6e2165424ef96b"
+     "dbfacea8b3abfd3271e34554311642604514d84f1fc2685a41f9cf9f2c204e8fcd5c"
+     "807be768ffff041def1e0100",
+     "a281d632c46a95e5e8ebb547f0377e8a2b3eb40f07f803b56e4e846e8fe221ec"},
+    {"00000020ea374af140b31bc8abad3d2567d10dc68b2057ad94114bcdc04c57cc7c36"
+     "41d03d17a3d3fa131773721b921544a9b2e9c64fb87da30f57cce86dbadf466bb871"
+     "807ee768ffff041d00000100",
+     "a7b4096b84184f2f32f610a7a9a50359efb0adc95f040f398db97f43b3b5861a"},
+    {"00000020ea374af140b31bc8abad3d2567d10dc68b2057ad94114bcdc04c57cc7c36"
+     "41d03d17a3d3fa131773721b921544a9b2e9c64fb87da30f57cce86dbadf466bb871"
+     "807ee768ffff041def1e0100",
+     "480d4253a7e7c2676ccc5535dd4cd5bb6e37056e0940b35c89d83785f61b0484"},
 };
 
 static uint8_t captured[32];
@@ -175,7 +199,7 @@ int avian_pow_selftest(void)
     thr.id = 0;
     capturing = true;
 
-    printf("%s, against hashes a real Avian node reported\n\n", name);
+    printf("%s, against hashes from a real Avian node and from Avian's\n        own code\n\n", name);
     for (size_t v = 0; v < count; v++) {
         uint8_t header[80];
         uint8_t expected[32];
@@ -222,11 +246,11 @@ int avian_pow_selftest(void)
 
     printf("\n");
     if (failures) {
-        printf("FAIL: %d of %zu headers disagree with the node\n", failures,
+        printf("FAIL: %d of %zu vectors disagree with Avian\n", failures,
                count);
         return 1;
     }
-    printf("OK: this build's %s agrees with the node on all %zu blocks\n", name,
+    printf("OK: this build's %s agrees with Avian on all %zu vectors\n", name,
            count);
     return 0;
 }
