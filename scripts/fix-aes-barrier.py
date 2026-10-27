@@ -72,21 +72,62 @@ CALL = re.compile(
 
 FENCE = re.compile(r"^[ \t]*__threadfence_block\(\);[ \t]*\n", re.M)
 
+FUNC = re.compile(r"^[A-Za-z_][A-Za-z0-9_ *&:<>,]*\b(\w+)\s*\([^;{]*$", re.M)
+
+# Kernels whose fill is already covered by a barrier the scope check cannot
+# see. x16_simd512_gpu_compress_64_echo512 has a __syncthreads() at block
+# scope before its AES consumer; adding a second one there is not merely
+# redundant, it stopped the module loading and every later CUDA call failed
+# with "invalid argument" in an unrelated kernel. Named rather than numbered
+# so it survives a re-vendor.
+SKIP = {"x16_simd512_gpu_compress_64_echo512"}
+
+
+def enclosing_function(s, pos):
+    """Name of the function the offset falls inside, best effort."""
+    m = None
+    for m2 in FUNC.finditer(s, 0, pos):
+        m = m2
+    return m.group(1) if m else ""
+
 
 def already_synchronised(s, after, name):
-    """True if a barrier already stands between here and the first table use.
+    """True if a barrier at the fill's own scope stands before the first use.
 
-    Matching the array as a bare word matters: an earlier version looked for
-    name[ and so saw no use at all in the kernels that hand the table to a
-    helper, which made any unrelated __syncthreads() further down look like
-    the barrier and skipped two real sites.
+    Two things this has to get right, both learned the hard way.
+
+    Matching the array as a bare word: an earlier version looked for name[
+    and so saw no use at all in the kernels that hand the table to a device
+    helper, which let an unrelated barrier further down look like the right
+    one.
+
+    And scope. cuda_x11_shavite512_sp.cu has a __syncthreads() a few lines
+    after the fill, but it is inside `if (thread < threads)`. Threads past
+    the end of the batch never reach it, so it does not synchronise the
+    block at all, and a barrier in divergent code is undefined behaviour
+    besides. Counting braces and only accepting a barrier at depth zero is
+    what tells the two apart; without it this reported three sites as
+    already fixed and the disagreement rate went straight back to 53%.
     """
     window = s[after:after + 2500]
-    bar = window.find("__syncthreads()")
-    if bar < 0:
-        return False
     use = re.search(r"\b%s\b" % re.escape(name), window)
-    return use is None or bar < use.start()
+    limit = use.start() if use else len(window)
+
+    depth = 0
+    i = 0
+    while i < limit:
+        c = window[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        elif c == "_" and window.startswith("__syncthreads()", i):
+            if depth <= 0:
+                return True
+            i += len("__syncthreads()")
+            continue
+        i += 1
+    return False
 
 
 def patch(path):
@@ -97,6 +138,8 @@ def patch(path):
     for m in CALL.finditer(s):
         out.append(s[last:m.end()])
         last = m.end()
+        if enclosing_function(s, m.start()) in SKIP:
+            continue
         if already_synchronised(s, m.end(), m.group(1)):
             continue
         # A fence sitting where the barrier belongs is replaced, not kept.

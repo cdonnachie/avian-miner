@@ -19,6 +19,7 @@
 #include <cuda_runtime.h>
 
 #include "cuda/avian-cuda-api.h"
+#include "cuda/avian-cuda-device.h"
 
 static avian_cuda_log_fn g_log = NULL;
 
@@ -62,26 +63,35 @@ extern "C" void applog(int level, const char *fmt, ...)
 }
 #endif /* AVIAN_CUDA_BUILDING_DLL */
 
+/* Takes the device inventory, not just a count.
+ *
+ * cuda_detect_devices fills device_map, device_name, device_sm and
+ * device_mpcount, which the vendored kernels read to pick a device and to
+ * size their launches. Returning a bare cudaGetDeviceCount instead left all
+ * of that zeroed, and every candidate the device reported then disagreed
+ * with the CPU: 153 disagreements and not one accepted share. The inventory
+ * belongs on this side of the boundary, because device.cu is in the DLL and
+ * the miner cannot reach it. */
 extern "C" AVIAN_CUDA_API int avian_cuda_device_count(void)
 {
-    int n = 0;
-    if (cudaGetDeviceCount(&n) != cudaSuccess) {
-        return -1;
+    static int done = 0;
+
+    if (!done) {
+        cuda_detect_devices();
+        done = 1;
     }
-    return n;
+    return cuda_num_devices;
 }
 
 extern "C" AVIAN_CUDA_API const char *avian_cuda_device_name(int dev_id)
 {
-    /* Static per call site rather than touching the miner's device_name
-     * table, which is the kernels' own and indexed by thread, not device. */
-    static char name[256];
-    cudaDeviceProp prop;
-
-    if (dev_id < 0 || cudaGetDeviceProperties(&prop, dev_id) != cudaSuccess) {
+    /* From the inventory, so the name matches the device the kernels will
+     * actually use. Calling this before avian_cuda_device_count would read
+     * an unfilled table, so take the inventory first; it is guarded and
+     * only runs once. */
+    (void) avian_cuda_device_count();
+    if (dev_id < 0 || dev_id >= cuda_num_devices) {
         return "";
     }
-    strncpy(name, prop.name, sizeof(name) - 1);
-    name[sizeof(name) - 1] = '\0';
-    return name;
+    return device_name[dev_id];
 }

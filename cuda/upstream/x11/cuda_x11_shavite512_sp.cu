@@ -225,6 +225,11 @@ void x11_shavite512_gpu_hash_64_sp(const uint32_t threads, uint64_t *g_hash)
 	__shared__ uint32_t sharedMemory[256][32];
 
 	if(threadIdx.x<256) aes_gpu_init256_s(sharedMemory);
+	/* The shared AES table is filled cooperatively and every read of it
+	 * is cross-thread, so the fill must complete for the whole block
+	 * before any thread reads. Without this, 12 to 26 percent of threads
+	 * on Volta and later read a slice nobody has written yet. */
+	__syncthreads();
 
 	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
 
@@ -645,6 +650,11 @@ void x11_shavite512_gpu_hash_64_sp_final(const uint32_t threads, uint64_t *g_has
 	__shared__ uint32_t sharedMemory[8 * 1024];
 
 	if (threadIdx.x<256) aes_gpu_init256_32(sharedMemory);
+	/* The shared AES table is filled cooperatively and every read of it
+	 * is cross-thread, so the fill must complete for the whole block
+	 * before any thread reads. Without this, 12 to 26 percent of threads
+	 * on Volta and later read a slice nobody has written yet. */
+	__syncthreads();
 
 	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
 

@@ -1,0 +1,97 @@
+#!/bin/bash
+# Link the CUDA DLL into the Windows miner.
+#
+# Run after win-build.sh and win-sv2.sh, on the same clone: those produce a
+# working CPU miner with Stratum v2, and this adds the GPU backend to it.
+#
+# The miner does not compile a single .cu file. nvcc will only use MSVC as
+# its host compiler, while this miner and its Rust Stratum v2 library are
+# MinGW, so the kernels live in avian_cuda.dll (scripts/windows/
+# build-cuda-dll.ps1) and the miner links its import library. All that is
+# needed here is the gate, the host half, -DHAVE_CUDA, and the .lib.
+#
+# That the list is this short is the point of the split: the seam carries
+# plain data, so the miner needs no CUDA headers, no nvcc, and no knowledge
+# of the kernels beyond cuda/avian-cuda-api.h.
+set -u
+WORK=${WORK:-/c/Users/craig/AppData/Local/Temp/claude/c--development-Avian-v5-0/9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635/scratchpad/winbuild}
+B=$WORK/cpuminer-avian
+DLLDIR=${DLLDIR:-$WORK/cuda}
+SV2_SRC=${SV2_SRC:-/c/development/avian-sv2}
+
+[ -d "$B" ] || { echo "no build clone at $B; run win-build.sh first"; exit 1; }
+[ -f "$DLLDIR/avian_cuda.lib" ] || {
+    echo "no avian_cuda.lib in $DLLDIR; run build-cuda-dll.ps1 first"; exit 1; }
+cd "$B" || exit 1
+
+echo "=== adding the GPU backend to the build ==="
+python3 - "$B" "$DLLDIR" <<'PY'
+import io, os, sys
+b, dll = sys.argv[1], sys.argv[2]
+p = os.path.join(b, "Makefile.am")
+s = io.open(p, encoding="utf-8", errors="surrogateescape", newline="").read()
+if "x16rt-cuda-host.c" in s:
+    print("  Makefile.am already has the GPU backend")
+else:
+    s = s.rstrip("\n") + """
+
+# The Windows GPU build. No .cu here: the kernels are in avian_cuda.dll,
+# built by nvcc with MSVC, and this links its import library. See
+# cuda/avian-cuda-api.h for why the seam is where it is.
+avian_miner_SOURCES += algo/x16/x16rt-cuda-gate.c \\
+                       algo/x16/x16rt-cuda-host.c
+avian_miner_LDADD += %s/avian_cuda.lib
+""" % dll.replace("\\", "/")
+    io.open(p, "w", encoding="utf-8", errors="surrogateescape",
+            newline="").write(s)
+    print("  Makefile.am: gate, host half and the import library")
+PY
+
+echo
+echo "=== regenerate the build system ==="
+# Makefile.am is input to automake, not to make. Without this the edit above
+# never reaches Makefile.in, configure regenerates the same Makefile as
+# before, make has nothing to do, and the build reports OK while producing a
+# byte-identical binary with no GPU backend in it.
+./autogen.sh > /tmp/win-gpu-ag.log 2>&1 \
+    || { echo "  autogen failed"; tail -15 /tmp/win-gpu-ag.log; exit 1; }
+echo "  automake rerun"
+
+echo
+echo "=== reconfigure with HAVE_CUDA ==="
+# Keeps whatever win-sv2.sh configured, and adds the one define the gate and
+# cpu-miner.c test for.
+OLD=$(grep -m1 '^  \$ \./configure' config.log 2>/dev/null | sed 's/^  \$ //')
+if [ -z "$OLD" ]; then
+    echo "  cannot recover the previous configure line from config.log"; exit 1
+fi
+echo "  previous: $OLD"
+eval "$OLD CPPFLAGS=\"\${CPPFLAGS:-} -DHAVE_CUDA\"" > /tmp/win-gpu-cfg.log 2>&1 \
+    || { echo "  configure failed"; tail -20 /tmp/win-gpu-cfg.log; exit 1; }
+echo "  configured"
+
+echo
+echo "=== make ==="
+if make -j"$(nproc)" > /tmp/win-gpu-make.log 2>&1; then
+    echo "  BUILD OK"
+    ls -l avian-miner.exe | awk '{print "  " $5 " bytes"}'
+else
+    echo "  BUILD FAILED"
+    grep -nE "error|undefined reference" /tmp/win-gpu-make.log | head -15
+    exit 1
+fi
+
+echo
+echo "=== assert the GPU backend is in the artifact ==="
+fail=0
+if strings avian-miner.exe 2>/dev/null | grep -q "avian_cuda.dll"; then
+    echo "  ok   imports avian_cuda.dll"
+else
+    echo "  FAIL no import of avian_cuda.dll"; fail=1
+fi
+if objdump -p avian-miner.exe 2>/dev/null | grep -qi "avian_cuda"; then
+    echo "  ok   present in the import table"
+else
+    echo "  FAIL not in the import table"; fail=1
+fi
+exit $fail
