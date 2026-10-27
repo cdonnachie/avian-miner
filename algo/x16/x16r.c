@@ -134,7 +134,12 @@ int x16r_hash_generic( void* output, const void* input, int thrid,
          break;
          case SIMD:
             sph_simd512_init( &ctx.simd );
-            sph_simd512( &ctx.simd, hash, size );
+            /* Every other case hashes in. At i == 0 in is the 80-byte
+             * header and hash is still uninitialised, so SIMD leading the
+             * chain hashed stack garbage and overread hash by 16 bytes.
+             * Harmless from i == 1, where the loop has already set
+             * in = hash, which is why only SIMD-first chains were wrong. */
+            sph_simd512( &ctx.simd, in, size );
             sph_simd512_close( &ctx.simd, hash );
          break;
          case ECHO:
