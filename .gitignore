@@ -7,7 +7,7 @@
 .deps/
 .libs/
 Makefile
-cpuminer
+avian-miner
 cpuminer-config.h
 cpuminer-config.h.in~
 config.log

@@ -23,7 +23,7 @@ Makefile
 stamp-h1
 
 # The binary itself, which is the largest single file a working checkout has.
-cpuminer
+avian-miner
 
 # Not read by any build here: nothing uses git describe.
 .git/

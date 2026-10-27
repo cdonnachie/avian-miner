@@ -30,6 +30,6 @@ RUN apt-get update \
     libjansson4 \
   && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/cpuminer .
-ENTRYPOINT ["./cpuminer"]
+COPY --from=builder /app/avian-miner .
+ENTRYPOINT ["./avian-miner"]
 CMD ["-h"]

@@ -29,7 +29,7 @@ BIN="${1:-$HOME/avian-build/bin}"
 SV2="${2:-/mnt/c/development/avian-sv2}"
 AVIAND="$BIN/aviand"
 CLI="$BIN/avian-cli"
-MINER="$(cd "$(dirname "$0")/.." && pwd)/cpuminer"
+MINER="$(cd "$(dirname "$0")/.." && pwd)/avian-miner"
 
 # Free ports rather than fixed ones, so this does not collide with whatever
 # else on the machine already holds a port in the usual regtest range.

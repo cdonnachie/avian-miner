@@ -12,4 +12,4 @@ CFLAGS="-O2 -march=armv8-a+crypto+sha2+aes -Wall -flax-vector-conversions" ./con
 
 make -j $(nproc)
 
-strip -s cpuminer
+strip -s avian-miner

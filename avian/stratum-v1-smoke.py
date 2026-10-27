@@ -11,7 +11,7 @@ enough that almost any hash passes. That is deliberate: what is under test is
 the miner's v1 plumbing, not whether this script can build a real Avian
 template. A share arriving at all is the assertion.
 
-Usage: avian/stratum-v1-smoke.py [path-to-cpuminer]
+Usage: avian/stratum-v1-smoke.py [path-to-avian-miner]
 ALGO=x16rt or minotaurx (default) picks the algorithm the miner hashes with.
 """
 
@@ -24,7 +24,7 @@ import threading
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MINER = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, os.pardir, "cpuminer")
+MINER = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, os.pardir, "avian-miner")
 
 JOB = {
     "job_id": "01",

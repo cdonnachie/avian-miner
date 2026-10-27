@@ -45,72 +45,72 @@ rm -f config.status
 ./autogen.sh || echo done
 CFLAGS="-march=icelake-client $DEFAULT_CFLAGS" ./configure $CONFIGURE_ARGS
 make -j 8
-strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-avx512-sha-vaes.exe
+strip -s avian-miner.exe
+mv avian-miner.exe release/avian-miner-avx512-sha-vaes.exe
 
 # AVX512 AES: Intel Core HEDT Slylake-X, Cascadelake 
 make clean || echo clean
 rm -f config.status
 CFLAGS="-march=skylake-avx512 $DEFAULT_CFLAGS" ./configure $CONFIGURE_ARGS
 make -j 8
-strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-avx512.exe
+strip -s avian-miner.exe
+mv avian-miner.exe release/avian-miner-avx512.exe
 
 # AVX2 SHA VAES: Intel Alderlake, AMD Zen3
 make clean || echo done
 rm -f config.status
 CFLAGS="-mavx2 -msha -mvaes $DEFAULT_CFLAGS" ./configure $CONFIGURE_ARGS
 make -j 8
-strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-avx2-sha-vaes.exe
+strip -s avian-miner.exe
+mv avian-miner.exe release/avian-miner-avx2-sha-vaes.exe
 
 # AVX2 AES SHA: AMD Zen1
 make clean || echo clean
 rm -f config.status
 CFLAGS="-march=znver1 $DEFAULT_CFLAGS" ./configure $CONFIGURE_ARGS
 make -j 8
-strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-avx2-sha.exe
+strip -s avian-miner.exe
+mv avian-miner.exe release/avian-miner-avx2-sha.exe
 
 # AVX2 AES: Intel Core Haswell, Skylake, Kabylake, Coffeelake, Cometlake
 make clean || echo clean
 rm -f config.status
 CFLAGS="-march=core-avx2 $DEFAULT_CFLAGS" ./configure $CONFIGURE_ARGS
 make -j 8
-strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-avx2.exe
+strip -s avian-miner.exe
+mv avian-miner.exe release/avian-miner-avx2.exe
 
 # AVX AES: Intel Sandybridge, Ivybridge
 make clean || echo clean
 rm -f config.status
 CFLAGS="-march=corei7-avx -maes $DEFAULT_CFLAGS_OLD" ./configure $CONFIGURE_ARGS 
 make -j 8
-strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-avx.exe
+strip -s avian-miner.exe
+mv avian-miner.exe release/avian-miner-avx.exe
 
 # SSE4.2 AES: Intel Westmere
 make clean || echo clean
 rm -f config.status
 CFLAGS="-march=westmere -maes $DEFAULT_CFLAGS_OLD" ./configure $CONFIGURE_ARGS
 make -j 8
-strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-aes-sse42.exe
+strip -s avian-miner.exe
+mv avian-miner.exe release/avian-miner-aes-sse42.exe
 
 # Nehalem SSE4.2
 #make clean || echo clean
 #rm -f config.status
 #CFLAGS="$DEFAULT_CFLAGS_OLD -march=corei7" ./configure $CONFIGURE_ARGS
 #make 
-#strip -s cpuminer.exe
-#mv cpuminer.exe release/cpuminer-sse42.exe
+#strip -s avian-miner.exe
+#mv avian-miner.exe release/avian-miner-sse42.exe
 
 # Core2 SSSE3
 #make clean || echo clean
 #rm -f config.status
 #CFLAGS="$DEFAULT_CFLAGS_OLD -march=core2" ./configure $CONFIGURE_ARGS
 #make 
-#strip -s cpuminer.exe
-#mv cpuminer.exe release/cpuminer-ssse3.exe
+#strip -s avian-miner.exe
+#mv avian-miner.exe release/avian-miner-ssse3.exe
 #make clean || echo clean
 
 # Generic SSE2
@@ -118,8 +118,8 @@ make clean || echo clean
 rm -f config.status
 CFLAGS="-msse2 $DEFAULT_CFLAGS_OLD" ./configure $CONFIGURE_ARGS
 make -j 8
-strip -s cpuminer.exe
-mv cpuminer.exe release/cpuminer-sse2.exe
+strip -s avian-miner.exe
+mv avian-miner.exe release/avian-miner-sse2.exe
 #make clean || echo clean
 
 # Native with CPU groups ennabled
@@ -127,5 +127,5 @@ mv cpuminer.exe release/cpuminer-sse2.exe
 #rm -f config.status
 #CFLAGS="-march=native $DEFAULT_CFLAGS_OLD" ./configure $CONFIGURE_ARGS
 #make -j 8
-#strip -s cpuminer.exe
+#strip -s avian-miner.exe
 

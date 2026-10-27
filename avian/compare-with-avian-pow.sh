@@ -38,11 +38,11 @@ cd "$MINER_TREE"
 # Every object the build produced except the ones belonging to the mining loop;
 # pow-probe-stubs.c stands in for what those defined. Linking the whole miner
 # would drag in main.
-OBJS=$(find . -name "cpuminer-*.o" \
-       ! -name "cpuminer-cpu-miner.o" ! -name "cpuminer-dummy.o" \
-       ! -name "cpuminer-api.o" ! -name "cpuminer-util.o" \
-       ! -name "cpuminer-sysinfos.o" ! -name "cpuminer-algo-gate-api.o" \
-       ! -name "cpuminer-sv2.o" ! -name "cpuminer-selftest.o" | tr "\n" " ")
+OBJS=$(find . -name "avian_miner-*.o" \
+       ! -name "avian_miner-cpu-miner.o" ! -name "avian_miner-dummy.o" \
+       ! -name "avian_miner-api.o" ! -name "avian_miner-util.o" \
+       ! -name "avian_miner-sysinfos.o" ! -name "avian_miner-algo-gate-api.o" \
+       ! -name "avian_miner-sv2.o" ! -name "avian_miner-selftest.o" | tr "\n" " ")
 [ -n "$OBJS" ] || { echo "nothing built here; run make first"; exit 2; }
 
 # CPPFLAGS and LDFLAGS carry through, because miner.h includes curl/curl.h and

@@ -6,4 +6,4 @@ rm -f config.status
 CFLAGS="-O3 -march=native -Wall" ./configure --with-curl
 make -j $(nproc)
 
-#strip -s cpuminer
+#strip -s avian-miner
