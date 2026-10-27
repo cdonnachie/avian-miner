@@ -49,6 +49,22 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
         uint64_t hashes_done_local = 0;
         uint64_t *hashes_done = &hashes_done_local;
 
+        /* A CUDA error is sticky until something reads it, and almost
+         * nothing in the vendored kernels does. The one exception is
+         * skein512_cpu_setBlock_80, which calls cudaGetLastError() and
+         * aborts the miner on whatever it finds, so an error left by an
+         * earlier batch killed the process the next time SKEIN happened to
+         * lead the chain. Read it here, report it, and start clean, so the
+         * error is attributed to the batch that caused it rather than to an
+         * unrelated kernel one epoch in sixteen later. */
+        {
+                cudaError_t stale = cudaGetLastError();
+                if (stale != cudaSuccess)
+                        applog(LOG_ERR, "GPU #%d: a previous batch left \\"%s\\" "
+                                        "unreported", dev_id,
+                                        cudaGetErrorString(stale));
+        }
+
         memcpy(pdata_copy, job->data, sizeof(pdata_copy));
         memcpy(ptarget_copy, job->target, sizeof(ptarget_copy));
         pdata[19] = job->start_nonce;
@@ -125,15 +141,33 @@ TAIL_NEW = '''                        /* The miner verifies and submits. A candi
                                 }
                         }
                         if (throughput_used) *throughput_used = throughput;
-                        cudaDeviceSynchronize();
+                        avian_batch_end(dev_id);
                         return found;
                 }
                 if (throughput_used) *throughput_used = throughput;
-                cudaDeviceSynchronize();
+                avian_batch_end(dev_id);
                 return 0;
         }
         return 0;
 }
+'''
+
+BATCH_END = '''
+/* Synchronise and say whether the batch left anything behind. Naming the
+ * batch that caused an error is the whole point: without this the error
+ * waits, silent, until skein512_cpu_setBlock_80 reads it and the miner dies
+ * in a kernel that had nothing to do with it. */
+static void avian_batch_end(int dev_id)
+{
+        cudaError_t err = cudaDeviceSynchronize();
+
+        if (err == cudaSuccess)
+                err = cudaGetLastError();
+        if (err != cudaSuccess)
+                applog(LOG_ERR, "GPU #%d: the batch ended with \\"%s\\"",
+                       dev_id, cudaGetErrorString(err));
+}
+
 '''
 
 
@@ -147,7 +181,7 @@ def sub_once(s, old, new, what):
 def main(src, dst):
     s = io.open(src, encoding="utf-8", errors="surrogateescape", newline="").read()
 
-    s = sub_once(s, PROLOGUE_OLD, PROLOGUE_NEW, "prologue")
+    s = sub_once(s, PROLOGUE_OLD, BATCH_END + PROLOGUE_NEW, "prologue")
     s = sub_once(s, ORDER_OLD, ORDER_NEW, "order derivation")
 
     # The CPU fallback is dead code now (its condition starts with 0) and it
