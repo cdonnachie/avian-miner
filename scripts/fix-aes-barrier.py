@@ -109,7 +109,13 @@ def already_synchronised(s, after, name):
     what tells the two apart; without it this reported three sites as
     already fixed and the disagreement rate went straight back to 53%.
     """
-    window = s[after:after + 2500]
+    # No window. A fixed lookahead can end before the first use of the
+    # table, and then the search runs past the real boundary and finds a
+    # barrier that actually belongs to later code. That is how three ECHO
+    # sites were reported as already synchronised and shipped in a Windows
+    # DLL without barriers, while audit-aes.py, which scans to the first use
+    # with no limit, said FENCE ONLY for the same sites.
+    window = s[after:]
     use = re.search(r"\b%s\b" % re.escape(name), window)
     limit = use.start() if use else len(window)
 
@@ -140,7 +146,20 @@ def patch(path):
         last = m.end()
         if enclosing_function(s, m.start()) in SKIP:
             continue
-        if already_synchronised(s, m.end(), m.group(1)):
+        # Deterministic: a barrier goes after every fill except the one
+        # documented exception, and the marker comment makes it idempotent.
+        #
+        # Deciding per site whether an existing barrier already covers the
+        # fill needs to know both where the table is first used and at what
+        # brace depth the barrier sits, and two attempts at that heuristic
+        # disagreed with the audit and shipped a Windows DLL with three ECHO
+        # sites unsynchronised. An extra barrier after a fill costs one
+        # block-wide sync per kernel launch; getting it wrong costs 12 to 26
+        # percent of the card on most chains. This is the cheap side of that
+        # trade.
+        following = s[m.end():m.end() + 500]
+        if "shared AES table is filled" in following \
+                or "Was __threadfence_block" in following:
             continue
         # A fence sitting where the barrier belongs is replaced, not kept.
         fm = FENCE.match(s, m.end())

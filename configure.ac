@@ -1,4 +1,11 @@
-AC_INIT([cpuminer-opt], [26.1])
+# The package name reaches pools as the User-Agent and in
+# mining.subscribe, via USER_AGENT in miner.h. It said cpuminer-opt,
+# so operators saw cpuminer-opt-26.1-x64W and had no way to tell an
+# Avian miner from any other fork. The version stays at upstream's,
+# which is what this is built on, and the banner still credits it.
+# AC_CONFIG_HEADERS below pins cpuminer-config.h, so renaming the
+# package does not rename the generated header.
+AC_INIT([avian-miner], [26.1])
 
 AC_PREREQ([2.59c])
 AC_CANONICAL_SYSTEM

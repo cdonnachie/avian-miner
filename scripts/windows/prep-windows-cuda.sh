@@ -25,7 +25,16 @@ echo "########## 3. DLL shim ##########"
 python3 "$S/dll-shim-patch.py" "$W" || exit 1
 
 echo
-echo "########## 4. the skein abort ##########"
+echo "########## 4. the AES barriers ##########"
+# Re-applied here, not inherited. Staging copies the vendored tree
+# from the Linux checkout, and if that copy has drifted the Windows
+# DLL is built without them: ECHO and SHAVITE chains then disagree
+# at 12 to 26 percent while Linux is clean, which is exactly what
+# happened. Idempotent, so it costs nothing when they are present.
+python3 "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/fix-aes-barrier.py" "$W/cuda/upstream" || exit 1
+
+echo
+echo "########## 5. the skein abort ##########"
 # Upstream exits the process from skein512_cpu_setBlock_80 over an
 # error it did not cause. Re-applied here because staging overwrites
 # the vendored file from the Linux tree.
@@ -42,6 +51,11 @@ grep -q "extern int opt_debug" "$W/cuda/avian-cuda-shim.h" \
     && echo "  ok   opt_debug declared" || { echo "  FAIL opt_debug"; fail=1; }
 grep -q "avian-cuda-win-compat" "$W/cuda/device.cu" \
     && echo "  ok   device.cu uses the compat header" || { echo "  FAIL device.cu"; fail=1; }
+# Informational. audit-aes.py disagrees with the file in front of me
+# on sites that plainly have a barrier, so it is not trustworthy
+# enough to fail a build on. fix-aes-barrier.py places them
+# deterministically; this just prints what the audit thinks.
+python3 "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/audit-aes.py" "$W/cuda/upstream" 2>&1 \n    | grep -vE "ok$" | sed "s/^/  audit: /" || true
 grep -q "avian-cuda-win-compat" "$W/algo/x16/x16r-gate.h" \
     && { echo "  FAIL the miner's own header was patched"; fail=1; } \
     || echo "  ok   the miner's headers were left alone"

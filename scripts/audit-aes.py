@@ -73,13 +73,19 @@ def audit(root, label):
     return findings
 
 
+def main():
+    """Audit one tree, given as an argument, defaulting to this checkout.
+
+    It used to audit three hardcoded trees and ignore its argument
+    entirely, so a caller passing a path got a verdict about somebody
+    else's sources. That made a build-time assertion fail against the
+    reference copy of upstream while the tree being built was fine.
+    """
+    root = (sys.argv[1] if len(sys.argv) > 1
+            else os.path.join(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__))), "cuda", "upstream"))
+    return audit(root, root)
+
+
 if __name__ == "__main__":
-    home = os.path.expanduser("~")
-    scratch = ("/mnt/c/Users/craig/AppData/Local/Temp/claude/"
-               "c--development-Avian-v5-0/9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635/scratchpad")
-    bad = audit(home + "/avian-gpu/cpuminer-avian/cuda/upstream", "ours")
-    print()
-    audit(scratch + "/upstream-gpu/ccminer-tpfuemp", "tpfuemp/ccminer-tpfuemp")
-    print()
-    audit(home + "/avian-gpu/.suprminer-src", "suprminer-jdd, our upstream")
-    sys.exit(1 if bad else 0)
+    sys.exit(main())
