@@ -22,6 +22,7 @@
 
 static avian_cuda_log_fn g_log = NULL;
 
+#ifdef AVIAN_CUDA_BUILDING_DLL
 /* Several vendored kernels read opt_debug directly to gate extra logging.
  * It stays 0 in the DLL rather than being wired to the miner's copy: it
  * controls nothing but log verbosity inside the kernels, and plumbing a
@@ -29,15 +30,22 @@ static avian_cuda_log_fn g_log = NULL;
  * behavioural difference. The batch function uses job->debug where it
  * matters. */
 extern "C" int opt_debug = 0;
+#endif
 
 extern "C" AVIAN_CUDA_API void avian_cuda_set_logger(avian_cuda_log_fn fn)
 {
     g_log = fn;
 }
 
+#ifdef AVIAN_CUDA_BUILDING_DLL
 /* Matches the declaration the kernels see in avian-cuda-shim.h. Variadic and
  * formatted here, so the miner receives a finished line and does not have to
- * reproduce printf semantics across the boundary. */
+ * reproduce printf semantics across the boundary.
+ *
+ * Only in the DLL. Linked into the miner directly, as it is on Linux, the
+ * kernels reach the miner's own applog and defining a second one here would
+ * be a duplicate symbol. g_log then goes unused, which is harmless and
+ * keeps the gate's startup identical on both platforms. */
 extern "C" void applog(int level, const char *fmt, ...)
 {
     char buf[1024];
@@ -52,6 +60,7 @@ extern "C" void applog(int level, const char *fmt, ...)
     buf[sizeof(buf) - 1] = '\0';
     g_log(level, buf);
 }
+#endif /* AVIAN_CUDA_BUILDING_DLL */
 
 extern "C" AVIAN_CUDA_API int avian_cuda_device_count(void)
 {
