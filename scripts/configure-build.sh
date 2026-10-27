@@ -55,7 +55,6 @@ for marker in 'throughput < 0x100' 'work->nonces\[0\] = UINT32_MAX' 'first" : "s
 done
 echo "   fixes present in the generated driver"
 
-cp "$S/fix-nvcc-detect.py" "$S/add-arch-override.py" "$S/add-gpu-option.py" "$S/add-hashrate-option.py" "$S/simd-fallback.py" "$MINER/scripts/"
 
 echo "== patching the build system =="
 python3 "$MINER/scripts/patch-build.py" "$MINER"
