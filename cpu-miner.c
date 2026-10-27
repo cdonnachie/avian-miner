@@ -2869,9 +2869,15 @@ out:
 
 static void show_credits()
 {
-   printf("\n         **********  "PACKAGE_NAME" "PACKAGE_VERSION"  ********** \n");
-   printf("     A CPU miner with multi algo support and optimized for CPUs\n");
-   printf("     with AVX512, SHA, AES and NEON extensions by JayDDee.\n");
+   printf("\n         **********  avian-miner  ********** \n");
+#if defined(HAVE_CUDA)
+   printf("     Avian (AVN): x16rt and minotaurx, on CPU and NVIDIA GPU,\n");
+#else
+   printf("     Avian (AVN): x16rt and minotaurx, on CPU,\n");
+#endif
+   printf("     over Stratum v2.\n\n");
+   printf("     Built on "PACKAGE_NAME" "PACKAGE_VERSION", a CPU miner with multi algo\n");
+   printf("     support optimized for AVX512, SHA, AES and NEON, by JayDDee.\n");
    printf("     BTC donation address: 12tdvfF7KmAsihBXQXynT6E6th2c2pByTT\n\n");
 }
 

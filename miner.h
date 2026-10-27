@@ -873,7 +873,7 @@ Options:\n\
                           m7m           Magi (XMG)\n\
                           myr-gr        Myriad-Groestl\n\
                           minotaur\n\
-                          minotaurx\n\
+                          minotaurx     Avian (AVN)\n\
                           neoscrypt     NeoScrypt(128, 2, 1)\n\
                           nist5         Nist5\n\
                           pentablake    5 x blake512\n\
@@ -915,7 +915,7 @@ Options:\n\
                           x15           X15\n\
                           x16r\n\
                           x16rv2\n\
-                          x16rt         Gincoin (GIN)\n\
+                          x16rt         Avian (AVN)\n\
                           x16rt-veil    Veil (VEIL)\n\
                           x16s\n\
                           x17\n\

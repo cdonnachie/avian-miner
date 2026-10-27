@@ -213,7 +213,7 @@ void x16rt_log_hash_order( const char *order, const uint32_t ntime )
          {
             case 0:  colour = CL_GRN; break;
             case 2:  colour = CL_RED; break;
-            default: colour = CL_WHT; break;
+            default: colour = CL_YLW; break;
          }
          reset = CL_N;
       }
