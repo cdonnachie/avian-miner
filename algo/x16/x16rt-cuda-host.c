@@ -67,7 +67,6 @@ int scanhash_x16rt_cuda( struct work *work, uint32_t max_nonce,
 
     memset( &job, 0, sizeof(job) );
     memcpy( job.data, pdata, sizeof(job.data) );
-    memcpy( job.target, ptarget, sizeof(job.target) );
     memcpy( job.order, x16r_hash_order, 17 );
     job.thr_id    = thr_id;
     job.max_nonce = max_nonce;
@@ -82,13 +81,23 @@ int scanhash_x16rt_cuda( struct work *work, uint32_t max_nonce,
     do
     {
         job.start_nonce = pdata[19];
+        /* Refreshed every batch, not snapshotted once before the loop.
+         * mining.set_difficulty can arrive without a new job, so the target
+         * tightens under a scan that is already running. Taken once, the
+         * device goes on selecting candidates against the old looser target
+         * while the check below judges them against the new one, and every
+         * candidate in the batch is reported as a disagreement. Nothing
+         * invalid can be submitted, because that check is what gates
+         * submission, but the batch is wasted and the log is alarming. It
+         * shows up reliably on connect, where a default target is replaced
+         * moments later, and on any vardiff pool afterwards. */
+        memcpy( job.target, ptarget, sizeof(job.target) );
 
         int found = avian_cuda_scan_batch( &job, candidates,
                                            AVIAN_MAX_CANDIDATES, &throughput );
         if ( found < 0 )
         {
-            applog( LOG_ERR, "GPU #%d: the batch failed (%d)",
-                    work->data ? thr_id : thr_id, found );
+            applog( LOG_ERR, "GPU #%d: the batch failed (%d)", thr_id, found );
             *hashes_done = pdata[19] - first_nonce;
             return 0;
         }
