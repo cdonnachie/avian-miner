@@ -48,6 +48,21 @@ avian_miner_LDADD += %s/avian_cuda.lib
 PY
 
 echo
+echo "=== the option the backend is reached through ==="
+# --gpu and opt_gpu are added at build time rather than carried in the
+# source, the same way configure-build.sh does it on Linux. Without this the
+# binary links the backend and then refuses the only flag that reaches it:
+# "unknown option -- gpu", with the banner still saying "on CPU".
+SCRIPTS=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# The long-option table lives in miner.h, not cpu-miner.c, which is where
+# cpu-miner.c only gets the handler and the flag.
+grep -q '{ "gpu", 0, NULL, 1207 }' "$B/miner.h" \
+    || { echo "  --gpu is not in miner.h's option table"; exit 1; }
+grep -q "case 1207" "$B/cpu-miner.c" \
+    || { echo "  --gpu has no handler in cpu-miner.c"; exit 1; }
+echo "  --gpu registered"
+
+echo
 echo "=== regenerate the build system ==="
 # Makefile.am is input to automake, not to make. Without this the edit above
 # never reaches Makefile.in, configure regenerates the same Makefile as

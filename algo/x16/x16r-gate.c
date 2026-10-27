@@ -313,6 +313,13 @@ void veil_build_extraheader( struct work* g_work, struct stratum_ctx* sctx )
 
 bool register_x16rt_algo( algo_gate_t* gate )
 {
+#if defined(HAVE_CUDA)
+  /* --gpu replaces the CPU scan rather than adding to it. One algorithm runs
+   * per process here, so a GPU run is wholly a GPU run, and the CPU is left
+   * for the MinotaurX process alongside it. */
+  if ( opt_gpu )
+     return register_x16rt_cuda_algo( gate );
+#endif
 #if defined(X16RT_8WAY)
   gate->scanhash  = (void*)&scanhash_x16rt_8way;
   gate->hash      = (void*)&x16r_8way_hash;

@@ -46,6 +46,11 @@ fi
 echo
 echo "=== portability patches ==="
 python3 "$(dirname "$0")/win-portability.py" "$B"
+# --sv2-hashrate is not carried in the source; configure-build.sh adds
+# it on Linux and this does the same here. Without it the miner cannot
+# tell the pool its real rate, the pool sizes its share limiter from a
+# hardcoded 1 kH/s, and every share past the floor comes back
+# too-many-shares. The earlier CPU release shipped without it.
 
 echo
 echo "=== autogen ==="

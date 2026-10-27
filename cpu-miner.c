@@ -122,6 +122,10 @@ static int opt_scantime = 0;
 const int min_scantime = 1;
 //static const bool opt_time = true;
 enum algos opt_algo = ALGO_NULL;
+bool opt_gpu = false;
+/* Hashes per second. The old hardcoded 1000.0 put every miner on the
+ * pool's 2/s share floor regardless of what it could actually do. */
+double opt_sv2_hashrate = 1000.0;
 char* opt_param_key = NULL;
 int opt_param_n = 0;
 int opt_param_r = 0;
@@ -3159,6 +3163,36 @@ void parse_arg(int key, char *arg )
       opt_avian_selftest = true;
       break;
 #endif
+   case 1208:  // sv2-hashrate
+   {
+      char *end = NULL;
+      double v = strtod( arg, &end );
+      /* k, M and G, because nobody wants to type 30000000. */
+      if ( end && *end )
+      {
+         if ( *end == 'k' || *end == 'K' )      v *= 1e3;
+         else if ( *end == 'm' || *end == 'M' ) v *= 1e6;
+         else if ( *end == 'g' || *end == 'G' ) v *= 1e9;
+         else v = 0.0;
+      }
+      if ( !( v > 0.0 ) )
+      {
+         applog( LOG_ERR, "--sv2-hashrate wants a positive rate, "
+                          "optionally suffixed k, M or G: %s", arg );
+         show_usage_and_exit(1);
+      }
+      opt_sv2_hashrate = v;
+      break;
+   }
+   case 1207:  // gpu
+#if defined(HAVE_CUDA)
+      opt_gpu = true;
+#else
+      applog( LOG_ERR, "this build has no GPU backend; configure with "
+                       "--with-cuda to get one" );
+      show_usage_and_exit(1);
+#endif
+      break;
 	case 'b':  // api-bind
       opt_api_enabled = true;
       p = strstr(arg, ":");

@@ -122,6 +122,13 @@ bool register_x16r_algo( algo_gate_t* gate );
 bool register_x16rv2_algo( algo_gate_t* gate );
 bool register_x16s_algo( algo_gate_t* gate );
 bool register_x16rt_algo( algo_gate_t* gate );
+
+#if defined(HAVE_CUDA)
+/* The CUDA X16RT backend, in x16rt-cuda-gate.c. Enumerates the devices and
+ * points the gate at the GPU scanhash; false when no device is usable. */
+bool register_x16rt_cuda_algo( algo_gate_t* gate );
+#endif
+
 bool register_hex__algo( algo_gate_t* gate );
 bool register_x21s__algo( algo_gate_t* gate );
 

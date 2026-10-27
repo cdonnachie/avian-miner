@@ -29,6 +29,24 @@ while [ ${#queue[@]} -gt 0 ]; do
     done
 done
 
+# The GPU backend, when one was built. avian_cuda.dll carries the kernels;
+# VCRUNTIME140.dll is what nvcc's MSVC host code needs, and is the only
+# Microsoft runtime required because nvcc links the CUDA runtime statically.
+# The UCRT (api-ms-win-crt-*) is part of Windows 10 and later.
+# $B is the build clone; the DLL sits beside it under the same work
+# directory. Derived rather than assuming $WORK, which this script
+# does not define.
+CUDA_DLL=${CUDA_DLL:-$(dirname "$B")/cuda/avian_cuda.dll}
+if [ -f "$CUDA_DLL" ]; then
+    cp "$CUDA_DLL" "$REL/"
+    echo "  + avian_cuda.dll (GPU backend)"
+    for vc in /c/Windows/System32/VCRUNTIME140.dll               "/c/Program Files/Microsoft Visual Studio/2022/Professional/VC/Redist/MSVC"/*/x64/Microsoft.VC143.CRT/vcruntime140.dll; do
+        if [ -f "$vc" ]; then cp "$vc" "$REL/VCRUNTIME140.dll"; echo "  + VCRUNTIME140.dll"; break; fi
+    done
+else
+    echo "  (no GPU backend: $CUDA_DLL not present)"
+fi
+
 echo "=== packaged ==="
 ls -1 "$REL" | sed 's/^/  /'
 echo

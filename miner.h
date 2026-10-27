@@ -444,6 +444,13 @@ struct work
 {
    uint32_t target[8] __attribute__ ((aligned (64)));
 	uint32_t data[48] __attribute__ ((aligned (64)));
+   /* Nonces a GPU driver found in one batch, before they have been
+    * checked on the CPU. UINT32_MAX means none. ccminer's struct work
+    * carried these, and the vendored X16RT dispatch writes them in
+    * fifteen places, so they live here rather than being patched out of
+    * code that is kept verbatim on purpose. The CPU scanhash
+    * implementations do not use them. */
+   uint32_t nonces[2];
 	double targetdiff;
 	double sharediff;
    double stratum_diff;
@@ -776,6 +783,12 @@ const char* algo_name( enum algos a );
 extern enum algos opt_algo;
 extern bool opt_debug;
 extern bool opt_debug_diff;
+/* --gpu. Read by register_x16rt_algo, which hands the gate to the CUDA
+ * backend instead of a CPU scanhash. */
+extern bool opt_gpu;
+/* --sv2-hashrate, in hashes per second. What the miner claims when it
+ * opens a channel; the pool sizes its rate limiter from it. */
+extern double opt_sv2_hashrate;
 extern bool opt_benchmark;
 extern bool opt_protocol;
 extern bool opt_extranonce;
@@ -984,6 +997,10 @@ Options:\n\
       --sv2-extranonce-size=N   least extranonce to accept on an extended channel\n\
       --sv2-expect-payout=ADDR  check the assembled coinbase pays this address\n\
       --avian-selftest          check -a's proof of work against hashes a real node reported\n\
+      --gpu                     mine x16rt on the GPU instead of the CPU, one thread per card\n\
+      --sv2-hashrate=RATE       tell the pool how fast this miner is, eg 30M. The pool sizes\n\
+                                its share rate limit from this, so leaving it low gets shares\n\
+                                refused as too-many-shares\n\
   -b, --api-bind=address[:port]   IP address for the miner API, default port is 4048)\n\
       --api-remote      allow remote control\n\
       --max-temp=N      only mine if cpu temp is less than specified value (linux)\n\
@@ -1072,6 +1089,8 @@ static struct option const options[] = {
         { "sv2-extranonce-size", 1, NULL, 1204 },
         { "sv2-expect-payout", 1, NULL, 1205 },
         { "avian-selftest", 0, NULL, 1206 },
+        { "gpu", 0, NULL, 1207 },
+        { "sv2-hashrate", 1, NULL, 1208 },
         { 0, 0, 0, 0 }
 };
 

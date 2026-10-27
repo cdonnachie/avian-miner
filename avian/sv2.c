@@ -475,7 +475,12 @@ static AvianSv2Client *connect_once(bool extended, int32_t *status)
     config.authority_hex = opt_sv2_authority;
     config.pow_type = avian_sv2_pow_type();
     config.user_identity = opt_sv2_user;
-    config.nominal_hash_rate = 1000.0f;
+    /* What the pool sizes its share rate limiter from, so a miner that
+     * understates it has its shares refused as too-many-shares however
+     * valid they are. Stratum v2 calls this nominal because it is a
+     * claim: the channel opens before any hashing has happened, so
+     * there is nothing measured to report yet. */
+    config.nominal_hash_rate = (float) opt_sv2_hashrate;
     config.extended = extended ? 1 : 0;
     config.min_extranonce_size = (uint32_t)opt_sv2_extranonce_size;
     /* A miner's whole job is to dial a pool somewhere else. The library

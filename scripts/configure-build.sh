@@ -60,8 +60,6 @@ echo "== patching the build system =="
 python3 "$MINER/scripts/patch-build.py" "$MINER"
 python3 "$MINER/scripts/fix-nvcc-detect.py" "$MINER/configure.ac"
 python3 "$MINER/scripts/add-arch-override.py" "$MINER/configure.ac"
-python3 "$MINER/scripts/add-gpu-option.py" "$MINER"
-python3 "$MINER/scripts/add-hashrate-option.py" "$MINER"
 # SIMD-first chains go to the CPU: the 80-byte SIMD kernel reports only
 # bad candidates, so the GPU would spend one epoch in sixteen on work
 # that is entirely discarded.

@@ -99,24 +99,6 @@ else:
     edit("configure.ac", [(anchor, anchor + CONFIGURE, 1)])
 
 # The gate registration needs declaring where algo_gate_t is in scope.
-DECL = """
-#if defined(HAVE_CUDA)
-/* The CUDA X16RT backend, in x16rt-cuda-gate.c. Enumerates the devices and
- * points the gate at the GPU scanhash; false when no device is usable. */
-bool register_x16rt_cuda_algo( algo_gate_t* gate );
-#endif
-"""
-p = os.path.join(root, "algo/x16/x16r-gate.h")
-s = io.open(p, encoding="utf-8", errors="surrogateescape", newline="").read()
-if "register_x16rt_cuda_algo" in s:
-    print("  x16r-gate.h already patched")
-else:
-    a = "bool register_x16rt_algo( algo_gate_t* gate );"
-    if s.count(a) != 1:
-        raise SystemExit("x16r-gate.h: register_x16rt_algo declaration not found")
-    s = s.replace(a, a + "\n" + DECL, 1)
-    io.open(p, "w", encoding="utf-8", errors="surrogateescape", newline="").write(s)
-    print("  patched algo/x16/x16r-gate.h")
 
 # ----------------------------------------------------------------- Makefile.am
 cu = []
