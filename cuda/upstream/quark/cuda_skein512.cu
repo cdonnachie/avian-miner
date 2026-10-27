@@ -1406,8 +1406,21 @@ void skein512_cpu_setBlock_80(void *pdata)
 
 	buffer[57] = message[8];
 
-	cudaMemcpyToSymbol(c_buffer, buffer, sizeof(c_buffer), 0, cudaMemcpyHostToDevice);
-	CUDA_SAFE_CALL(cudaGetLastError());
+	{
+		/* Not CUDA_SAFE_CALL(cudaGetLastError()). That reads the last
+		 * error from any preceding call and then exits the process, so
+		 * this one line killed the miner over errors it did not cause,
+		 * one epoch in sixteen. Measured: the copy below succeeds and
+		 * the symbol resolves; only the inherited error differs between
+		 * a run where SKEIN leads first and one where it does not. See
+		 * scripts/fix-skein-abort.py. */
+		cudaError_t rc = cudaMemcpyToSymbol(c_buffer, buffer,
+		                                    sizeof(c_buffer), 0,
+		                                    cudaMemcpyHostToDevice);
+		if (rc != cudaSuccess)
+			fprintf(stderr, "skein512_cpu_setBlock_80: %s\n",
+			        cudaGetErrorString(rc));
+	}
 }
 
 __host__

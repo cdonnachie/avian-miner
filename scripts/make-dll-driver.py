@@ -160,13 +160,10 @@ BATCH_END = '''
  * Capped deliberately. This fires every batch, which at a few hundred
  * batches a second buries every other line in the log and is worse than the
  * silence it replaced. */
-static void avian_phase_check(int dev_id, const char *phase)
+static void avian_report(int dev_id, const char *phase, cudaError_t err)
 {
         static int complained = 0;
-        cudaError_t err = cudaGetLastError();
 
-        if (err == cudaSuccess)
-                return;
         if (complained < 3)
         {
                 applog(LOG_ERR, "GPU #%d: %s left \\"%s\\"",
@@ -177,10 +174,73 @@ static void avian_phase_check(int dev_id, const char *phase)
         }
 }
 
+static void avian_phase_check(int dev_id, const char *phase)
+{
+        cudaError_t err = cudaGetLastError();
+
+        if (err != cudaSuccess)
+                avian_report(dev_id, phase, err);
+}
+
+/* Forces anything still in flight to complete before judging it. A peek
+ * with cudaGetLastError() alone cannot see a failure that has not surfaced
+ * yet, which is how a bad copy got attributed to a kernel that ran later. */
+static void avian_sync_check(int dev_id, const char *phase)
+{
+        cudaError_t err = cudaDeviceSynchronize();
+
+        if (err == cudaSuccess)
+                err = cudaGetLastError();
+        if (err != cudaSuccess)
+                avian_report(dev_id, phase, err);
+}
+
 static void avian_batch_end(int dev_id)
 {
-        cudaDeviceSynchronize();
-        avian_phase_check(dev_id, "the candidate search");
+        /* Capture the synchronise's own return. A kernel launch failure is
+         * asynchronous: it is not visible at the launch, and it is
+         * cudaDeviceSynchronize that reports it. Ignoring this return was
+         * why the phase checks all came back clean while the error was
+         * plainly reaching skein512_cpu_setBlock_80 later. */
+        cudaError_t err = cudaDeviceSynchronize();
+
+        if (err != cudaSuccess)
+                avian_report(dev_id, "the batch's kernels", err);
+        else
+                avian_phase_check(dev_id, "the candidate search");
+}
+
+/* With AVIAN_GPU_SYNC_EACH_STAGE set, synchronise after every stage so an
+ * asynchronous launch failure is attributed to the kernel that caused it
+ * rather than to whatever happens to synchronise next. Far too slow to mine
+ * with, which is why it is off unless asked for. */
+static int avian_sync_each_stage(void)
+{
+        static int cached = -1;
+
+        if (cached < 0)
+        {
+                const char *e = getenv("AVIAN_GPU_SYNC_EACH_STAGE");
+                cached = (e && *e && *e != '0') ? 1 : 0;
+        }
+        return cached;
+}
+
+static void avian_stage_check(int dev_id, int stage, const char *name)
+{
+        cudaError_t err;
+
+        if (!avian_sync_each_stage())
+                return;
+        err = cudaDeviceSynchronize();
+        if (err == cudaSuccess)
+                err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+                char what[64];
+                snprintf(what, sizeof(what), "stage %d (%s)", stage, name);
+                avian_report(dev_id, what, err);
+        }
 }
 
 '''
@@ -247,10 +307,24 @@ def main(src, dst):
     # placed inside the loop is already too late: skein512_cpu_setBlock_80
     # reads the error first and aborts. This one sits between the target
     # upload and that switch, which is the last gap left.
+    # Synchronise, do not merely peek. cudaMemcpyToSymbol to a __constant__
+    # can return before it has completed, so a plain cudaGetLastError() one
+    # line later reports success and the failure surfaces at whatever calls
+    # cudaGetLastError() next, which is skein512_cpu_setBlock_80 one epoch
+    # in sixteen. That is the whole reason this took so long to find.
     s = sub_once(s, "        cuda_check_cpu_setTarget(ptarget);\n",
                  "        cuda_check_cpu_setTarget(ptarget);\n"
-                 "        avian_phase_check(dev_id, \"the target upload\");\n",
+                 "        avian_sync_check(dev_id, \"the target upload\");\n",
                  "target upload check")
+
+    # A per-stage synchronise, so an asynchronous launch failure is pinned
+    # to the kernel that caused it. Placed at the top of the loop body, so
+    # the check at index i covers the stage that index i - 1 launched.
+    s = sub_once(s,
+                 "                        elem = hashOrder[i];\n",
+                 "                        avian_stage_check(dev_id, i, hashOrder);\n"
+                 "                        elem = hashOrder[i];\n",
+                 "per-stage sync check")
 
     chain_end = "\n                if (!addstart)\n                {\n"
     s = sub_once(s, chain_end,

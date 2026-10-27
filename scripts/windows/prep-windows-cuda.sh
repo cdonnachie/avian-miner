@@ -25,6 +25,13 @@ echo "########## 3. DLL shim ##########"
 python3 "$S/dll-shim-patch.py" "$W" || exit 1
 
 echo
+echo "########## 4. the skein abort ##########"
+# Upstream exits the process from skein512_cpu_setBlock_80 over an
+# error it did not cause. Re-applied here because staging overwrites
+# the vendored file from the Linux tree.
+python3 "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/fix-skein-abort.py" "$W" || exit 1
+
+echo
 echo "########## assertions ##########"
 fail=0
 grep -q "AVIAN_CUDA_BUILDING_DLL" "$W/cuda/avian-cuda-shim.h" \
