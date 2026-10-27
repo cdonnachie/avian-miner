@@ -88,6 +88,11 @@ ORDER_NEW = '''        /* The miner derives the chain and hands it over. Derivin
         (void)timeHash;
         memcpy(hashOrder, job->order, 17);
         hashOrder[16] = '\\0';
+        /* Diagnostics: see avian_force_order. */
+        {
+                const char *forced = avian_force_order();
+                if (forced) memcpy(hashOrder, forced, 16);
+        }
         if (s_ntime != masked_ntime) {
                 s_ntime = masked_ntime;
         }

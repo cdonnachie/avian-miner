@@ -295,6 +295,158 @@ static int avian_trace_compare(int thr_id, int dev_id, int stages,
         return bad;
 }
 
+
+/* Run one chain order regardless of what the header derives.
+
+   A chain-dependent fault can only be studied on a chain that occurs, and
+   X16RT picks the chain from ntime, so a failing order recurs when it
+   recurs and not when the instrument is ready. Forcing it makes the bisect
+   a one-shot experiment rather than a stakeout.
+
+   The override lands on hashOrder, which both the device chain and the CPU
+   chain avian_trace_compare checks it against read, so the two stay
+   consistent and a difference means the kernels rather than the override.
+
+   Shares from a forced batch are nonsense by construction, because the
+   order no longer matches the header the pool will judge. Diagnostics
+   only, and loud about it. */
+static const char *avian_force_order(void)
+{
+        static const char *cached = (const char *)-1;
+
+        if (cached == (const char *)-1)
+        {
+                const char *e = getenv("AVIAN_GPU_FORCE_ORDER");
+                cached = NULL;
+                if (e && *e)
+                {
+                        /* Hand-rolled so this needs no ctype.h or string.h,
+                           and so the generated file gains no include the
+                           generators would have to anchor on. */
+                        const char *p = e;
+                        int n = 0, ok = 1;
+                        while (*p)
+                        {
+                                char c = *p++;
+                                if (!((c >= '0' && c <= '9') ||
+                                      (c >= 'a' && c <= 'f') ||
+                                      (c >= 'A' && c <= 'F')))
+                                        ok = 0;
+                                n++;
+                        }
+                        if (n != 16) ok = 0;
+                        if (!ok)
+                                applog(LOG_ERR, "GPU: AVIAN_GPU_FORCE_ORDER wants 16 "
+                                                "hex digits, so %s is ignored", e);
+                        else
+                        {
+                                cached = e;
+                                applog(LOG_WARNING, "GPU: forcing chain order %s for "
+                                                    "every batch; shares from this run "
+                                                    "are invalid by construction", e);
+                        }
+                }
+        }
+        return cached;
+}
+
+
+/* Read the pending CUDA error, say which phase of the batch left it, and
+ * then shut up about it.
+ *
+ * A CUDA error is sticky until something reads it, and almost nothing in
+ * the vendored kernels does. The one exception is skein512_cpu_setBlock_80,
+ * which calls cudaGetLastError() and aborts on whatever it finds, so an
+ * error left by any batch killed the miner the next time SKEIN happened to
+ * lead the chain. Reading it here keeps that from happening and names the
+ * phase responsible.
+ *
+ * Capped deliberately. This fires every batch, which at a few hundred
+ * batches a second buries every other line in the log and is worse than the
+ * silence it replaced. */
+static void avian_report(int dev_id, const char *phase, cudaError_t err)
+{
+        static int complained = 0;
+
+        if (complained < 3)
+        {
+                applog(LOG_ERR, "GPU #%d: %s left \"%s\"",
+                       dev_id, phase, cudaGetErrorString(err));
+                if (++complained == 3)
+                        applog(LOG_ERR, "GPU #%d: further CUDA errors will not "
+                                        "be reported", dev_id);
+        }
+}
+
+static void avian_phase_check(int dev_id, const char *phase)
+{
+        cudaError_t err = cudaGetLastError();
+
+        if (err != cudaSuccess)
+                avian_report(dev_id, phase, err);
+}
+
+/* Forces anything still in flight to complete before judging it. A peek
+ * with cudaGetLastError() alone cannot see a failure that has not surfaced
+ * yet, which is how a bad copy got attributed to a kernel that ran later. */
+static void avian_sync_check(int dev_id, const char *phase)
+{
+        cudaError_t err = cudaDeviceSynchronize();
+
+        if (err == cudaSuccess)
+                err = cudaGetLastError();
+        if (err != cudaSuccess)
+                avian_report(dev_id, phase, err);
+}
+
+static void avian_batch_end(int dev_id)
+{
+        /* Capture the synchronise's own return. A kernel launch failure is
+         * asynchronous: it is not visible at the launch, and it is
+         * cudaDeviceSynchronize that reports it. Ignoring this return was
+         * why the phase checks all came back clean while the error was
+         * plainly reaching skein512_cpu_setBlock_80 later. */
+        cudaError_t err = cudaDeviceSynchronize();
+
+        if (err != cudaSuccess)
+                avian_report(dev_id, "the batch's kernels", err);
+        else
+                avian_phase_check(dev_id, "the candidate search");
+}
+
+/* With AVIAN_GPU_SYNC_EACH_STAGE set, synchronise after every stage so an
+ * asynchronous launch failure is attributed to the kernel that caused it
+ * rather than to whatever happens to synchronise next. Far too slow to mine
+ * with, which is why it is off unless asked for. */
+static int avian_sync_each_stage(void)
+{
+        static int cached = -1;
+
+        if (cached < 0)
+        {
+                const char *e = getenv("AVIAN_GPU_SYNC_EACH_STAGE");
+                cached = (e && *e && *e != '0') ? 1 : 0;
+        }
+        return cached;
+}
+
+static void avian_stage_check(int dev_id, int stage, const char *name)
+{
+        cudaError_t err;
+
+        if (!avian_sync_each_stage())
+                return;
+        err = cudaDeviceSynchronize();
+        if (err == cudaSuccess)
+                err = cudaGetLastError();
+        if (err != cudaSuccess)
+        {
+                char what[64];
+                snprintf(what, sizeof(what), "stage %d (%s)", stage, name);
+                avian_report(dev_id, what, err);
+        }
+}
+
 /* One batch of nonces. See avian-cuda-api.h for why the seam is here. */
 extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
                                                      uint32_t *out_nonces,
@@ -312,6 +464,16 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
         const int dev_id = device_map[thr_id];
         uint64_t hashes_done_local = 0;
         uint64_t *hashes_done = &hashes_done_local;
+
+        /* A CUDA error is sticky until something reads it, and almost
+         * nothing in the vendored kernels does. The one exception is
+         * skein512_cpu_setBlock_80, which calls cudaGetLastError() and
+         * aborts the miner on whatever it finds, so an error left by an
+         * earlier batch killed the process the next time SKEIN happened to
+         * lead the chain. Read it here, report it, and start clean, so the
+         * error is attributed to the batch that caused it rather than to an
+         * unrelated kernel one epoch in sixteen later. */
+        avian_phase_check(dev_id, "a previous batch");
 
         memcpy(pdata_copy, job->data, sizeof(pdata_copy));
         memcpy(ptarget_copy, job->target, sizeof(ptarget_copy));
@@ -342,6 +504,11 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
         (void)timeHash;
         memcpy(hashOrder, job->order, 17);
         hashOrder[16] = '\0';
+        /* Diagnostics: see avian_force_order. */
+        {
+                const char *forced = avian_force_order();
+                if (forced) memcpy(hashOrder, forced, 16);
+        }
         if (s_ntime != masked_ntime) {
                 s_ntime = masked_ntime;
         }
@@ -416,8 +583,9 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
                 cudaSetDevice(device_map[thr_id]);
                 if (opt_cudaschedule == -1 && gpu_threads == 1)
                 {
-                        cudaDeviceReset();
-                        // reduce cpu usage
+                        /* No cudaDeviceReset() here: see make-dll-driver.py.
+                         * It would tear down the context this library's own
+                         * caller already set up. */
                         cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync);
                 }
 
@@ -464,6 +632,7 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
 
 
         cuda_check_cpu_setTarget(ptarget);
+        avian_sync_check(dev_id, "the target upload");
 
         char elem = hashOrder[0];
         const uint8_t algo80 = elem >= 'A' ? elem - 'A' + 10 : elem - '0';
@@ -535,6 +704,7 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
         int warn = 0;
 
         {
+                avian_phase_check(dev_id, "device setup");
                 int order = 0;
                 CUDA_SAFE_CALL(cudaMemset(d_resNonce[thr_id], 0xFFFFFFFF, 2 * sizeof(uint32_t)));
                 /* Cleared with the device-side copy it mirrors. Left
@@ -622,6 +792,7 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
                                 *hashes_done = 0;
                                 return 0;
                         }
+                        avian_stage_check(dev_id, i, hashOrder);
                         elem = hashOrder[i];
                         uint8_t algo64 = elem >= 'A' ? elem - 'A' + 10 : elem - '0';
                         uint8_t nextalgo = -1;
@@ -913,6 +1084,8 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
                         return 0;
                 }
 
+                avian_phase_check(dev_id, "the hash chain");
+
                 if (!addstart)
                 {
                         nonce0 = cuda_check_hash(thr_id, throughput, pdata[19], d_hash[thr_id]);
@@ -964,11 +1137,11 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
                                 }
                         }
                         if (throughput_used) *throughput_used = throughput;
-                        cudaDeviceSynchronize();
+                        avian_batch_end(dev_id);
                         return found;
                 }
                 if (throughput_used) *throughput_used = throughput;
-                cudaDeviceSynchronize();
+                avian_batch_end(dev_id);
                 return 0;
         }
         return 0;

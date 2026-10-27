@@ -224,6 +224,63 @@ LOOP_NEW = ("                for (int i = 1; i < 16; i++)\n"
 POST = "\n                if (!addstart)\n                {\n"
 POST_NEW = "\n" + TRACE_CALL_16 + "                if (!addstart)\n                {\n"
 
+FORCE_ORDER_HELPER = '''
+/* Run one chain order regardless of what the header derives.
+
+   A chain-dependent fault can only be studied on a chain that occurs, and
+   X16RT picks the chain from ntime, so a failing order recurs when it
+   recurs and not when the instrument is ready. Forcing it makes the bisect
+   a one-shot experiment rather than a stakeout.
+
+   The override lands on hashOrder, which both the device chain and the CPU
+   chain avian_trace_compare checks it against read, so the two stay
+   consistent and a difference means the kernels rather than the override.
+
+   Shares from a forced batch are nonsense by construction, because the
+   order no longer matches the header the pool will judge. Diagnostics
+   only, and loud about it. */
+static const char *avian_force_order(void)
+{
+        static const char *cached = (const char *)-1;
+
+        if (cached == (const char *)-1)
+        {
+                const char *e = getenv("AVIAN_GPU_FORCE_ORDER");
+                cached = NULL;
+                if (e && *e)
+                {
+                        /* Hand-rolled so this needs no ctype.h or string.h,
+                           and so the generated file gains no include the
+                           generators would have to anchor on. */
+                        const char *p = e;
+                        int n = 0, ok = 1;
+                        while (*p)
+                        {
+                                char c = *p++;
+                                if (!((c >= '0' && c <= '9') ||
+                                      (c >= 'a' && c <= 'f') ||
+                                      (c >= 'A' && c <= 'F')))
+                                        ok = 0;
+                                n++;
+                        }
+                        if (n != 16) ok = 0;
+                        if (!ok)
+                                applog(LOG_ERR, "GPU: AVIAN_GPU_FORCE_ORDER wants 16 "
+                                                "hex digits, so %s is ignored", e);
+                        else
+                        {
+                                cached = e;
+                                applog(LOG_WARNING, "GPU: forcing chain order %s for "
+                                                    "every batch; shares from this run "
+                                                    "are invalid by construction", e);
+                        }
+                }
+        }
+        return cached;
+}
+
+'''
+
 FINAL_SPELLINGS = ("if (i == 15)", "if(i== 15)")
 FINAL_SITES = 14
 
@@ -240,7 +297,7 @@ def main(path):
             print("  ERROR: %s anchor matched %d times" % (name, s.count(anchor)))
             return 1
 
-    s = s.replace(SIG, NO_FINAL_HELPER + TRACE_HELPER + SIG, 1)
+    s = s.replace(SIG, NO_FINAL_HELPER + TRACE_HELPER + FORCE_ORDER_HELPER + SIG, 1)
     s = s.replace(LOOP, LOOP_NEW, 1)
     s = s.replace(POST, POST_NEW, 1)
 
