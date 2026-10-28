@@ -2874,12 +2874,16 @@ out:
 static void show_credits()
 {
    printf("\n         **********  avian-miner  ********** \n");
+   // Which vendor is not a compile-time fact. The same binary drives either,
+   // through the plain-data ABI in cuda/avian-cuda-api.h, and the backend DLL
+   // beside it decides which. The card's own name is printed a few lines
+   // later, once the backend has been asked.
 #if defined(HAVE_CUDA)
-   printf("     Avian (AVN): x16rt and minotaurx, on CPU and NVIDIA GPU,\n");
+   printf("     Avian (AVN): x16rt and minotaurx, on CPU and GPU (NVIDIA or AMD),\n");
 #else
    printf("     Avian (AVN): x16rt and minotaurx, on CPU,\n");
 #endif
-   printf("     over Stratum v2.\n\n");
+   printf("     over Stratum v1 and v2.\n\n");
    printf("     Built on "PACKAGE_NAME" "PACKAGE_VERSION", a CPU miner with multi algo\n");
    printf("     support optimized for AVX512, SHA, AES and NEON, by JayDDee.\n");
    printf("     BTC donation address: 12tdvfF7KmAsihBXQXynT6E6th2c2pByTT\n\n");
