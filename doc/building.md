@@ -216,10 +216,11 @@ scripts in `scripts/` and re-applied at staging time.
 
 ## AMD, via HIP
 
-It builds. Every kernel compiles to AMD GCN object code, and the plain-C
-paths an AMD card would execute have been checked against the CPU. What has
-not happened is a run on AMD silicon, because there is none on the
-development machine. Nothing in this section is needed for an Nvidia build.
+It works. The miner builds, runs and hashes correctly on an AMD Instinct
+MI325X, verified against the CPU across the whole chain, and a Windows DLL
+can be built for consumer cards with `scripts/windows/build-hip-dll.ps1`.
+What has not happened is a run on a consumer RDNA card, only on CDNA.
+Nothing in this section is needed for an Nvidia build.
 
 ```sh
 ./autogen.sh
@@ -373,55 +374,79 @@ sources both backends share. The `-NoPtx` DLL is about 2.5 MB larger than the
 default, which is one instruction becoming several and is why the asm stays
 the default on Nvidia.
 
-### What is left: three 80-byte kernels
+### Verified
 
-It runs. On a gfx942 (MI325X, wave64, 304 CUs) it reaches 82.5 MH/s with no
-launch failures and no memory faults. Every one of the sixteen chain stages
-agrees with the CPU for two forced orders, roughly twelve million
-comparisons, after the uint2 scalar fix below. What is still wrong is
-narrower than it was and is written down here rather than re-derived.
-
-Each algorithm's 80-byte kernel, the one that runs at stage one, traced with
-a uniform forced order:
+On a gfx942 (MI325X, wave64, 304 CUs) the whole chain agrees with the CPU:
 
 ```
-0 blake      ok        8 shavite    DIFFERS  (8 of 335104)
-1 bmw        ok        9 simd       ok
-2 groestl    ok        A echo       ok
-3 jh         ok        B hamsi      DIFFERS  (all samples)
-4 keccak     ok        C fugue      ok
-5 skein      ok        D shabal     ok
-6 luffa      ok        E whirlpool  ok
-7 cubehash   ok        F sha512     DIFFERS  (all samples)
+1F80675605446D40 : 6,557,184 comparisons, 0 differing
+542CB1E146A7D915 : 5,474,048 comparisons, 0 differing
+FE17C8172501B98C : 5,689,344 comparisons, 0 differing
 ```
 
-shavite is a different problem from the other two: 8 wrong out of 335104 is a
-race or a job boundary, not arithmetic. hamsi and sha512 are wrong for every
-sample. All three have correct 64-byte kernels, so whatever it is lives in
-the 80-byte path alone.
+seventeen and a half million comparisons over three orders and all sixteen
+depths, with no launch failure, no memory fault and no setBlock error. Mining
+against a fixed header for ninety seconds produced 83.5 MH/s and zero invalid
+shares. Each algorithm's 80-byte kernel was checked on its own as well, by
+forcing an order of one repeated nibble.
 
-Reproduce with AVIAN_GPU_FORCE_ORDER set to one repeated nibble,
-AVIAN_GPU_TRACE_STAGES=1 and AVIAN_GPU_NO_FINAL=1; scripts/windows has no
-part in this, see the droplet scripts in the session scratchpad or write four
-lines of shell.
+The defects that got it there, in the order they were found, because the
+sequence is the useful part:
 
-Eliminated by measurement on the card, so none of it needs doing again:
+| what | how it showed |
+| --- | --- |
+| `jansson` missing from the `.cu` rule | build failure, masked on a host with jansson installed |
+| HIP's `__device__ memcpy` shadowing the host one | build failure in five kernels |
+| no `-rpath` on the HIP link | built, linked, died at startup |
+| host and device disagreeing on block size | `unspecified launch failure` |
+| `uint2 + <int literal>` broadcast element-wise | **ran, hashed wrong**, skein and bmw |
+| host code reading a `__constant__` | **ran, hashed wrong**, hamsi and sha512 |
+| a fence where a barrier was needed | **ran, hashed wrong, on Nvidia too** |
 
-- every uint2 helper in both header sets: vectorize round trip, ROL2, ROR2,
-  ROL8, ROR8, ROL24, SHL2, SHR2, xor3x, ROTL64 over both types. Exact.
-- uint2 operator +, -, ^, += and + with a uint32_t. Exact. The int literal
-  case was **not**, and is the fix described below.
-- uint2x4 packed access. Replacing both the load and the store in skein with
-  element-wise vectorize/devectorize changed nothing.
-- __constant__ data: a statically initialised array reaches the device
-  intact, including skeins real buffer[112] compared entry by entry;
-  hipMemcpyToSymbol works with a bare array name, with HIP_SYMBOL(), on a
-  static symbol, and across two translation units that both define the same
-  name with different linkage and size. That last one matters because HIP
-  links all device code into one image where CUDA keeps a module per .cu,
-  and the tree has ten definitions of c_PaddedMessage80.
-- optimisation level: -O1 and -O3 both wrong before the fix, -O0 will not
-  build (scratch frame exceeds the limit).
+The last three are the ones worth remembering. They compiled, launched, and
+produced plausible wrong answers, and no amount of compiling would have found
+any of them.
+
+Five of the seven trace back to one fact: HIP's `uint2` is a class template
+where CUDA's is a plain struct, and `hipcc` never defines `__CUDA_ARCH__`.
+Two were self-inflicted, by widening a guard with `__HIPCC__` where the host
+pass needed excluding, and by converting every `__constant__` to a plain
+`const`, which device code cannot address.
+
+### Eliminated by measurement
+
+None of this needs testing again. Each was measured on the card against a
+reference written from the definition rather than copied from the headers:
+
+- every uint2 helper in both header sets, `ROL2`, `ROR2`, `ROL8`, `ROR8`,
+  `ROL24`, `SHL2`, `SHR2`, `xor3x`, `ROTL64` and `ROTR64` over both types,
+  `shr_u64`, `shl_u64`, and the `vectorize` round trip. Exact.
+- `uint2` `+`, `-`, `^`, `+=`, and `+` with a `uint32_t`. Exact. With an
+  `int` literal it was not, which is the fix above.
+- the packed `uint2x4` load and store: replacing both with element-wise
+  access changed nothing.
+- `__constant__` data four ways, including two translation units defining
+  one name with different linkage and size. That matters because HIP links
+  all device code into a single image where CUDA keeps a module per `.cu`,
+  and this tree has ten definitions of `c_PaddedMessage80`.
+- optimisation level. `-O1` and `-O3` behaved alike; `-O0` will not build,
+  the scratch frame exceeding its limit.
+
+### Still unmeasured
+
+- **Any RDNA card.** Everything above is CDNA. `gfx1030`, `gfx1100` and
+  `gfx1201` all compile, and `scripts/windows/build-hip-dll.ps1` produces a
+  DLL for them, but no consumer card has run this. The wavefront worry is
+  much reduced, since the code is now correct at width 32 on Nvidia and 64
+  on CDNA, and RDNA's 32 is the width already proven.
+- **The `device_sm` block-size idiom**, meaningless off Nvidia and better
+  deleted than translated.
+- **Hashrate as a figure worth quoting.** 83.5 MH/s is what it does, not
+  what it could do: the linker reports it cannot meet the
+  `amdgpu-waves-per-eu` occupancy the launch bounds ask for, and the block
+  sizes are still chosen from Nvidia SM versions.
+- **`ldg4`**, whose fallback copies one 32-byte structure where the PTX
+  loads three. Nothing calls it.
 
 ## Known rough edges
 
