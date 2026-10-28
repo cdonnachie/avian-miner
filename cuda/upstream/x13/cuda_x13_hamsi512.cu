@@ -320,7 +320,7 @@ __constant__ static uint32_t __align__(64) c_h[16];
 
 /* || __HIPCC__ so the __constant__ table, not the host copy, is the one
  * a HIP build sees. See scripts/fix-hip-guards.py. */
-#if defined(__CUDA_ARCH__) || defined(__HIPCC__)
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
 
 __constant__ static const uint32_t d_alpha_n[] = {
 	0xff00f0f0, 0xccccaaaa, 0xf0f0cccc, 0xff00aaaa, 0xccccaaaa, 0xf0f0ff00, 0xaaaacccc, 0xf0f0ff00,

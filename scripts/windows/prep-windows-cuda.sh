@@ -105,6 +105,14 @@ echo "########## 12. uint2 and an int literal ##########"
 python3 "$SCRIPTS/fix-hip-uint2-scalar.py" "$W/cuda/upstream" || exit 1
 
 echo
+echo "########## 13. tables the host half reads ##########"
+# Host code cannot read a __constant__ under HIP: it returns rubbish and
+# reports nothing. sha512 precomputes nine rounds on the host and reads K_512
+# while doing it, so every constant it handed the kernel was wrong. See
+# scripts/fix-hip-host-tables.py.
+python3 "$SCRIPTS/fix-hip-host-tables.py" "$W/cuda/upstream" || exit 1
+
+echo
 echo "########## assertions ##########"
 fail=0
 grep -q "AVIAN_CUDA_BUILDING_DLL" "$W/cuda/avian-cuda-shim.h" \

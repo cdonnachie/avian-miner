@@ -69,6 +69,7 @@ typedef hipDeviceProp_t cudaDeviceProp;
 #define cudaMemcpyAsync        hipMemcpyAsync
 #define cudaMemset             hipMemset
 #define cudaMemcpyToSymbol     hipMemcpyToSymbol
+#define cudaMemcpyFromSymbol   hipMemcpyFromSymbol
 #define cudaMemcpyHostToDevice hipMemcpyHostToDevice
 #define cudaMemcpyDeviceToHost hipMemcpyDeviceToHost
 #define cudaGetDeviceProperties hipGetDeviceProperties

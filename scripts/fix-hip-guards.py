@@ -60,9 +60,14 @@ FILES = ["cuda_helper.h", "cuda_helper_alexis.h"]
 # normally written, so the device branch is the right one to take.
 TABLE_FILE = os.path.join("x13", "cuda_x13_hamsi512.cu")
 TABLE_OLD = "#if defined(__CUDA_ARCH__)\n"
-TABLE_NEW = ("/* || __HIPCC__ so the __constant__ table, not the host copy, is the one\n"
-             " * a HIP build sees. See scripts/fix-hip-guards.py. */\n"
-             "#if defined(__CUDA_ARCH__) || defined(__HIPCC__)\n")
+TABLE_NEW = ("/* __HIP_DEVICE_COMPILE__, and deliberately not __HIPCC__. The latter is\n"
+             " * defined in both of hipcc's passes, so widening with it sent the host\n"
+             " * pass to the __constant__ table as well, and host code cannot read a\n"
+             " * __constant__ under HIP: it returns rubbish, with no error anywhere.\n"
+             " * That is what made hamsi's setBlock_80 disagree with the CPU in every\n"
+             " * sample while its 64-byte kernel was exact.\n"
+             " * See scripts/fix-hip-guards.py. */\n"
+             "#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)\n")
 
 
 def patch_table(root):
@@ -73,7 +78,21 @@ def patch_table(root):
         return 0
     s = io.open(p, encoding="utf-8", errors="surrogateescape",
                 newline="").read()
-    if "defined(__CUDA_ARCH__) || defined(__HIPCC__)" in s:
+    if "defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)" in s:
+        return 0
+    # An earlier version of this script widened with __HIPCC__, which is
+    # defined in both of hipcc's passes and so sent the host pass to the
+    # __constant__ table too. Migrate that rather than refusing to run: a
+    # tree carrying it builds and hashes incorrectly, which is worse than a
+    # tree that has never been patched at all.
+    STALE = "#if defined(__CUDA_ARCH__) || defined(__HIPCC__)\n"
+    if STALE in s:
+        s = s.replace(STALE,
+                      "#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)\n", 1)
+        io.open(p, "w", encoding="utf-8", errors="surrogateescape",
+                newline="").write(s)
+        print("  corrected the table guard in %s to the device-only macro"
+              % TABLE_FILE)
         return 0
     n = s.count(TABLE_OLD)
     if n != 1:
