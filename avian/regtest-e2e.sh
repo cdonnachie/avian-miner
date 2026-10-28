@@ -26,7 +26,9 @@ case "$ALGO" in
 esac
 
 BIN="${1:-$HOME/avian-build/bin}"
-SV2="${2:-/mnt/c/development/avian-sv2}"
+# The sibling clone, derived rather than named so this works from
+# any checkout. The argument still overrides it.
+SV2="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/avian-sv2}"
 AVIAND="$BIN/aviand"
 CLI="$BIN/avian-cli"
 MINER="$(cd "$(dirname "$0")/.." && pwd)/avian-miner"

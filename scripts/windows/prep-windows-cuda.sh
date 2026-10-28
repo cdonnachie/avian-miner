@@ -16,7 +16,10 @@ set -u
 # build at all, and clearing temp broke it on the machine that wrote it.
 S=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # Overridable so a clone somewhere else can be staged without editing this.
-W=${W:-/mnt/c/development/cpuminer-avian}
+# Derived rather than named. This stage runs under WSL, which sees
+# the tree as /mnt/c/..., and the derivation reports it in whatever
+# notation the running shell uses, so no form is written out.
+W=${W:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}
 SCRIPTS=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 echo "########## 1. stage ##########"

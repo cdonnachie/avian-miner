@@ -72,7 +72,9 @@ param(
     [string]$Out = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR\hip" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild\hip" })
 )
 
-$W = "C:\development\cpuminer-avian"
+# The repository, derived rather than named, so a clone anywhere
+# works. $PSScriptRoot is scripts\windows.
+$W = (Resolve-Path "$PSScriptRoot\..\..").Path
 $OUT = $Out
 $VCVARS = "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
 

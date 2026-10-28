@@ -17,9 +17,13 @@ and both are compiled from the same kernels, so the arrangement is checked by
 every Linux build rather than only on Windows.
 """
 import io
+import os
 import sys
 
-W = sys.argv[1] if len(sys.argv) > 1 else "/mnt/c/development/cpuminer-avian"
+# Derived rather than named, so a clone anywhere works. The argument
+# still wins, which is how the callers pass the build tree instead.
+W = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))))
 P = W + "/cuda/avian-cuda-shim.h"
 
 MARK = "AVIAN_CUDA_BUILDING_DLL"

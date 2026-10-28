@@ -14,7 +14,9 @@ set -u
 # written out, so the PowerShell and MSYS2 stages of the pipeline agree
 # on where each other's output went.
 BUILD_ROOT=${AVIAN_BUILD_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/avian-winbuild}
-SRC=${SRC:-/c/development/cpuminer-avian}
+# Derived rather than named, so a clone anywhere works. $SRC still
+# overrides, which is how a build from a different tree is done.
+SRC=${SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}
 WORK=${WORK:-$BUILD_ROOT}
 B=$WORK/cpuminer-avian
 

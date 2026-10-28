@@ -25,7 +25,9 @@
 set -eu
 
 WHICH="${1:-both}"
-SV2="${2:-/mnt/c/development/avian-sv2}"
+# The sibling clone, derived rather than named so this works from
+# any checkout. The argument still overrides it.
+SV2="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/avian-sv2}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 MINER_TREE="$(cd "$HERE/.." && pwd)"
 PROBE="${TMPDIR:-/tmp}/pow-probe-$$"

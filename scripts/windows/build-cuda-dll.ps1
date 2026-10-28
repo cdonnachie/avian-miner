@@ -17,7 +17,9 @@
 param([switch]$NoPtx)
 
 $ErrorActionPreference = "Stop"
-$W = "C:\development\cpuminer-avian"
+# The repository, derived rather than named, so a clone anywhere
+# works. $PSScriptRoot is scripts\windows.
+$W = (Resolve-Path "$PSScriptRoot\..\..").Path
 $BUILD = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild" })
 $OUT = Join-Path $BUILD "cuda"
 $CUDA = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9"

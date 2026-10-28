@@ -17,7 +17,10 @@ import os
 import re
 import sys
 
-W = sys.argv[1] if len(sys.argv) > 1 else "/mnt/c/development/cpuminer-avian"
+# Derived rather than named, so a clone anywhere works. The argument
+# still wins, which is how the callers pass the build tree instead.
+W = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))))
 
 COMPAT_H = '''#ifndef AVIAN_CUDA_WIN_COMPAT_H
 #define AVIAN_CUDA_WIN_COMPAT_H 1

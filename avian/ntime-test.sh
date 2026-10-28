@@ -8,7 +8,9 @@ set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TREE="$(cd "$HERE/.." && pwd)"
-SV2="${1:-/mnt/c/development/avian-sv2}"
+# The sibling clone, derived rather than named so this works from
+# any checkout. The argument still overrides it.
+SV2="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/avian-sv2}"
 OUT="${TMPDIR:-/tmp}/avian-ntime-test-$$"
 trap 'rm -f "$OUT"' EXIT
 

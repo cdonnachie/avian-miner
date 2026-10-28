@@ -127,7 +127,8 @@ scripts/windows/win-sv2.sh       # 2. add the Stratum v2 backend
 
 ```powershell
 # PowerShell, because nvcc needs MSVC
-wsl -- bash /mnt/c/development/cpuminer-avian/scripts/windows/prep-windows-cuda.sh
+# the WSL stage needs the repo as WSL sees it, so /mnt/c/... not C:\...
+wsl -- bash /mnt/c/<your repo>/scripts/windows/prep-windows-cuda.sh
 scripts\windows\build-cuda-dll.ps1
 ```
 
