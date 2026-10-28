@@ -80,6 +80,23 @@ python3 "$SCRIPTS/fix-launch-syntax.py" "$W/cuda" || exit 1
 python3 "$SCRIPTS/fix-launch-syntax.py" "$W/algo/x16" || exit 1
 
 echo
+echo "########## 10. the last of the inline PTX ##########"
+# The expressions a syntax check could not see. HIP rejects the 64-bit 'l'
+# constraint outright, so those announced themselves at once; it accepts 'r'
+# and then fails during instruction selection, so the 32-bit sites compiled as
+# far as codegen and no further. Found by compiling to object code rather than
+# running -fsyntax-only, which is the only reason this step exists.
+python3 "$SCRIPTS/fix-remaining-ptx.py" "$W/cuda/upstream" || exit 1
+
+echo
+echo "########## 11. brace-elided uint2 initializers ##########"
+# CUDA's uint2 is a plain struct and HIP's is a class template, so a flat list
+# of scalars initialises an array of the one and not the other. The braced
+# form is what the rest of the tree already writes and both compilers accept
+# it, so unlike the PTX work this needs no AVIAN_NO_PTX switch.
+python3 "$SCRIPTS/fix-uint2-braces.py" "$W/cuda/upstream" || exit 1
+
+echo
 echo "########## assertions ##########"
 fail=0
 grep -q "AVIAN_CUDA_BUILDING_DLL" "$W/cuda/avian-cuda-shim.h" \

@@ -4,6 +4,8 @@
  * JH80 by tpruvot - 2017 - under GPLv3
  **/
 #include <cuda_helper.h>
+/* AVIAN_NO_PTX and avian_lop3. See scripts/make-ptx-portable.py. */
+#include "avian-ptx-portable.h"
 
 // #include <stdio.h>  // printf
 // #include <unistd.h> // sleep
@@ -92,6 +94,10 @@ static void SWAP1(uint32_t &x) {
 
 __device__ __forceinline__
 static void SWAP4x4(uint32_t *x) {
+#if AVIAN_NO_PTX
+	for (uint32_t i = 0; i < 4; i++, ++x)
+		*x = ((*x & 0x0F0F0F0Fu) << 4) | ((*x & 0xF0F0F0F0u) >> 4);
+#else
 	#pragma nounroll
 	// y is used as tmp register too
 	for (uint32_t y=0; y<4; y++, ++x) {
@@ -100,10 +106,15 @@ static void SWAP4x4(uint32_t *x) {
 		"vshl.u32.u32.u32.clamp.add %0, %0, 4, %1;"
 		: "+r"(*x) : "r"(y));
 	}
+#endif
 }
 
 __device__ __forceinline__
 static void SWAP2x4(uint32_t *x) {
+#if AVIAN_NO_PTX
+	for (uint32_t i = 0; i < 4; i++, ++x)
+		*x = ((*x & 0x33333333u) << 2) | ((*x & 0xCCCCCCCCu) >> 2);
+#else
 	#pragma nounroll
 	// y is used as tmp register too
 	for (uint32_t y=0; y<4; y++, ++x) {
@@ -112,10 +123,15 @@ static void SWAP2x4(uint32_t *x) {
 		"vshl.u32.u32.u32.clamp.add %0, %0, 2, %1;"
 		: "+r"(*x) : "r"(y));
 	}
+#endif
 }
 
 __device__ __forceinline__
 static void SWAP1x4(uint32_t *x) {
+#if AVIAN_NO_PTX
+	for (uint32_t i = 0; i < 4; i++, ++x)
+		*x = ((*x & 0x55555555u) << 1) | ((*x & 0xAAAAAAAAu) >> 1);
+#else
 	#pragma nounroll
 	// y is used as tmp register too
 	for (uint32_t y=0; y<4; y++, ++x) {
@@ -124,6 +140,7 @@ static void SWAP1x4(uint32_t *x) {
 		"vshl.u32.u32.u32.clamp.add %0, %0, 1, %1;"
 		: "+r"(*x) : "r"(y));
 	}
+#endif
 }
 
 /* The MDS transform */

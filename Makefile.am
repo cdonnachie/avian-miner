@@ -391,16 +391,25 @@ CUDA_OBJECTS = $(CUDA_SOURCES:.cu=.o)
 # -I. and -I$(top_srcdir) find cpuminer-config.h, miner.h and compat.h;
 # cuda/ finds the shim; cuda/upstream/ finds the vendored headers at the paths
 # upstream's own includes expect.
-NVCC_INCLUDES = -I. -I$(top_srcdir) -I$(top_srcdir)/cuda -I$(top_srcdir)/cuda/upstream
+GPU_INCLUDES = -I. -I$(top_srcdir) -I$(top_srcdir)/cuda -I$(top_srcdir)/cuda/upstream
+
+if HAVE_HIP
+# Ahead of everything else, so a kernel's #include <cuda_runtime.h> finds the
+# rename shim rather than a CUDA toolkit that may also be installed. An Nvidia
+# build never sees this directory.
+GPU_SHIM_INCLUDES = -I$(top_srcdir)/cuda/hip
+else
+GPU_SHIM_INCLUDES =
+endif
 
 # -w because the vendored kernels are not ours to make warning clean, and the
 # noise would bury warnings from code that is.
-NVCC_FLAGS = @NVCC_ARCH@ -std=c++14 -w $(NVCC_INCLUDES)
+GPU_FLAGS = @GPUCC_ARCH@ -std=c++14 -w $(GPU_SHIM_INCLUDES) $(GPU_INCLUDES)
 
 .cu.o:
-	@NVCC@ $(NVCC_FLAGS) -c -o $@ $<
+	@GPUCC@ $(GPU_FLAGS) -c -o $@ $<
 
-avian_miner_LDADD += $(CUDA_OBJECTS) @CUDA_LDFLAGS@ @CUDA_LIBS@
+avian_miner_LDADD += $(CUDA_OBJECTS) @GPU_LDFLAGS@ @GPU_LIBS@
 avian_miner_SOURCES += algo/x16/x16rt-cuda-gate.c                        algo/x16/x16rt-cuda-host.c
 EXTRA_DIST = $(CUDA_SOURCES)
 CLEANFILES = $(CUDA_OBJECTS)

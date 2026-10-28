@@ -329,6 +329,9 @@ static __device__ __forceinline__ uint2 xorswap32(uint2 u, uint2 v)
 __device__ __forceinline__
 uint64_t andor(const uint64_t a,const uint64_t b,const uint64_t c)
 {
+#if AVIAN_NO_PTX
+	return ((a | b) & c) | (a & b);
+#else
 	uint64_t result;
 	asm("{\n\t"
 		".reg .u64 m,n;\n\t"
@@ -340,23 +343,32 @@ uint64_t andor(const uint64_t a,const uint64_t b,const uint64_t c)
 	: "=l"(result) : "l"(a), "l"(b), "l"(c));
 	return result;
 //	return ((a | b) & c) | (a & b);
+#endif
 }
 
 // device asm for x17
 __device__ __forceinline__
 uint64_t shr_u64(const uint64_t x, uint32_t n){
+#if AVIAN_NO_PTX
+	return x >> n;
+#else
 	uint64_t result;
 	asm ("shr.b64 %0,%1,%2;\n\t" : "=l"(result) : "l"(x), "r"(n));
 	return result;
 //	return x >> n;
+#endif
 }
 
 __device__ __forceinline__
 uint64_t shl_u64(const uint64_t x, uint32_t n){
+#if AVIAN_NO_PTX
+	return x << n;
+#else
 	uint64_t result;
 	asm("shl.b64 %0,%1,%2;\n\t" : "=l"(result) : "l"(x), "r"(n));
 	return result;
 //	return x << n;
+#endif
 }
 
 __device__ __forceinline__
@@ -439,10 +451,14 @@ uint64_t ROTL64(const uint64_t value, const int offset) {
 
 __device__ __forceinline__
 uint64_t SWAPDWORDS(uint64_t value){
+#if AVIAN_NO_PTX
+	return (value >> 32) | (value << 32);
+#else
 	uint2 temp;
 	asm("mov.b64 {%0, %1}, %2; ": "=r"(temp.x), "=r"(temp.y) : "l"(value));
 	asm("mov.b64 %0, {%1, %2}; ": "=l"(value) : "r"(temp.y), "r"(temp.x));
 	return value;
+#endif
 }
 
 __device__ __forceinline__
@@ -669,19 +685,27 @@ uint2 ROL24(const uint2 a){
 
 __device__ __forceinline__
 static uint2 SHL2(const uint2 a,const uint32_t n) {
+#if AVIAN_NO_PTX
+	return vectorize(devectorize(a) << n);
+#else
 	uint64_t result;
 	const uint64_t x = devectorize(a);
 	asm ("shl.b64 %0,%1,%2;\n\t" : "=l"(result) : "l"(x), "r"(n));
 	return vectorize(result);
+#endif
 }
 
 __device__ __forceinline__
 static uint2 SHR2(const uint2 a,const uint32_t n){
+#if AVIAN_NO_PTX
+	return vectorize(devectorize(a) >> n);
+#else
 
 	uint64_t result;
 	const uint64_t x = devectorize(a);
 	asm ("shr.b64 %0,%1,%2;\n\t" : "=l"(result) : "l"(x), "r"(n));
 	return vectorize(result);
+#endif
 }
 
 __device__ __forceinline__
@@ -904,17 +928,31 @@ uint32_t chi(const uint32_t a,const uint32_t b,const uint32_t c){ //keccak - chi
 }
 __device__ __forceinline__
 uint32_t bfe(uint32_t x, uint32_t bit, uint32_t numBits) {
+#if AVIAN_NO_PTX
+	const uint32_t mask = (numBits >= 32) ? 0xFFFFFFFFu
+	                                      : ((1u << numBits) - 1u);
+	return (bit >= 32) ? 0u : ((x >> bit) & mask);
+#else
 	uint32_t ret;
 	asm("bfe.u32 %0, %1, %2, %3;" : "=r"(ret) : "r"(x), "r"(bit), "r"(numBits));
 	return ret;
 
+#endif
 }
 
 __device__ __forceinline__
 uint32_t bfi(uint32_t x, uint32_t a, uint32_t bit, uint32_t numBits) {
+#if AVIAN_NO_PTX
+	if (bit >= 32 || numBits == 0) return a;
+	const uint32_t width = (numBits >= 32) ? 0xFFFFFFFFu
+	                                       : ((1u << numBits) - 1u);
+	const uint32_t mask = width << bit;
+	return (a & ~mask) | ((x << bit) & mask);
+#else
 	uint32_t ret;
 	asm("bfi.b32 %0, %1, %2, %3,%4;" : "=r"(ret) : "r"(x), "r"(a), "r"(bit), "r"(numBits));
 	return ret;
+#endif
 }
 
 // CUDA 9+ deprecated functions warnings (new mask param)

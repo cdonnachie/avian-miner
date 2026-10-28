@@ -216,25 +216,63 @@ scripts in `scripts/` and re-applied at staging time.
 
 ## AMD, via HIP
 
-Not buildable yet, and this section records exactly how far it gets so the
-remaining work is a list rather than an investigation. Nothing here is needed
-for an Nvidia build.
+It builds. Every kernel compiles to AMD GCN object code, and the plain-C
+paths an AMD card would execute have been checked against the CPU. What has
+not happened is a run on AMD silicon, because there is none on the
+development machine. Nothing in this section is needed for an Nvidia build.
 
-There is no AMD GPU on the development machine, so none of this has been
-*run*. What has been done is compiled, with the HIP SDK's clang targeting
-gfx1030, which finds every portability error without any AMD silicon:
-
-```powershell
-& "C:\Program Files\AMD\ROCm\7.2\bin\clang++.exe" `
-    -x hip --offload-arch=gfx1030 -fsyntax-only -std=c++14 -w `
-    -I<a cuda-name shim> -I. -Icuda -Icuda/upstream `
-    cuda/upstream/quark/cuda_bmw512.cu
+```sh
+./autogen.sh
+./configure --with-curl --with-hip          # ROCm prefix defaults to /opt/rocm
+make -j$(nproc)
 ```
 
-The shim is a handful of headers named `cuda_runtime.h`, `cuda.h` and so on
-that include `hip/hip_runtime.h` and map the CUDA runtime names the kernels'
-host side uses. It is not in the repository, because it belongs to whatever
-form the AMD build eventually takes rather than to the CUDA one.
+`--with-hip` and `--with-cuda` build the same kernels for different hardware
+and are mutually exclusive. The architecture list is asked of the machine
+rather than defaulted, because there is no safe guess: a CUDA binary carries
+PTX, so a card newer than the build still runs by driver JIT, whereas an AMD
+binary built for the wrong `gfx` target simply fails to launch. Pass
+`--with-hip-arch=gfx942` to build for a card that is not in the build
+machine.
+
+This is a smaller change to the build than it sounds, and the reason is the
+Windows DLL split: the miner's own C never names a GPU runtime symbol, it
+goes through the plain-data `avian_cuda_*` ABI in `cuda/avian-cuda-api.h`. So
+the compiler and the runtime library are the whole of the difference, and
+`HAVE_CUDA` keeps its name for a HIP build because it gates host code whose
+every symbol is `avian_cuda_*` whichever card ends up running it.
+
+### How it was taken this far without an AMD GPU
+
+Two measurements, and the second only became possible once the first was
+clean. Neither needs an AMD card, because a compiler does not need the
+hardware it emits code for. On Windows, with only the HIP SDK installed:
+
+```powershell
+# 1. syntax, which is fast and finds the bulk of it
+& "C:\Program Files\AMD\ROCm\7.2\bin\clang++.exe" `
+    -x hip --offload-arch=gfx942 -fsyntax-only -std=c++14 -w `
+    -Icuda\hip -I. -Icuda -Icuda\upstream `
+    cuda\upstream\quark\cuda_bmw512.cu
+
+# 2. object code, which is the one that counts
+& "C:\Program Files\AMD\ROCm\7.2\bin\clang++.exe" `
+    -x hip --offload-arch=gfx942 -c -O3 -std=c++14 -w -ferror-limit=1 `
+    -Icuda\hip -I. -Icuda -Icuda\upstream `
+    cuda\upstream\quark\cuda_bmw512.cu -o bmw512.o
+```
+
+Both are clean for every kernel, for `gfx942` (CDNA, the Instinct cards) and
+`gfx1030` (RDNA) alike.
+
+`cuda/hip/` is the shim: headers named `cuda_runtime.h`, `cuda.h` and so on
+that include `hip/hip_runtime.h` and rename the CUDA runtime symbols the
+kernels use. Everything in it is a rename. Where a construct needed the
+kernels themselves to change, it lives in a patch script under `scripts/`
+instead, and that split is what kept the port reviewable: the shim absorbs no
+semantics. The `--with-hip` build puts this directory first on the include
+path so a kernel's `#include <cuda_runtime.h>` finds it; an Nvidia build
+never sees it.
 
 ### One fact explains most of it
 
@@ -265,17 +303,23 @@ Nothing changes for CUDA, where `__HIPCC__` is undefined.
 | `fix-xor-asm.py` | 22 `xor.b64` statements in `xor1`/`3`/`5`/`8`/`9` |
 | `fix-hip-guards.py` | the three `__CUDA_ARCH__`-as-host-compiler guards |
 | `fix-launch-syntax.py` | 43 launches written `f << <grid, block >> > (args)` |
+| `fix-remaining-ptx.py` | the last 12 inline PTX expressions |
+| `fix-uint2-braces.py` | the two brace-elided `uint2` tables |
+
+They are patch scripts rather than edits because `cuda/upstream` is vendored,
+and `prep-windows-cuda.sh` re-applies all of them at staging time: a
+re-vendor would otherwise drop the lot with no build failing to say so.
 
 The launch one is worth a note: nvcc accepts the spaces and clang in HIP mode
 does not, reporting `expected expression` about a line that is plainly a
 launch. The normalised form is identical to nvcc, so it is applied
-unconditionally rather than behind a flag.
+unconditionally rather than behind a flag. The `uint2` one likewise needs no
+switch, since the braced form is what the rest of the tree already writes.
 
 Everything else is selected by `AVIAN_NO_PTX`, which `cuda/avian-ptx-portable.h`
 sets automatically under `__HIPCC__` and which can be forced on nvcc with
-`-DAVIAN_NO_PTX=1`. That flag is the reason any of this is trustworthy: the
-portable path is verifiable on the hardware that is actually here. See
-`build-cuda-dll.ps1 -NoPtx`.
+`-DAVIAN_NO_PTX=1`. That flag is the reason any of this is trustworthy, and
+it is not a formality: see the verification section below.
 
 Measured progress, as distinct error locations rather than error reports,
 since one bad line in a shared header reports once per file that includes it:
@@ -285,30 +329,65 @@ since one bad line in a shared header reports once per file that includes it:
 27  after a shim for __builtin_align__, which alone accounted for 228 reports
 22  after the launch syntax, the guards and the xor.b64 chains
 16  after the hamsi table guard
+ 0  after the remaining PTX, the uint2 tables and the five runtime names
 ```
 
-### What is left
+### Why a syntax check was not enough
 
-Eleven code sites and five shim entries.
+Reaching zero above meant zero *syntax* errors. Compiling the same files to
+object code then failed three of them, for two reasons that `-fsyntax-only`
+is structurally unable to find, because it stops before instruction
+selection.
 
-- **8 PTX expressions.** A 64-bit `and.b64`/`or.b64` majority function, two
-  `shr.b64`, two `shl.b64`, two `mov.b64` halves-of-a-64-bit-word, and one
-  `ld.global.nc.v4.u32` in `cuda_x11_simd512_func.cuh`. All straightforward;
-  the first six are plain C expressions and the load is a `uint4` read.
-- **3 sites in `cuda_bmw512.cu`.** `const uint2 cmsg[16] = { 0xaaaaaaa0,
-  0xaaaaaaaa, ... }` initialises an array of `uint2` from a flat list of 32
-  scalars. CUDA's `uint2` is a plain struct so brace elision applies; HIP's
-  is a class template, so it does not. This is the only genuine type-system
-  difference found.
-- **5 runtime names** for the shim: `cudaThreadSynchronize` four times and
-  `cudaDeviceScheduleBlockingSync` once.
+HIP rejects the 64-bit `l` register constraint outright, which is why every
+64-bit site announced itself early and why the list of remaining work looked
+short. It **accepts `r`** and only fails later, in the backend. So:
 
-Beyond compiling, and untested because it needs hardware: the `device_sm`
-block-size idiom, which is meaningless off Nvidia and should be deleted
-rather than translated, and the wavefront assumptions at the 205 shuffle
-sites. Those use only widths 4 and 8 and derive their lane maths from
-`threadIdx.x & 3` and `& 7` rather than from `warpSize`, so they should be
-wave-size agnostic, but "should be" is not a measurement.
+- `cuda_jh512.cu` reported `illegal VGPR to SGPR copy`. Three bit
+  permutations whose last instruction is `vshl.u32.u32.u32.clamp.add`, an
+  Nvidia video instruction with no AMD counterpart at all.
+- `cuda_helper_alexis.h` reported `invalid instruction` for `bfe.u32`, and
+  `bfi.b32` directly below it was hidden behind `-ferror-limit=1`.
+
+The lesson is worth keeping: for this codebase a HIP syntax check is a
+progress indicator, not a gate. Only `-c` is a gate.
+
+### Verification
+
+The portable bodies are checked, not assumed. `-DAVIAN_NO_PTX=1` makes nvcc
+compile the exact plain-C code an AMD card would run, so correctness is
+testable on Nvidia hardware before any AMD card exists:
+
+```
+2 forced hash orders x 16 depths, GPU against CPU
+  987648 comparisons, 0 differing
+  894208 comparisons, 0 differing
+```
+
+That covers every stage of the X16RT chain. Separately, `avian_lop3` was
+checked against an independent per-bit statement of the PTX rule for all 256
+immediates over 307,200 combinations, 0 wrong.
+
+The CUDA build is rebuilt and re-verified alongside, since these scripts edit
+sources both backends share. The `-NoPtx` DLL is about 2.5 MB larger than the
+default, which is one instruction becoming several and is why the asm stays
+the default on Nvidia.
+
+### What is left, and it needs hardware
+
+Nothing is known to be missing from the source side. What cannot be settled
+without an AMD GPU:
+
+- **Whether it runs at all.** Compiling and launching are different claims.
+- **The wavefront assumptions** at the shuffle sites. They use only widths 4
+  and 8 and derive their lane maths from `threadIdx.x & 3` and `& 7` rather
+  than from `warpSize`, so they should be wave-size agnostic, but "should be"
+  is not a measurement. CDNA is wave64 against Nvidia's 32-wide warp, so an
+  Instinct card is the harsher test and an RDNA card at wave32 the gentler
+  one.
+- **The `device_sm` block-size idiom**, which is meaningless off Nvidia and
+  should be deleted rather than translated.
+- **Hashrate**, which no amount of compiling predicts.
 
 ## Known rough edges
 

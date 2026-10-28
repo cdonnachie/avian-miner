@@ -207,11 +207,104 @@ if test "x$with_cuda" != "x" && test "x$with_cuda" != "xno" ; then
    AC_DEFINE([HAVE_CUDA], [1], [Define to 1 to build the CUDA X16RT backend.])
    have_cuda=true
 fi
+# The same kernels, for AMD hardware. This is a smaller change than it looks:
+# the miner's own C never names a GPU runtime symbol, it goes through the
+# plain-data avian_cuda_* ABI in cuda/avian-cuda-api.h, so the compiler and
+# the runtime library are the whole of the difference.
+AC_ARG_WITH([hip],
+   [  --with-hip@<:@=PATH@:>@   build the HIP X16RT backend for AMD; PATH is the ROCm prefix @<:@default=/opt/rocm@:>@])
+
+have_hip=false
+if test "x$with_hip" != "x" && test "x$with_hip" != "xno" ; then
+   if test x$have_cuda = xtrue ; then
+      AC_MSG_ERROR([--with-cuda and --with-hip build the same kernels for different hardware; pass one])
+   fi
+   if test "x$with_hip" = "xyes" ; then
+      hip_prefix=/opt/rocm
+   else
+      hip_prefix="$with_hip"
+   fi
+   AC_MSG_CHECKING([for hipcc])
+   if test -x "$hip_prefix/bin/hipcc" ; then
+      HIPCC="$hip_prefix/bin/hipcc"
+      AC_MSG_RESULT([$HIPCC])
+   else
+      AC_MSG_RESULT([not under $hip_prefix/bin])
+      AC_PATH_PROG([HIPCC], [hipcc], [no])
+   fi
+   if test "x$HIPCC" = "xno" || test "x$HIPCC" = "x" ; then
+      AC_MSG_ERROR([no hipcc in $hip_prefix/bin or on PATH; pass --with-hip=PREFIX])
+   fi
+
+   AC_ARG_WITH([hip-arch],
+      [  --with-hip-arch=LIST    build these GPU architectures, e.g. gfx942 or "gfx942 gfx1100" @<:@default=the GPUs installed here@:>@])
+   if test "x$with_hip_arch" != "x" && test "x$with_hip_arch" != "xno" ; then
+      hip_want="$with_hip_arch"
+   else
+      dnl Asked of the machine rather than defaulted to a list, because unlike
+      dnl the CUDA side there is no safe guess: a CUDA binary carries PTX and
+      dnl a card newer than the build still runs by driver JIT, whereas an AMD
+      dnl binary built for the wrong gfx target simply fails to launch.
+      AC_MSG_CHECKING([for an installed AMD GPU])
+      hip_want=`$hip_prefix/llvm/bin/amdgpu-arch 2>/dev/null | sort -u | tr '
+' ' '`
+      if test "x$hip_want" = "x" ; then
+         hip_want=`amdgpu-arch 2>/dev/null | sort -u | tr '
+' ' '`
+      fi
+      if test "x$hip_want" = "x" ; then
+         AC_MSG_RESULT([none found])
+         AC_MSG_ERROR([no GPU here to build for; pass --with-hip-arch=gfx942 or similar])
+      fi
+      AC_MSG_RESULT([$hip_want])
+   fi
+
+   AC_MSG_CHECKING([GPU architectures])
+   HIPCC_ARCH=""
+   for a in $hip_want ; do
+      HIPCC_ARCH="$HIPCC_ARCH --offload-arch=$a"
+   done
+   AC_MSG_RESULT([$hip_want])
+
+   HIP_LDFLAGS="-L$hip_prefix/lib"
+   dnl -lstdc++ for the same reason the CUDA side needs it: the kernels are
+   dnl C++ and this miner links with CC.
+   HIP_LIBS="-lamdhip64 -lstdc++"
+   have_hip=true
+fi
+
+dnl At most one backend, and the rest of the build does not care which. Note
+dnl that HAVE_CUDA keeps its name for a HIP build. It gates the host-side GPU
+dnl code, every name in which is avian_cuda_* whichever card ends up running
+dnl it, and it is what cpu-miner.c, x16r-gate.c and the Windows build scripts
+dnl already test. A rename that stopped at this one symbol would leave those
+dnl testing something different from the sources.
+if test x$have_hip = xtrue ; then
+   AC_DEFINE([HAVE_CUDA], [1], [Define to 1 to build a GPU X16RT backend.])
+   have_cuda=true
+   GPUCC="$HIPCC"
+   dnl -x hip because these files are named .cu, which hipcc otherwise hands
+   dnl to the host compiler as plain C++.
+   GPUCC_ARCH="$HIPCC_ARCH -x hip"
+   GPU_LDFLAGS="$HIP_LDFLAGS"
+   GPU_LIBS="$HIP_LIBS"
+else
+   GPUCC="$NVCC"
+   GPUCC_ARCH="$NVCC_ARCH"
+   GPU_LDFLAGS="$CUDA_LDFLAGS"
+   GPU_LIBS="$CUDA_LIBS"
+fi
+
 AM_CONDITIONAL([HAVE_CUDA], [test x$have_cuda = xtrue])
+AM_CONDITIONAL([HAVE_HIP], [test x$have_hip = xtrue])
 AC_SUBST(NVCC)
 AC_SUBST(NVCC_ARCH)
 AC_SUBST(CUDA_LDFLAGS)
 AC_SUBST(CUDA_LIBS)
+AC_SUBST(GPUCC)
+AC_SUBST(GPUCC_ARCH)
+AC_SUBST(GPU_LDFLAGS)
+AC_SUBST(GPU_LIBS)
 
 # libcurl install path (for mingw : --with-curl=/usr/local)
 AC_ARG_WITH([curl],

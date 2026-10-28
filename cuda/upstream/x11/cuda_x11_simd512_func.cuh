@@ -185,7 +185,12 @@ static void Round8_3_final(uint32_t*const __restrict__  A, const uint32_t r, con
 
 //#define expanded_vector(x) __ldg(&g_fft4[x])
 static __device__ __forceinline__ void expanded_vector(uint32_t* w, const uint4* ptr){
+#if AVIAN_NO_PTX
+	const uint4 v = __ldg(ptr);
+	w[0] = v.x; w[1] = v.y; w[2] = v.z; w[3] = v.w;
+#else
 	asm volatile ("ld.global.nc.v4.u32 {%0,%1,%2,%3}, [%4];"  : "=r"(w[0]), "=r"(w[1]), "=r"(w[2]), "=r"(w[3]) : __LDG_PTR(ptr));
+#endif
 }
 
 __device__ __forceinline__
