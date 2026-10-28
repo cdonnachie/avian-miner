@@ -373,18 +373,52 @@ sources both backends share. The `-NoPtx` DLL is about 2.5 MB larger than the
 default, which is one instruction becoming several and is why the asm stays
 the default on Nvidia.
 
-### What is left, and it needs hardware
+### What is left: two kernels hash incorrectly
 
-Nothing is known to be missing from the source side. What cannot be settled
-without an AMD GPU:
+It runs. On a gfx942 (MI325X, wave64, 304 CUs) it reaches 82.5 MH/s with no
+launch failures and no memory faults. It does not yet hash correctly, and
+this is where to start rather than re-deriving it.
 
-- **Whether it runs at all.** Compiling and launching are different claims.
+Minimal reproduction, with `AVIAN_GPU_FORCE_ORDER` set to one repeated
+algorithm so each kernel is isolated. Depth 1 is the 80-byte kernel, depth 2
+onwards the 64-byte one:
+
+```
+5555555555555555  skein    depth 1 agrees, depth 2 DIFFERS
+1111111111111111  bmw      depth 1 agrees, depth 2 DIFFERS
+4444444444444444  keccak   every depth agrees
+```
+
+So `quark_skein512_gpu_hash_64` and `quark_bmw512_gpu_hash_64` are each
+independently wrong, their own `_80` variants are right, and the other nine
+`_64` kernels in the chain are right.
+
+Eliminated by measurement on the card rather than by reading, so none of it
+needs doing again:
+
+- every uint2 helper both kernels use, against references written from the
+  64-bit value, in **both** header sets, since bmw includes the `_alexis`
+  pair and skein does not: `vectorize` round trip, `ROL2`, `ROR2`, `ROL8`,
+  `ROR8`, `ROL24`, `SHL2`, `SHR2`, `xor3x` and `ROTL64` over both types. All
+  exact.
+- `uint2` `operator+`, `operator-` and `operator^`, which do carry between
+  the halves. Exact.
+- `uint2x4`, whose `__ldg4` fallback is a plain dereference and is shared
+  with keccak, which works. Its sibling `ldg4` **is** wrong, copying one
+  32-byte structure where the PTX loads three, but nothing calls it.
+- alignment of the cast destinations, which is the same unattributed
+  `uint2 x[n]` that keccak uses.
+
+Not yet looked at: the bodies of the two `_64` kernels, their output stores
+in particular. Their input reads are the same `__ldg4` form keccak uses, and
+their inputs are known good, because the stage before them verifies exact.
+
+Still unmeasured, and separate from the above:
+
 - **The wavefront assumptions** at the shuffle sites. They use only widths 4
   and 8 and derive their lane maths from `threadIdx.x & 3` and `& 7` rather
-  than from `warpSize`, so they should be wave-size agnostic, but "should be"
-  is not a measurement. CDNA is wave64 against Nvidia's 32-wide warp, so an
-  Instinct card is the harsher test and an RDNA card at wave32 the gentler
-  one.
+  than from `warpSize`, so they should be wave-size agnostic. Neither failing
+  kernel uses a shuffle at all, so this is not the cause here.
 - **The `device_sm` block-size idiom**, which is meaningless off Nvidia and
   should be deleted rather than translated.
 - **Hashrate**, which no amount of compiling predicts.
