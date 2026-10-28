@@ -13,6 +13,14 @@ SV2=${SV2:-$HOME/avian-gpu/avian-sv2}
 # The pinned upstream checkout the driver is generated from. Was missing, and
 # with set -u that aborted the script just before the generate step, so make
 # quietly rebuilt the previous driver and two fixes went untested.
+# The generator input: a clone of the upstream this port is derived from.
+#   https://github.com/JayDDee/suprminer-jdd  at e4efcea
+# Pinned here because it is the one input to the pipeline that is not in
+# this repository, and the generated driver it produced is. Without the
+# revision recorded, a rebuild could silently generate from a different
+# upstream than the committed algo/x16/x16rt-cuda-batch.cu came from.
+# Only needed to regenerate; the generated driver is tracked, so a plain
+# build does not need this at all.
 SRC=${SRC:-$HOME/avian-gpu/.suprminer-src}
 
 # Prefer the newest 12.x present, since 12.8 was the first with Blackwell.

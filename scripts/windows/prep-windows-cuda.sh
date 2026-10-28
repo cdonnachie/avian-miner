@@ -10,8 +10,13 @@
 #   2. point POSIX includes at a small MSVC compat header
 #   3. give the shim a DLL path that does not need miner.h
 set -u
-S=/mnt/c/Users/craig/AppData/Local/Temp/claude/c--development-Avian-v5-0/9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635/scratchpad
-W=/mnt/c/development/cpuminer-avian
+# The three patch scripts below live beside this one and are tracked, so they
+# are located relative to it. They used to be read out of a session scratchpad
+# directory, which meant a fresh clone of this repository could not run the
+# build at all, and clearing temp broke it on the machine that wrote it.
+S=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# Overridable so a clone somewhere else can be staged without editing this.
+W=${W:-/mnt/c/development/cpuminer-avian}
 
 echo "########## 1. stage ##########"
 bash "$S/stage-cuda-windows.sh" || exit 1
