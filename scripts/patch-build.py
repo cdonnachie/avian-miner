@@ -143,7 +143,30 @@ endif
 p = os.path.join(root, "Makefile.am")
 s = io.open(p, encoding="utf-8", errors="surrogateescape", newline="").read()
 if "HAVE_CUDA" in s:
-    print("  Makefile.am already patched")
+    # The block is committed now, so this is the common path and the list in
+    # it is frozen. That is the point: what gets built is what is written
+    # down. But a .cu added to cuda/upstream would then go unbuilt with
+    # nothing to say so, and a kernel that is not compiled fails at link if
+    # you are lucky and at runtime if you are not. So the committed list is
+    # checked against the tree every time.
+    listed = set()
+    for line in s.split("CUDA_SOURCES = ", 1)[1].splitlines():
+        if not line.strip():
+            break
+        name = line.strip().rstrip("\\").strip()
+        if name.endswith(".cu"):
+            listed.add(name)
+    want = set(sources)
+    if listed != want:
+        missing = sorted(want - listed)
+        extra = sorted(listed - want)
+        for f in missing:
+            print("  NOT IN Makefile.am: %s" % f)
+        for f in extra:
+            print("  LISTED BUT ABSENT:  %s" % f)
+        raise SystemExit("Makefile.am's CUDA_SOURCES no longer matches the tree")
+    print("  Makefile.am already patched, %d sources, list matches the tree"
+          % len(listed))
 else:
     # SUFFIXES must be set before the rule is used, and near the top is the
     # conventional place.

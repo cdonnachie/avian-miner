@@ -30,8 +30,13 @@ import io, os, sys
 b, dll = sys.argv[1], sys.argv[2]
 p = os.path.join(b, "Makefile.am")
 s = io.open(p, encoding="utf-8", errors="surrogateescape", newline="").read()
-if "x16rt-cuda-host.c" in s:
-    print("  Makefile.am already has the GPU backend")
+# Tested against avian_cuda.lib, not against x16rt-cuda-host.c, because the
+# Linux `if HAVE_CUDA` block in the committed Makefile.am names that source
+# too. Matching on it would make this stage believe its own edit was already
+# there, skip it, and produce a Windows binary with no GPU backend while
+# reporting success. The import library appears only here.
+if "avian_cuda.lib" in s:
+    print("  Makefile.am already has the Windows GPU backend")
 else:
     s = s.rstrip("\n") + """
 

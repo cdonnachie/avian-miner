@@ -27,6 +27,8 @@ endif
 
 EXTRA_DIST = example-cfg.json nomacro.pl
 
+SUFFIXES = .cu
+
 SUBDIRS = compat
 
 ALL_INCLUDES = @PTHREAD_FLAGS@ -fno-strict-aliasing $(EXTRA_INCLUDES) -I. @AVIAN_SV2_CFLAGS@
@@ -344,4 +346,62 @@ avian_miner-neoscrypt.o: neoscrypt.c
 	@echo "CUSTOM ${@}: ${filter %.o,${^}} ${filter %.c,${^}}"
 	$(CC) $(common_ccflags) -g -O3 $(gprof_cflags) -MT $@ -MD -MP -c -o $@ $<
 
+endif
+
+if HAVE_CUDA
+# automake has no notion of .cu, so these are compiled by an explicit rule and
+# handed to the link as objects. Listed one per line rather than globbed, so
+# that what is built is what is in the tree and `make dist` sees them.
+CUDA_SOURCES = \
+  cuda/device.cu \
+  cuda/avian-cuda-support.cu \
+  algo/x16/x16rt-cuda-batch.cu \
+  cuda/upstream/JHA/cuda_jha_keccak512.cu \
+  cuda/upstream/cuda_checkhash.cu \
+  cuda/upstream/quark/cuda_bmw512.cu \
+  cuda/upstream/quark/cuda_jh512.cu \
+  cuda/upstream/quark/cuda_quark_blake512.cu \
+  cuda/upstream/quark/cuda_quark_groestl512.cu \
+  cuda/upstream/quark/cuda_quark_keccak512.cu \
+  cuda/upstream/quark/cuda_skein512.cu \
+  cuda/upstream/qubit/qubit_luffa512_alexis.cu \
+  cuda/upstream/x11/cuda_x11_cubehash512.cu \
+  cuda/upstream/x11/cuda_x11_cubehash512_80.cu \
+  cuda/upstream/x11/cuda_x11_echo_sp.cu \
+  cuda/upstream/x11/cuda_x11_luffa512.cu \
+  cuda/upstream/x11/cuda_x11_shavite512.cu \
+  cuda/upstream/x11/cuda_x11_shavite512_sp.cu \
+  cuda/upstream/x11/cuda_x11_simd512.cu \
+  cuda/upstream/x13/cuda_x13_fugue512_sp.cu \
+  cuda/upstream/x13/cuda_x13_hamsi512.cu \
+  cuda/upstream/x13/cuda_x13_hamsi512_sp.cu \
+  cuda/upstream/x15/cuda_x14_shabal512.cu \
+  cuda/upstream/x15/cuda_x14_shabal512_sp.cu \
+  cuda/upstream/x15/cuda_x15_whirlpool.cu \
+  cuda/upstream/x16r/cuda_x16_echo512.cu \
+  cuda/upstream/x16r/cuda_x16_fugue512.cu \
+  cuda/upstream/x16r/cuda_x16_shabal512.cu \
+  cuda/upstream/x16r/cuda_x16_shavite512.cu \
+  cuda/upstream/x16r/cuda_x16_simd512_80.cu \
+  cuda/upstream/x16r/cuda_x16_whirlpool.cu \
+  cuda/upstream/x17/cuda_x17_sha512.cu
+
+CUDA_OBJECTS = $(CUDA_SOURCES:.cu=.o)
+
+# -I. and -I$(top_srcdir) find cpuminer-config.h, miner.h and compat.h;
+# cuda/ finds the shim; cuda/upstream/ finds the vendored headers at the paths
+# upstream's own includes expect.
+NVCC_INCLUDES = -I. -I$(top_srcdir) -I$(top_srcdir)/cuda -I$(top_srcdir)/cuda/upstream
+
+# -w because the vendored kernels are not ours to make warning clean, and the
+# noise would bury warnings from code that is.
+NVCC_FLAGS = @NVCC_ARCH@ -std=c++14 -w $(NVCC_INCLUDES)
+
+.cu.o:
+	@NVCC@ $(NVCC_FLAGS) -c -o $@ $<
+
+avian_miner_LDADD += $(CUDA_OBJECTS) @CUDA_LDFLAGS@ @CUDA_LIBS@
+avian_miner_SOURCES += algo/x16/x16rt-cuda-gate.c                        algo/x16/x16rt-cuda-host.c
+EXTRA_DIST = $(CUDA_SOURCES)
+CLEANFILES = $(CUDA_OBJECTS)
 endif

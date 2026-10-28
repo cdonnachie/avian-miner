@@ -40,7 +40,23 @@ v2 a miner without it cannot reach the pool.
 
 ## Linux
 
-One script does the whole thing:
+A plain build works, because `--with-cuda` is part of the committed
+`configure.ac`:
+
+```sh
+./autogen.sh
+./configure --with-curl --with-cuda=/usr/local/cuda-12.9 --with-cuda-arch=86
+make -j"$(nproc)"
+```
+
+`--with-cuda-arch` is optional and takes a space-separated list. Left out,
+configure asks the toolkit what it can emit with `nvcc --list-gpu-arch` and
+builds every architecture from Maxwell to Blackwell that it offers, which is
+the right thing for a release and about an hour you do not want while
+iterating.
+
+For development, one script does the whole thing including the driver
+regeneration and the selftests:
 
 ```sh
 scripts/configure-build.sh
@@ -54,9 +70,8 @@ It is not a thin wrapper around configure. In order, it:
    splits it into `algo/x16/x16rt-cuda-batch.cu`, then asserts the fixes are
    present in the output, because twice a build has quietly used the previous
    driver and a silently stale driver is worse than a failed one;
-4. **patches `configure.ac`** to add `--with-cuda` and `--with-cuda-arch`,
-   which are not in the committed `configure.ac` (see
-   [rough edges](#known-rough-edges));
+4. checks that `Makefile.am`'s `CUDA_SOURCES` still matches the kernels on
+   disk, and stops if it does not;
 5. builds `libavian_sv2.a` if the workspace is present and it has not been
    built;
 6. `make distclean`, `autogen.sh`, `configure`, `make -j`;
@@ -113,13 +128,17 @@ from Linux builds and make would mix them.
 `CARGO_TARGET_DIR` is kept outside the checkout: a cargo `target/` there runs
 to gigabytes and the Docker build contexts walk it.
 
-**`prep-windows-cuda.sh`** stages `cuda/**` from the WSL clone into the
-Windows tree and re-applies six patch steps: POSIX compat, the DLL shim, the
-AES barriers, the skein abort, and the portable `lop3` forms. Each is
-idempotent, and each is re-applied here rather than inherited because staging
-overwrites the vendored tree. Skipping it has a specific failure signature:
-the ECHO and SHAVITE chains disagree with Linux at 12 to 26 percent while
-Linux stays clean.
+**`prep-windows-cuda.sh`** re-applies six patch steps to `cuda/**`: POSIX
+compat, the DLL shim, the AES barriers, the skein abort, and the portable
+`lop3` forms. Each is idempotent. Skipping the whole stage has a specific
+failure signature: the ECHO and SHAVITE chains disagree with Linux at 12 to
+26 percent while Linux stays clean.
+
+Its first step copies `cuda/**` out of a Linux clone, and that step is
+optional. It is worth having when you are changing kernels in the Linux tree
+and want them on Windows before committing. With no Linux tree present it
+reports the tracked files instead and carries on, so a clean Windows
+checkout builds the DLL on its own. `L` and `W` override the two paths.
 
 **`build-cuda-dll.ps1`** compiles every `.cu` in one nvcc invocation, so
 device linking is implicit and there is no separate `-dlink` step to get
@@ -198,20 +217,12 @@ scripts in `scripts/` and re-applied at staging time.
 
 Recorded because each one has already cost a debugging session, or would.
 
-**CUDA support is not in the committed `configure.ac`.** `--with-cuda` and
-`--with-cuda-arch` are injected by `scripts/patch-build.py` and
-`scripts/add-arch-override.py` every build. So a plain
-`./autogen.sh && ./configure --with-cuda=...` fails on a fresh clone; you
-must go through `configure-build.sh`. Those patches should eventually be
-committed into `configure.ac` instead.
-
-**The Windows DLL build still reaches into the WSL clone.**
-`scripts/windows/stage-cuda-windows.sh` copies `cuda/**` from
-`$HOME/avian-gpu/cpuminer-avian` in WSL to
-`/mnt/c/development/cpuminer-avian`, with both paths hard-coded. That made
-sense when the Windows tree had no `cuda/` directory, but `cuda/**` is now
-tracked, so the staging copy is redundant and the WSL dependency is
-avoidable.
+**`Makefile.am`'s kernel list is written down, not globbed.** That is
+deliberate, so what gets built is what is in the tree rather than whatever
+happens to be on disk. The cost is that adding a `.cu` under `cuda/upstream`
+needs the list updating too. `scripts/patch-build.py` compares the two every
+run and fails loudly on a mismatch, naming the file, because a kernel that is
+not compiled fails at link if you are lucky and at runtime if you are not.
 
 **Two scratch paths are still hard-coded.** `$OUT` and `$S` in
 `build-cuda-dll.ps1` point at a session temp directory with no environment

@@ -129,6 +129,90 @@ AM_CONDITIONAL([HAVE_AVIAN_SV2], [test x$have_avian_sv2 = xtrue])
 AC_SUBST(AVIAN_SV2_CFLAGS)
 AC_SUBST(AVIAN_SV2_LIBS)
 
+dnl The CUDA GPU backend. Off unless asked for, so a build without it is
+dnl unchanged.
+AC_ARG_WITH([cuda],
+   [  --with-cuda@<:@=PATH@:>@  build the CUDA X16RT backend; PATH is the toolkit prefix @<:@default=/usr/local/cuda@:>@])
+
+have_cuda=false
+if test "x$with_cuda" != "x" && test "x$with_cuda" != "xno" ; then
+   if test "x$with_cuda" = "xyes" ; then
+      cuda_prefix=/usr/local/cuda
+   else
+      cuda_prefix="$with_cuda"
+   fi
+   dnl The prefix is checked directly rather than handed to AC_PATH_PROG as a
+   dnl search path, which did not find an nvcc that was plainly there.
+   AC_MSG_CHECKING([for nvcc])
+   if test -x "$cuda_prefix/bin/nvcc" ; then
+      NVCC="$cuda_prefix/bin/nvcc"
+      AC_MSG_RESULT([$NVCC])
+   else
+      AC_MSG_RESULT([not under $cuda_prefix/bin])
+      AC_PATH_PROG([NVCC], [nvcc], [no])
+   fi
+   if test "x$NVCC" = "xno" || test "x$NVCC" = "x" ; then
+      AC_MSG_ERROR([no nvcc in $cuda_prefix/bin or on PATH; pass --with-cuda=PREFIX])
+   fi
+
+   dnl Ask the toolkit which architectures it can emit rather than hard-coding
+   dnl them. CUDA 13 dropped Maxwell, Pascal and Volta, and 12.8 was the first
+   dnl with Blackwell, so the answer depends on the version installed and a
+   dnl fixed list would either fail to build or silently omit cards.
+   cuda_avail=`$NVCC --list-gpu-arch 2>/dev/null | sed 's/compute_//' | tr '\n' ' '`
+   if test "x$cuda_avail" = "x" ; then
+      AC_MSG_ERROR([$NVCC --list-gpu-arch produced nothing; is the toolkit complete?])
+   fi
+
+   dnl A release wants every architecture the toolkit can emit, which is nine
+   dnl targets over the whole kernel set and takes the better part of an hour.
+   dnl While developing, one is enough.
+   AC_ARG_WITH([cuda-arch],
+      [  --with-cuda-arch=LIST   build only these GPU architectures, e.g. 86 or "86 120" @<:@default=all available@:>@])
+   if test "x$with_cuda_arch" != "x" && test "x$with_cuda_arch" != "xno" ; then
+      cuda_want="$with_cuda_arch"
+   else
+      cuda_want="52 61 75 80 86 89 100 120"
+   fi
+
+   AC_MSG_CHECKING([GPU architectures])
+   NVCC_ARCH=""
+   cuda_built=""
+   cuda_newest=""
+   dnl 52 and 61 are Maxwell and Pascal: a 900 or 10 series card. They cost
+   dnl about five minutes of build and seven megabytes, measured, and the
+   dnl X16RT tuning tables upstream are full of 1060s and 1080s, so they stay
+   dnl while any toolkit still offers them.
+   for a in $cuda_want ; do
+      for h in $cuda_avail ; do
+         if test "x$a" = "x$h" ; then
+            NVCC_ARCH="$NVCC_ARCH -gencode=arch=compute_$a,code=sm_$a"
+            cuda_built="$cuda_built $a"
+            cuda_newest="$a"
+         fi
+      done
+   done
+   if test "x$NVCC_ARCH" = "x" ; then
+      AC_MSG_ERROR([$NVCC supports none of: $cuda_want])
+   fi
+   dnl Also emit PTX for the newest architecture this toolkit knows, so a card
+   dnl released after the build still runs by driver JIT instead of failing to
+   dnl launch at all.
+   NVCC_ARCH="$NVCC_ARCH -gencode=arch=compute_$cuda_newest,code=compute_$cuda_newest"
+   AC_MSG_RESULT([sm$cuda_built, plus compute_$cuda_newest as PTX])
+
+   CUDA_LDFLAGS="-L$cuda_prefix/lib64 -L$cuda_prefix/lib"
+   dnl -lstdc++ because the kernels are C++ while this miner links with CC.
+   CUDA_LIBS="-lcudart -lstdc++"
+   AC_DEFINE([HAVE_CUDA], [1], [Define to 1 to build the CUDA X16RT backend.])
+   have_cuda=true
+fi
+AM_CONDITIONAL([HAVE_CUDA], [test x$have_cuda = xtrue])
+AC_SUBST(NVCC)
+AC_SUBST(NVCC_ARCH)
+AC_SUBST(CUDA_LDFLAGS)
+AC_SUBST(CUDA_LIBS)
+
 # libcurl install path (for mingw : --with-curl=/usr/local)
 AC_ARG_WITH([curl],
    [  --with-curl=PATH         prefix where curl is installed [default=/usr]])

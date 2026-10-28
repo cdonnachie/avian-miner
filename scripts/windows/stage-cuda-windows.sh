@@ -1,16 +1,49 @@
 #!/bin/bash
 # Stage the CUDA sources into the Windows checkout so the DLL can be built.
 #
-# The two trees are separate: all CUDA work lives in the WSL clone, and the
-# Windows checkout has never had a cuda/ directory. Only sources travel, not
-# objects, because a Linux .o in a tree MSVC is about to build is exactly the
-# kind of thing that links and then misbehaves.
+# Only needed when the kernels are being changed in the Linux tree and you
+# want them on Windows before committing. cuda/** is tracked, so a plain
+# build from a clean checkout does not need this at all and the script says
+# so and exits.
+#
+# When it does copy, only sources travel, not objects, because a Linux .o in
+# a tree MSVC is about to build is exactly the kind of thing that links and
+# then misbehaves.
 set -u
-L=$HOME/avian-gpu/cpuminer-avian
-W=/mnt/c/development/cpuminer-avian
+# Both overridable. They were hard-coded, which made the Windows DLL build
+# require a WSL clone at one particular path.
+L=${L:-$HOME/avian-gpu/cpuminer-avian}
+W=${W:-/mnt/c/development/cpuminer-avian}
 
-[ -d "$L/cuda" ] || { echo "no cuda/ in the WSL tree"; exit 1; }
 [ -d "$W" ] || { echo "no Windows checkout at $W"; exit 1; }
+
+# Staging is now optional. It mattered when the Windows checkout had no cuda/
+# directory of its own, but cuda/** and the four algo/x16 files are tracked,
+# so git already delivers what this used to copy. The copy is kept for the
+# case it is still good for: iterating on the kernels in the Linux tree and
+# wanting them on Windows before committing. Without a Linux tree, the
+# tracked files are used as they are.
+if [ ! -d "$L/cuda" ]; then
+    echo "=== no Linux tree at $L: using the tracked files in $W ==="
+    missing=0
+    for f in cuda/upstream \
+             algo/x16/x16rt-cuda-batch.cu \
+             algo/x16/x16rt-cuda.h \
+             algo/x16/x16rt-cuda-gate.c \
+             algo/x16/x16rt-cuda-host.c; do
+        if [ -e "$W/$f" ]; then
+            echo "  ok      $f"
+        else
+            echo "  MISSING $f"
+            missing=1
+        fi
+    done
+    [ "$missing" = 0 ] || {
+        echo "  the checkout is incomplete; this cannot be built from it"
+        exit 1; }
+    echo "  .cu files: $(find "$W/cuda" "$W/algo/x16" -name '*.cu' 2>/dev/null | wc -l)"
+    exit 0
+fi
 
 echo "=== copying sources (no objects) ==="
 rm -rf "$W/cuda"
