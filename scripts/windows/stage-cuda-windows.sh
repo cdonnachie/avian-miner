@@ -45,6 +45,32 @@ if [ ! -d "$L/cuda" ]; then
     exit 0
 fi
 
+# Refuse to stage from a Linux tree that is behind the Windows one.
+#
+# Staging overwrites cuda/** wholesale, so a stale source tree silently
+# reverts committed work with no build failing to say so. That has now
+# happened four times: build-cuda-dll.ps1 copying a stale support file, a
+# commit capturing the tree it had clobbered, a hand edit to a generated
+# driver, and this step reverting the hip_runtime.h include in
+# avian-ptx-portable.h minutes after it was committed.
+#
+# Both trees are clones of the same repository, so the question is just
+# whether the Windows HEAD is an ancestor of the Linux one.
+wh=$(git -C "$W" rev-parse HEAD 2>/dev/null || echo unknown)
+lh=$(git -C "$L" rev-parse HEAD 2>/dev/null || echo unknown)
+if [ "$wh" != "unknown" ] && [ "$lh" != "unknown" ] && [ "$wh" != "$lh" ]; then
+    if git -C "$L" merge-base --is-ancestor "$wh" "$lh" 2>/dev/null; then
+        echo "=== Linux tree is ahead, staging its newer cuda/ ==="
+    else
+        echo "=== REFUSING TO STAGE ==="
+        echo "  Windows HEAD $(echo "$wh" | cut -c1-9) is not an ancestor of"
+        echo "  Linux   HEAD $(echo "$lh" | cut -c1-9), so this copy would"
+        echo "  revert committed work. Pull in $L first, or pass"
+        echo "  L=/nonexistent to use the tracked files as they are."
+        exit 1
+    fi
+fi
+
 echo "=== copying sources (no objects) ==="
 rm -rf "$W/cuda"
 mkdir -p "$W/cuda"
