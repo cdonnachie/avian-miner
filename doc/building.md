@@ -448,6 +448,45 @@ reference written from the definition rather than copied from the headers:
 - **`ldg4`**, whose fallback copies one 32-byte structure where the PTX
   loads three. Nothing calls it.
 
+### Both vendors at once, which is not built
+
+Today a binary drives one vendor: the DLL beside it decides which. Running an
+AMD and an Nvidia card in the same machine needs three things, none of them
+large, and the ABI is already the right shape for all of them.
+
+**Load the backends instead of importing them.** The miner links
+`avian_cuda.lib`, so the loader binds `avian_cuda_scan_batch` to exactly
+one DLL at startup, and two DLLs exporting that name cannot both satisfy a
+static import. Loaded explicitly, the identical names stop being a collision
+and become the point:
+
+```c
+HMODULE h = LoadLibrary("avian_amd.dll");
+backend.scan_batch = GetProcAddress(h, "avian_cuda_scan_batch");
+```
+
+One ABI, two implementations, each behind its own table of five function
+pointers. It also makes the miner degrade gracefully where a static import
+cannot: a missing DLL, or a runtime whose vendor is not installed, becomes a
+backend that is skipped rather than a process that will not start.
+
+**Enumerate across both.** Concatenate the device lists, CUDA first, so
+`--gpu` and the device numbering stay one namespace rather than two that
+collide at zero.
+
+**Route each thread.** Each GPU thread already owns one device index; it
+needs to know which backend that index belongs to, which falls out of the
+enumeration above.
+
+Call it two to three hundred lines. The DLLs must then be separately named,
+`avian_cuda.dll` and `avian_amd.dll`, since two files cannot share a name in
+one directory; build-hip-dll.ps1 writes the former today because that is what
+makes it a drop-in for testing, and changing it is one line.
+
+Worth doing after a consumer AMD card has been shown to hash correctly, not
+before. If RDNA turns out to miscompute, that wants isolating rather than
+debugging through a new dispatch layer.
+
 ## Known rough edges
 
 Recorded because each one has already cost a debugging session, or would.
