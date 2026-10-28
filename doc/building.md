@@ -373,55 +373,55 @@ sources both backends share. The `-NoPtx` DLL is about 2.5 MB larger than the
 default, which is one instruction becoming several and is why the asm stays
 the default on Nvidia.
 
-### What is left: two kernels hash incorrectly
+### What is left: three 80-byte kernels
 
 It runs. On a gfx942 (MI325X, wave64, 304 CUs) it reaches 82.5 MH/s with no
-launch failures and no memory faults. It does not yet hash correctly, and
-this is where to start rather than re-deriving it.
+launch failures and no memory faults. Every one of the sixteen chain stages
+agrees with the CPU for two forced orders, roughly twelve million
+comparisons, after the uint2 scalar fix below. What is still wrong is
+narrower than it was and is written down here rather than re-derived.
 
-Minimal reproduction, with `AVIAN_GPU_FORCE_ORDER` set to one repeated
-algorithm so each kernel is isolated. Depth 1 is the 80-byte kernel, depth 2
-onwards the 64-byte one:
+Each algorithm's 80-byte kernel, the one that runs at stage one, traced with
+a uniform forced order:
 
 ```
-5555555555555555  skein    depth 1 agrees, depth 2 DIFFERS
-1111111111111111  bmw      depth 1 agrees, depth 2 DIFFERS
-4444444444444444  keccak   every depth agrees
+0 blake      ok        8 shavite    DIFFERS  (8 of 335104)
+1 bmw        ok        9 simd       ok
+2 groestl    ok        A echo       ok
+3 jh         ok        B hamsi      DIFFERS  (all samples)
+4 keccak     ok        C fugue      ok
+5 skein      ok        D shabal     ok
+6 luffa      ok        E whirlpool  ok
+7 cubehash   ok        F sha512     DIFFERS  (all samples)
 ```
 
-So `quark_skein512_gpu_hash_64` and `quark_bmw512_gpu_hash_64` are each
-independently wrong, their own `_80` variants are right, and the other nine
-`_64` kernels in the chain are right.
+shavite is a different problem from the other two: 8 wrong out of 335104 is a
+race or a job boundary, not arithmetic. hamsi and sha512 are wrong for every
+sample. All three have correct 64-byte kernels, so whatever it is lives in
+the 80-byte path alone.
 
-Eliminated by measurement on the card rather than by reading, so none of it
-needs doing again:
+Reproduce with AVIAN_GPU_FORCE_ORDER set to one repeated nibble,
+AVIAN_GPU_TRACE_STAGES=1 and AVIAN_GPU_NO_FINAL=1; scripts/windows has no
+part in this, see the droplet scripts in the session scratchpad or write four
+lines of shell.
 
-- every uint2 helper both kernels use, against references written from the
-  64-bit value, in **both** header sets, since bmw includes the `_alexis`
-  pair and skein does not: `vectorize` round trip, `ROL2`, `ROR2`, `ROL8`,
-  `ROR8`, `ROL24`, `SHL2`, `SHR2`, `xor3x` and `ROTL64` over both types. All
-  exact.
-- `uint2` `operator+`, `operator-` and `operator^`, which do carry between
-  the halves. Exact.
-- `uint2x4`, whose `__ldg4` fallback is a plain dereference and is shared
-  with keccak, which works. Its sibling `ldg4` **is** wrong, copying one
-  32-byte structure where the PTX loads three, but nothing calls it.
-- alignment of the cast destinations, which is the same unattributed
-  `uint2 x[n]` that keccak uses.
+Eliminated by measurement on the card, so none of it needs doing again:
 
-Not yet looked at: the bodies of the two `_64` kernels, their output stores
-in particular. Their input reads are the same `__ldg4` form keccak uses, and
-their inputs are known good, because the stage before them verifies exact.
-
-Still unmeasured, and separate from the above:
-
-- **The wavefront assumptions** at the shuffle sites. They use only widths 4
-  and 8 and derive their lane maths from `threadIdx.x & 3` and `& 7` rather
-  than from `warpSize`, so they should be wave-size agnostic. Neither failing
-  kernel uses a shuffle at all, so this is not the cause here.
-- **The `device_sm` block-size idiom**, which is meaningless off Nvidia and
-  should be deleted rather than translated.
-- **Hashrate**, which no amount of compiling predicts.
+- every uint2 helper in both header sets: vectorize round trip, ROL2, ROR2,
+  ROL8, ROR8, ROL24, SHL2, SHR2, xor3x, ROTL64 over both types. Exact.
+- uint2 operator +, -, ^, += and + with a uint32_t. Exact. The int literal
+  case was **not**, and is the fix described below.
+- uint2x4 packed access. Replacing both the load and the store in skein with
+  element-wise vectorize/devectorize changed nothing.
+- __constant__ data: a statically initialised array reaches the device
+  intact, including skeins real buffer[112] compared entry by entry;
+  hipMemcpyToSymbol works with a bare array name, with HIP_SYMBOL(), on a
+  static symbol, and across two translation units that both define the same
+  name with different linkage and size. That last one matters because HIP
+  links all device code into one image where CUDA keeps a module per .cu,
+  and the tree has ten definitions of c_PaddedMessage80.
+- optimisation level: -O1 and -O3 both wrong before the fix, -O0 will not
+  build (scratch frame exceeds the limit).
 
 ## Known rough edges
 

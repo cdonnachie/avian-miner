@@ -97,6 +97,14 @@ echo "########## 11. brace-elided uint2 initializers ##########"
 python3 "$SCRIPTS/fix-uint2-braces.py" "$W/cuda/upstream" || exit 1
 
 echo
+echo "########## 12. uint2 and an int literal ##########"
+# HIP's uint2 is a class with a converting constructor from a scalar, so an
+# int literal added to one is broadcast into both halves instead of reaching
+# the uint32_t overload that adds it to the 64-bit value. Compiles, runs,
+# hashes wrong. See scripts/fix-hip-uint2-scalar.py.
+python3 "$SCRIPTS/fix-hip-uint2-scalar.py" "$W/cuda/upstream" || exit 1
+
+echo
 echo "########## assertions ##########"
 fail=0
 grep -q "AVIAN_CUDA_BUILDING_DLL" "$W/cuda/avian-cuda-shim.h" \

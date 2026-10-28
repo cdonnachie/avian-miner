@@ -534,6 +534,19 @@ void LOHI(uint32_t &lo, uint32_t &hi, uint64_t x) {
  * uint2 direct ops by c++ operator definitions
  */
 static __device__ __forceinline__ uint2 operator^ (const uint2 a,const uint32_t b) { return make_uint2(a.x^ b, a.y); }
+#if defined(__HIPCC__)
+/* AVIAN_HIP_UINT2_SCALAR: an int literal is not an exact match for the uint32_t
+ * overload above, and HIP's uint2 can be constructed from a scalar, so
+ * without this `x ^ 8` builds a uint2(8, 8) and operates on each half.
+ * Forwards rather than reimplements, so the two cannot disagree. See
+ * scripts/fix-hip-uint2-scalar.py. */
+static __device__ __forceinline__
+uint2 operator^ (const uint2 a, const int b)
+{
+	return a ^ (uint32_t)b;
+}
+#endif
+
 static __device__ __forceinline__ uint2 operator^ (const uint2 a,const uint2 b) { return make_uint2(a.x ^ b.x, a.y ^ b.y); }
 static __device__ __forceinline__ uint2 operator& (const uint2 a,const uint2 b) { return make_uint2(a.x & b.x, a.y & b.y); }
 static __device__ __forceinline__ uint2 operator| (const uint2 a,const uint2 b) { return make_uint2(a.x | b.x, a.y | b.y); }
@@ -587,6 +600,19 @@ static __device__ __forceinline__ uint2 operator+ (const uint2 a,const uint32_t 
 	return vectorize(devectorize(a) + b);
 #endif
 }
+#if defined(__HIPCC__)
+/* AVIAN_HIP_UINT2_SCALAR: an int literal is not an exact match for the uint32_t
+ * overload above, and HIP's uint2 can be constructed from a scalar, so
+ * without this `x + 8` builds a uint2(8, 8) and operates on each half.
+ * Forwards rather than reimplements, so the two cannot disagree. See
+ * scripts/fix-hip-uint2-scalar.py. */
+static __device__ __forceinline__
+uint2 operator+ (const uint2 a, const int b)
+{
+	return a + (uint32_t)b;
+}
+#endif
+
 
 static __device__ __forceinline__ uint2 operator- (const uint2 a,const uint64_t b) {
 	return vectorize(devectorize(a) - b);
@@ -603,6 +629,19 @@ static __device__ __forceinline__ uint2 operator- (const uint2 a,const uint32_t 
 	return vectorize(devectorize(a) - b);
 #endif
 }
+#if defined(__HIPCC__)
+/* AVIAN_HIP_UINT2_SCALAR: an int literal is not an exact match for the uint32_t
+ * overload above, and HIP's uint2 can be constructed from a scalar, so
+ * without this `x - 8` builds a uint2(8, 8) and operates on each half.
+ * Forwards rather than reimplements, so the two cannot disagree. See
+ * scripts/fix-hip-uint2-scalar.py. */
+static __device__ __forceinline__
+uint2 operator- (const uint2 a, const int b)
+{
+	return a - (uint32_t)b;
+}
+#endif
+
 
 /**
  * basic multiplication between 64bit no carry outside that range (ie mul.lo.b64(a*b))
