@@ -22,7 +22,9 @@ BUILD_ROOT=${AVIAN_BUILD_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && 
 WORK=${WORK:-$BUILD_ROOT}
 B=$WORK/cpuminer-avian
 DLLDIR=${DLLDIR:-$WORK/cuda}
-SV2_SRC=${SV2_SRC:-/c/development/avian-sv2}
+# A sibling of this tree, derived rather than named. $SV2_SRC still
+# overrides, which is how a library checked out elsewhere is used.
+SV2_SRC=${SV2_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/avian-sv2}
 
 [ -d "$B" ] || { echo "no build clone at $B; run win-build.sh first"; exit 1; }
 [ -f "$DLLDIR/avian_cuda.lib" ] || {

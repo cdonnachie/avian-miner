@@ -11,7 +11,9 @@ set -u
 # written out, so the PowerShell and MSYS2 stages of the pipeline agree
 # on where each other's output went.
 BUILD_ROOT=${AVIAN_BUILD_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/avian-winbuild}
-SV2_SRC=${SV2_SRC:-/c/development/avian-sv2}
+# A sibling of this tree, derived rather than named. $SV2_SRC still
+# overrides, which is how a library checked out elsewhere is used.
+SV2_SRC=${SV2_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/avian-sv2}
 WORK=${WORK:-$BUILD_ROOT}
 B=$WORK/cpuminer-avian
 PREFIX=$WORK/sv2-prefix

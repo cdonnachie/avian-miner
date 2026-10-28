@@ -33,9 +33,11 @@ the GPU backend.
 CUDA 12.8 is the first release with Blackwell support, which is why
 `configure-build.sh` prefers the newest 12.x it finds rather than the first.
 
-The Stratum v2 library is a separate repository, expected at
-`/c/development/avian-sv2` on Windows or `$HOME/avian-gpu/avian-sv2` on
-Linux. Without it the build still succeeds, but `--sv2` and
+The Stratum v2 library is a separate repository, expected as a
+sibling of this one, so `avian-sv2` beside `cpuminer-avian`. Every script
+that needs it derives that from its own location and takes an
+override, `$SV2_SRC` for the build stages and a positional argument for the
+tests under `avian/`. Without it the build still succeeds, but `--sv2` and
 `--avian-selftest` are compiled out, and since the pool speaks only Stratum
 v2 a miner without it cannot reach the pool.
 
