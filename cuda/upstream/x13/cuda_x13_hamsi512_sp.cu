@@ -9,6 +9,8 @@
 #include "avian-cuda-shim.h"
 #include "cuda_helper_alexis.h"
 #include "cuda_vectors_alexis.h"
+/* AVIAN_NO_PTX and avian_lop3. See scripts/make-ptx-portable.py. */
+#include "avian-ptx-portable.h"
 
 __constant__ static uint64_t c_PaddedMessage80[10];
 
@@ -100,28 +102,48 @@ __constant__  uint32_t d_T512[1024] = {
 
 __device__ __forceinline__ uint32_t hamsiandxor(uint32_t a, uint32_t b, uint32_t c)
 {
+#if AVIAN_NO_PTX
+	a = avian_lop3(a, b, c, 0x6A);
+#else
 	asm("lop3.b32 %0, %0, %1, %2, 0x6A;" : "+r"(a) : "r"(b), "r"(c));	// 0xEA = (F0 & CC) ^ AA
+#endif
 	return a;
 }
 __device__ __forceinline__ uint32_t hamxor2(uint32_t a, uint32_t b, uint32_t c)
 {
+#if AVIAN_NO_PTX
+	a = avian_lop3(a, b, c, 0x96);
+#else
 	asm("lop3.b32 %0, %0, %1, %2, 0x96;" : "+r"(a) : "r"(b), "r"(c));	// 0xEA = (F0 ^ CC) ^ AA
+#endif
 	return a;
 }
 __device__ __forceinline__ uint32_t hamorxor(uint32_t a, uint32_t b, uint32_t c)
 {
+#if AVIAN_NO_PTX
+	a = avian_lop3(a, b, c, 0x56);
+#else
 	asm("lop3.b32 %0, %0, %1, %2, 0x56;" : "+r"(a) : "r"(b), "r"(c));	// 0xEA = (F0 | CC) ^ AA
+#endif
 	return a;
 }
 
 __device__ __forceinline__ uint32_t hamxorand(uint32_t a, uint32_t b, uint32_t c)
 {
+#if AVIAN_NO_PTX
+	a = avian_lop3(a, b, c, 0x78);
+#else
 	asm("lop3.b32 %0, %0, %1, %2, 0x78;" : "+r"(a) : "r"(b), "r"(c));	// 0xEA = (F0 ^ CC) & AA
+#endif
 	return a;
 }
 __device__ __forceinline__ uint32_t hamxorxor(uint32_t a, uint32_t b, uint32_t c)
 {
+#if AVIAN_NO_PTX
+	a = avian_lop3(a, b, c, 0x78);
+#else
 	asm("lop3.b32 %0, %0, %1, %2, 0x78;" : "+r"(a) : "r"(b), "r"(c));	// 0xEA = (F0 ^ CC) ^ AA
+#endif
 	return a;
 }
 

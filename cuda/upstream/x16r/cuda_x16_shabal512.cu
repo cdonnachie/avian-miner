@@ -6,6 +6,8 @@
 
 #include <cuda_helper_alexis.h>
 #include <cuda_vectors_alexis.h>
+/* AVIAN_NO_PTX and avian_lop3. See scripts/make-ptx-portable.py. */
+#include "avian-ptx-portable.h"
 //#include "x16r/cuda_vector_uint2x4.h"
 
 typedef uint32_t sph_u32;
@@ -275,7 +277,11 @@ __device__ __forceinline__ uint32_t Xxor3x(const uint32_t a, const uint32_t b, c
 {
 	uint32_t result;
 #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+	result = avian_lop3(a, b, c, 0x96);
+#else
 	asm("lop3.b32 %0, %1, %2, %3, 0x96;" : "=r"(result) : "r"(a), "r"(b), "r"(c)); //0x96 = 0xF0 ^ 0xCC ^ 0xAA
+#endif
 #else
 	result = a^b^c;
 #endif
@@ -286,7 +292,11 @@ __device__ __forceinline__ void PERM_ELT_CUDA(uint32_t &xa0, const uint32_t xa1,
 
 	uint32_t tmp;
 #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+	tmp = avian_lop3(xb2, xb3, xm, 0x9A);
+#else
 	asm("lop3.b32 %0, %1, %2, %3, 0x9A;" : "=r"(tmp) : "r"(xb2), "r"(xb3), "r"(xm));  // 0x9A = (F0 &(~CC)) ^ (AA)
+#endif
 #else
 	tmp = (xb2 & ~xb3) ^ xm;
 #endif

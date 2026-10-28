@@ -12,10 +12,16 @@ optimized by sp - 2018 (+20% faster on the gtx 1080ti)
 //#define INTENSIVE_GMF
 //#include "cuda_x11_aes.cuh"
 #include "x15/cuda_whirlpool_tables.cuh"
+/* AVIAN_NO_PTX and avian_lop3. See scripts/make-ptx-portable.py. */
+#include "avian-ptx-portable.h"
 
 __device__ __forceinline__ uint32_t xor3(uint32_t a, uint32_t b, uint32_t c)
 {
+#if AVIAN_NO_PTX
+	a = avian_lop3(a, b, c, 0x96);
+#else
 	asm("lop3.b32 %0, %0, %1, %2, 0x96;" : "+r"(a) : "r"(b), "r"(c));	// 0xEA = (F0 ^ CC) ^ AA
+#endif
 	return a;
 }
 //--------START OF WHIRLPOOL DEVICE MACROS---------------------------------------------------------------------------

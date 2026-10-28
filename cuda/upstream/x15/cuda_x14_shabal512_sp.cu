@@ -4,6 +4,8 @@
  */
 #include "cuda_helper.h"
 #include "cuda_vectors_alexis.h"
+/* AVIAN_NO_PTX and avian_lop3. See scripts/make-ptx-portable.py. */
+#include "avian-ptx-portable.h"
 
 /* $Id: shabal.c 175 2010-05-07 16:03:20Z tp $ */
 /*
@@ -41,7 +43,11 @@ __device__ __forceinline__ void PERM_ELT(uint32_t &xa0,const uint32_t xa1,uint32
 
 		uint32_t tmp;
 		#if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+			tmp = avian_lop3(xb2, xb3, xm, 0x9A);
+#else
 			asm ("lop3.b32 %0, %1, %2, %3, 0x9A;" : "=r"(tmp)	: "r"(xb2),"r"(xb3),"r"(xm));		// 0x9A = (F0 &(~CC)) ^ (AA)
+#endif
 		#else
 			tmp = (xb2 & ~xb3) ^ xm;
 		#endif

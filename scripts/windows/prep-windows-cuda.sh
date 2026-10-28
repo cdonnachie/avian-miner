@@ -41,6 +41,15 @@ echo "########## 5. the skein abort ##########"
 python3 "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/fix-skein-abort.py" "$W" || exit 1
 
 echo
+echo "########## 6. the portable lop3 forms ##########"
+# Re-applied here for the same reason as the barriers: staging copies the
+# vendored tree from the Linux checkout, and a re-vendor there would drop
+# the guarded plain-C forms with no build failing to say so. Idempotent.
+# Selected only when AVIAN_NO_PTX is set, so this does not change what the
+# default Windows DLL compiles.
+python3 "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/make-ptx-portable.py" "$W/cuda/upstream" || exit 1
+
+echo
 echo "########## assertions ##########"
 fail=0
 grep -q "AVIAN_CUDA_BUILDING_DLL" "$W/cuda/avian-cuda-shim.h" \

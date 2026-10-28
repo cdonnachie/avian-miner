@@ -9,6 +9,8 @@
 #include "cuda_helper_alexis.h"
 #include "avian-cuda-shim.h"
 #include "cuda_vectors_alexis.h"
+/* AVIAN_NO_PTX and avian_lop3. See scripts/make-ptx-portable.py. */
+#include "avian-ptx-portable.h"
 /*
  * X13 kernel implementation.
  *
@@ -139,14 +141,22 @@ void fugue_gpu_init256_32(uint32_t sharedMemory[1024 * 8])
 // args are reversed from xorand
 __device__ __forceinline__ uint32_t xor_and(uint32_t a, uint32_t b, uint32_t c)
 {
+#if AVIAN_NO_PTX
+	a = avian_lop3(a, b, c, 0x28);
+#else
 	asm("lop3.b32 %0, %0, %1, %2, 0x28;" : "+r"(a) : "r"(b), "r"(c));	// 0x28 = (F0 ^ CC) & AA
+#endif
 	return a;
 }
 
 /*
 __device__ __forceinline__ uint32_t or3(uint32_t a, uint32_t b, uint32_t c)
 {
+#if AVIAN_NO_PTX
+	a = avian_lop3(a, b, c, 0xFE);
+#else
 	asm("lop3.b32 %0, %0, %1, %2, 0xFE;" : "+r"(a) : "r"(b), "r"(c));	// 0x28 = (F0 | CC) | AA
+#endif
 	return a;
 }
 */

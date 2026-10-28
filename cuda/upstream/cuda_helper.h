@@ -13,6 +13,8 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+/* AVIAN_NO_PTX and avian_lop3. See scripts/make-ptx-portable.py. */
+#include "avian-ptx-portable.h"
 
 #ifndef UINT32_MAX
 /* slackware need that */
@@ -699,7 +701,11 @@ __device__ __forceinline__
 uint32_t xor3x(uint32_t a,uint32_t b,uint32_t c){
 	uint32_t result;
 	#if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+			result = avian_lop3(a, b, c, 0x96);
+#else
 			asm ("lop3.b32 %0, %1, %2, %3, 0x96;" : "=r"(result) : "r"(a), "r"(b),"r"(c));
+#endif
 	#else
 			result = a^b^c;
 	#endif
@@ -710,8 +716,16 @@ __device__ __forceinline__
 uint2 xor3x(const uint2 a,const uint2 b,const uint2 c) {
 	uint2 result;
 #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+	result.x = avian_lop3(a.x, b.x, c.x, 0x96);
+#else
 	asm ("lop3.b32 %0, %1, %2, %3, 0x96;" : "=r"(result.x) : "r"(a.x), "r"(b.x),"r"(c.x)); //0x96 = 0xF0 ^ 0xCC ^ 0xAA
+#endif
+#if AVIAN_NO_PTX
+	result.y = avian_lop3(a.y, b.y, c.y, 0x96);
+#else
 	asm ("lop3.b32 %0, %1, %2, %3, 0x96;" : "=r"(result.y) : "r"(a.y), "r"(b.y),"r"(c.y)); //0x96 = 0xF0 ^ 0xCC ^ 0xAA
+#endif
 #else
 	result = a^b^c;
 #endif
@@ -722,7 +736,11 @@ __device__ __forceinline__
 uint32_t xorand(uint32_t a,uint32_t b,uint32_t c){
         uint32_t result;
         #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+             result = avian_lop3(a, b, c, 0x78);
+#else
              asm ("lop3.b32 %0, %1, %2, %3, 0x78;" : "=r"(result) : "r"(a), "r"(b),"r"(c));
+#endif
         #else
              result = a ^ ( b & c );
         #endif
@@ -733,8 +751,16 @@ __device__ __forceinline__
 uint2 xorand(const uint2 a,const uint2 b,const uint2 c) {
         uint2 result;
 #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+        result.x = avian_lop3(a.x, b.x, c.x, 0x78);
+#else
         asm ("lop3.b32 %0, %1, %2, %3, 0x78;" : "=r"(result.x) : "r"(a.x), "r"(b.x),"r"(c.x)); //0x96 = 0xF0 ^ 0xCC ^ 0xAA
+#endif
+#if AVIAN_NO_PTX
+        result.y = avian_lop3(a.y, b.y, c.y, 0x78);
+#else
         asm ("lop3.b32 %0, %1, %2, %3, 0x78;" : "=r"(result.y) : "r"(a.y), "r"(b.y),"r"(c.y)); //0x96 = 0xF0 ^ 0xCC ^ 0xAA
+#endif
 #else
         result = a ^ ( b & c );
 #endif
@@ -746,7 +772,11 @@ uint32_t andxor( uint32_t a,uint32_t b,uint32_t c )
 {
         uint32_t result;
         #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+             result = avian_lop3(a, b, c, 0x60);
+#else
              asm ("lop3.b32 %0, %1, %2, %3, 0x60;" : "=r"(result) : "r"(a), "r"(b),"r"(c));
+#endif
         #else
              result = a & ( b ^ c );
         #endif
@@ -758,8 +788,16 @@ uint2 andxor( const uint2 a,const uint2 b,const uint2 c )
 {
         uint2 result;
 #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+        result.x = avian_lop3(a.x, b.x, c.x, 0x60);
+#else
         asm ("lop3.b32 %0, %1, %2, %3, 0x60;" : "=r"(result.x) : "r"(a.x), "r"(b.x),"r"(c.x)); 
+#endif
+#if AVIAN_NO_PTX
+        result.y = avian_lop3(a.y, b.y, c.y, 0x60);
+#else
         asm ("lop3.b32 %0, %1, %2, %3, 0x60;" : "=r"(result.y) : "r"(a.y), "r"(b.y),"r"(c.y)); 
+#endif
 #else
         result = a & ( b ^ c );
 #endif
@@ -772,7 +810,11 @@ uint32_t xoror( uint32_t a,uint32_t b,uint32_t c )
 {
         uint32_t result;
         #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+             result = avian_lop3(a, b, c, 0x1e);
+#else
              asm ("lop3.b32 %0, %1, %2, %3, 0x1e;" : "=r"(result) : "r"(a), "r"(b),"r"(c));
+#endif
         #else
              result = a ^ ( b | c );
         #endif
@@ -784,8 +826,16 @@ uint2 xoror( const uint2 a,const uint2 b,const uint2 c )
 {
         uint2 result;
 #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+        result.x = avian_lop3(a.x, b.x, c.x, 0x1e);
+#else
         asm ("lop3.b32 %0, %1, %2, %3, 0x1e;" : "=r"(result.x) : "r"(a.x), "r"(b.x),"r"(c.x));
+#endif
+#if AVIAN_NO_PTX
+        result.y = avian_lop3(a.y, b.y, c.y, 0x1e);
+#else
         asm ("lop3.b32 %0, %1, %2, %3, 0x1e;" : "=r"(result.y) : "r"(a.y), "r"(b.y),"r"(c.y));
+#endif
 #else
         result = a ^ ( b | c );
 #endif
@@ -797,7 +847,11 @@ uint32_t xorandnot( uint32_t a,uint32_t b,uint32_t c )
 {
         uint32_t result;
         #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+             result = avian_lop3(a, b, c, 0xd2);
+#else
              asm ("lop3.b32 %0, %1, %2, %3, 0xd2;" : "=r"(result) : "r"(a), "r"(b),"r"(c));
+#endif
         #else
              result = a ^ ( ~b & c );
         #endif
@@ -809,8 +863,16 @@ uint2 xorandnot( const uint2 a,const uint2 b,const uint2 c )
 {
         uint2 result;
 #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
+#if AVIAN_NO_PTX
+        result.x = avian_lop3(a.x, b.x, c.x, 0xd2);
+#else
         asm ("lop3.b32 %0, %1, %2, %3, 0xd2;" : "=r"(result.x) : "r"(a.x), "r"(b.x),"r"(c.x));
+#endif
+#if AVIAN_NO_PTX
+        result.y = avian_lop3(a.y, b.y, c.y, 0xd2);
+#else
         asm ("lop3.b32 %0, %1, %2, %3, 0xd2;" : "=r"(result.y) : "r"(a.y), "r"(b.y),"r"(c.y));
+#endif
 #else
         result = a ^ ( ~b & c );
 #endif

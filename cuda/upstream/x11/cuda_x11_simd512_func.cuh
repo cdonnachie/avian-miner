@@ -1,4 +1,6 @@
-﻿static __constant__  const uint32_t c_perm[8][8] = {
+﻿/* AVIAN_NO_PTX and avian_lop3. See scripts/make-ptx-portable.py. */
+#include "avian-ptx-portable.h"
+static __constant__  const uint32_t c_perm[8][8] = {
 	{ 2, 3, 6, 7, 0, 1, 4, 5 }, { 6, 7, 2, 3, 4, 5, 0, 1 }, { 7, 6, 5, 4, 3, 2, 1, 0 }, { 1, 0, 3, 2, 5, 4, 7, 6 },
 	{ 0, 1, 4, 5, 6, 7, 2, 3 }, { 6, 7, 2, 3, 0, 1, 4, 5 }, { 6, 7, 0, 1, 4, 5, 2, 3 }, { 4, 5, 2, 3, 6, 7, 0, 1 }
 };
@@ -29,7 +31,11 @@ static uint32_t IF(uint32_t x, uint32_t y, uint32_t z)
 {
 #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
 	uint32_t result;
+#if AVIAN_NO_PTX
+	result = avian_lop3(x, y, z, 0xCA);
+#else
 	asm("lop3.b32 %0, %1, %2, %3, 0xCA;" : "=r"(result) : "r"(x), "r"(y), "r"(z));	// x=F0, y=CC, z=AA // 0xCA = ((CC⊻AA)∧F0)⊻AA
+#endif
 	return result;
 #else
 	return (((y ^ z) & x) ^ z);
@@ -42,7 +48,11 @@ static uint32_t MAJ(const uint32_t x, const uint32_t y, const uint32_t z){
 
 #if __CUDA_ARCH__ >= 500 && CUDA_VERSION >= 7050
 	uint32_t result;
+#if AVIAN_NO_PTX
+	result = avian_lop3(x, y, z, 0xE8);
+#else
 	asm("lop3.b32 %0, %1, %2, %3, 0xE8;" : "=r"(result) : "r"(x), "r"(y), "r"(z));	// x=AA, y=CC, z=F0 // 0xCA = ((CC⊻AA)∧F0)⊻AA
+#endif
 	return result;
 #else
 	return ((z &y) | ((z | y) & x));

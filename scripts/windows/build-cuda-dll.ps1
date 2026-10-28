@@ -9,6 +9,13 @@
 # device linking is implicit and there is no separate -dlink step to get
 # wrong.
 
+# -NoPtx builds the plain-C form of every lop3.b32 site instead of the inline
+# PTX, which is what hipcc would select on its own. It exists so that the
+# portable path is verifiable on the hardware we have: build with it, run the
+# forced-order stage bisect, and 0 differing is evidence that the plain-C
+# forms are hash-identical to the asm. See scripts/make-ptx-portable.py.
+param([switch]$NoPtx)
+
 $ErrorActionPreference = "Stop"
 $W = "C:\development\cpuminer-avian"
 $OUT = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\winbuild\cuda"
@@ -43,11 +50,15 @@ foreach ($e in $extraFiles) { Write-Output "  plus $(Split-Path $e -Leaf)" }
 $extra = ($extraFiles | ForEach-Object { "`"$_`"" }) -join " "
 
 $list = ($cu | ForEach-Object { "`"$_`"" }) -join " "
+# Always passed explicitly, rather than left out when off, so the nvcc line
+# never gains an empty continuation and the build is the same shape either way.
+$ptxDef = if ($NoPtx) { "-DAVIAN_NO_PTX=1" } else { "-DAVIAN_NO_PTX=0" }
+Write-Output "  $ptxDef"
 $bat = @"
 call "$VCVARS" >nul 2>&1
 cd /d "$W"
 "$CUDA\bin\nvcc.exe" -O3 -shared -o "$OUT\avian_cuda.dll" ^
-  -DAVIAN_CUDA_BUILDING_DLL ^
+  -DAVIAN_CUDA_BUILDING_DLL $ptxDef ^
   -gencode=arch=compute_86,code=sm_86 ^
   -gencode=arch=compute_89,code=compute_89 ^
   -std=c++14 -w ^

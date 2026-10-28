@@ -1,5 +1,7 @@
 #include "cuda_helper.h"
 #include "cuda_vectors_alexis.h"
+/* AVIAN_NO_PTX and avian_lop3. See scripts/make-ptx-portable.py. */
+#include "avian-ptx-portable.h"
 
 /*
 __device__ __forceinline__
@@ -39,15 +41,47 @@ __device__ __forceinline__ void G256_AddRoundConstantQ_quad(uint32_t &x7, uint32
 {
 	const uint32_t andmask1 = ((-((threadIdx.x & 0x03) == 3)) & 0xffff0000);
 
+#if AVIAN_NO_PTX
+	x0 = avian_lop3(x0, -(round & 0x01), andmask1, 0x87);
+#else
 	asm("lop3.b32 %0, %1, %2, %3, 0x87;" : "=r"(x0) : "r"(x0), "r"(-(round & 0x01)), "r"(andmask1)); //0x87= ~0xF0 ^ (( 0xCC & 0xAA)
+#endif
+#if AVIAN_NO_PTX
+	x1 = avian_lop3(x1, -(round & 0x02), andmask1, 0x87);
+#else
 	asm("lop3.b32 %0, %1, %2, %3, 0x87;" : "=r"(x1) : "r"(x1), "r"(-(round & 0x02)), "r"(andmask1)); //0x87= ~0xF0 ^ (( 0xCC & 0xAA)
+#endif
+#if AVIAN_NO_PTX
+	x2 = avian_lop3(x2, -(round & 0x04), andmask1, 0x87);
+#else
 	asm("lop3.b32 %0, %1, %2, %3, 0x87;" : "=r"(x2) : "r"(x2), "r"(-(round & 0x04)), "r"(andmask1)); //0x87= ~0xF0 ^ (( 0xCC & 0xAA)
+#endif
+#if AVIAN_NO_PTX
+	x3 = avian_lop3(x3, -(round & 0x08), andmask1, 0x87);
+#else
 	asm("lop3.b32 %0, %1, %2, %3, 0x87;" : "=r"(x3) : "r"(x3), "r"(-(round & 0x08)), "r"(andmask1)); //0x87= ~0xF0 ^ (( 0xCC & 0xAA)
+#endif
 
+#if AVIAN_NO_PTX
+        x4 = avian_lop3(x4, 0xAAAA0000, andmask1, 0x87);
+#else
         asm("lop3.b32 %0, %1, %2, %3, 0x87;" : "=r"(x4) : "r"(x4), "r"(0xAAAA0000), "r"(andmask1)); 
+#endif
+#if AVIAN_NO_PTX
+        x5 = avian_lop3(x5, 0xCCCC0000, andmask1, 0x87);
+#else
         asm("lop3.b32 %0, %1, %2, %3, 0x87;" : "=r"(x5) : "r"(x5), "r"(0xCCCC0000), "r"(andmask1)); 
+#endif
+#if AVIAN_NO_PTX
+        x6 = avian_lop3(x6, 0xF0F00000, andmask1, 0x87);
+#else
         asm("lop3.b32 %0, %1, %2, %3, 0x87;" : "=r"(x6) : "r"(x6), "r"(0xF0F00000), "r"(andmask1)); 
+#endif
+#if AVIAN_NO_PTX
+        x7 = avian_lop3(x7, 0xFF000000, andmask1, 0x87);
+#else
         asm("lop3.b32 %0, %1, %2, %3, 0x87;" : "=r"(x7) : "r"(x7), "r"(0xFF000000), "r"(andmask1)); 
+#endif
 }
 
 
@@ -55,10 +89,26 @@ __device__ __forceinline__ void G256_AddRoundConstantP_quad(uint32_t &x7, uint32
 {
 	const uint32_t andmask1 = ((threadIdx.x & 0x03) - 1) >> 16;
 
+#if AVIAN_NO_PTX
+	x0 = avian_lop3(x0, -(round & 0x01), andmask1, 0x78);
+#else
 	asm("lop3.b32 %0, %1, %2, %3, 0x78;" : "=r"(x0) : "r"(x0), "r"(-(round & 0x01)), "r"(andmask1)); //0x87= ~0xF0 ^ (( 0xCC & 0xAA)
+#endif
+#if AVIAN_NO_PTX
+	x1 = avian_lop3(x1, -(round & 0x02) >> 1, andmask1, 0x78);
+#else
 	asm("lop3.b32 %0, %1, %2, %3, 0x78;" : "=r"(x1) : "r"(x1), "r"(-(round & 0x02) >> 1), "r"(andmask1)); //0x87= ~0xF0 ^ (( 0xCC & 0xAA)
+#endif
+#if AVIAN_NO_PTX
+	x2 = avian_lop3(x2, -(round & 0x04) >> 2, andmask1, 0x78);
+#else
 	asm("lop3.b32 %0, %1, %2, %3, 0x78;" : "=r"(x2) : "r"(x2), "r"(-(round & 0x04) >> 2), "r"(andmask1)); //0x87= ~0xF0 ^ (( 0xCC & 0xAA)
+#endif
+#if AVIAN_NO_PTX
+	x3 = avian_lop3(x3, -(round & 0x08) >> 3, andmask1, 0x78);
+#else
 	asm("lop3.b32 %0, %1, %2, %3, 0x78;" : "=r"(x3) : "r"(x3), "r"(-(round & 0x08) >> 3), "r"(andmask1)); //0x87= ~0xF0 ^ (( 0xCC & 0xAA)
+#endif
 
 	x4 = xorand( x4, 0xAAAA, andmask1 );
         x5 = xorand( x5, 0xCCCC, andmask1 );
@@ -104,7 +154,11 @@ static void G256_inv_quad( uint32_t &x7, uint32_t &x6, uint32_t &x5, uint32_t &x
     t4 = andxor( b, t2, t3 );
     a = xor3x( t4, t3, t1 );
     t5 = xorand( a, t3, t1 );
+#if AVIAN_NO_PTX
+    t6 = avian_lop3(t2, t0, a, 0x56);
+#else
     asm( "lop3.b32 %0, %1, %2, %3, 0x56;" : "=r"(t6) : "r"(t2), "r"(t0), "r"(a) );
+#endif
 //    t6 = xor3x( (t2 & t0), a, (t2 ^ t0) );
     t4 = andxor( b, t5, t6 );
     t1 = xorand( t4, t6, t1 );
