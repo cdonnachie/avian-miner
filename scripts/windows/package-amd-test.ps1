@@ -12,7 +12,8 @@
 param(
     [string]$Release = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\winbuild\release-gpu",
     [string]$HipDll  = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\winbuild\hip\avian_cuda.dll",
-    [string]$Out     = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\avian-amd-test"
+    [string]$Out     = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\avian-amd-test",
+    [int]$Seconds    = 60
 )
 
 foreach ($p in @($Release, $HipDll)) {
@@ -34,38 +35,69 @@ Copy-Item "$Release\*.exe" $Out -Force
 Copy-Item "$Release\*.dll" $Out -Force
 Copy-Item $HipDll "$Out\avian_cuda.dll" -Force
 
+# The work is in PowerShell rather than the batch file, because the batch
+# file had no way to stop the miner. Windows `timeout` sleeps, it does not
+# end a process, so the first version of this ran until the tester closed the
+# window while the instructions said it would take a minute.
+$runner = @"
+# Runs the miner for a fixed time and stops it. Started with -PassThru and
+# killed by handle, not by name: taskkill /im would also end any other
+# avian-miner on the machine, which on a miner's own computer is the one
+# earning them money.
+`$ErrorActionPreference = 'SilentlyContinue'
+Set-Location -LiteralPath `$PSScriptRoot
+
+function Run-Once([string]`$label, [hashtable]`$extraEnv) {
+    foreach (`$k in `$extraEnv.Keys) { Set-Item -Path "env:`$k" -Value `$extraEnv[`$k] }
+    `$o = Join-Path `$PSScriptRoot 'bench-out.txt'
+    `$e = Join-Path `$PSScriptRoot 'bench-err.txt'
+    `$p = Start-Process -FilePath (Join-Path `$PSScriptRoot 'avian-miner.exe') ``
+            -ArgumentList '-a','x16rt','--gpu','--benchmark' ``
+            -RedirectStandardOutput `$o -RedirectStandardError `$e ``
+            -NoNewWindow -PassThru
+    if (-not `$p.WaitForExit($($Seconds * 1000))) {
+        `$p.Kill()
+        [void]`$p.WaitForExit(5000)
+    }
+    Add-Content -Path `$res -Value "==== `$label ===="
+    foreach (`$f in @(`$o, `$e)) {
+        if (Test-Path `$f) { Get-Content `$f | Add-Content -Path `$res }
+    }
+    Remove-Item `$o, `$e -Force -ErrorAction SilentlyContinue
+    foreach (`$k in `$extraEnv.Keys) { Remove-Item -Path "env:`$k" -ErrorAction SilentlyContinue }
+}
+
+`$res = Join-Path `$PSScriptRoot 'result.txt'
+Remove-Item `$res -Force -ErrorAction SilentlyContinue
+
+Write-Host ''
+Write-Host 'Running the Avian AMD test. This takes about a minute.'
+Write-Host ''
+Write-Host 'Lines saying "failed" are expected: the test is not connected to'
+Write-Host 'anything, so it cannot send its results anywhere. Please ignore them.'
+Write-Host ''
+
+Run-Once 'first attempt' @{}
+
+# AMD's runtime declines some of the smaller RDNA2 cards by name, the RX 6600
+# among them. Telling it to treat the card as an RX 6800 is the usual way
+# round that, and it works because gfx1030 is in the same DLL.
+if (Select-String -Path `$res -Pattern 'no CUDA device found' -Quiet) {
+    Write-Host 'No card found. Trying once more with a compatibility setting.'
+    Write-Host ''
+    Run-Once 'second attempt, HSA_OVERRIDE_GFX_VERSION=10.3.0' @{ HSA_OVERRIDE_GFX_VERSION = '10.3.0' }
+}
+
+Write-Host ''
+Write-Host 'Done. Please send back the file result.txt from this folder.'
+Write-Host ''
+"@
+$runner | Set-Content -Encoding ASCII "$Out\run-test.ps1"
+
 $bat = @'
 @echo off
-rem Runs for about a minute, hashing against a fixed test header. Nothing is
-rem mined, nothing is sent anywhere, no wallet or pool is involved.
-rem
-rem If the card is not found on the first attempt, it tries again pretending
-rem to be an RX 6800. AMD's runtime declines some of the smaller RDNA2 cards
-rem by name, the RX 6600 among them, and that override is the usual way
-rem round it. The tester should not have to know any of this, so both
-rem attempts land in one file.
-setlocal
 cd /d "%~dp0"
-echo Running the Avian AMD test. This takes about a minute.
-echo.
-echo Lines saying "failed" are expected: the test is not connected
-echo to anything, so it cannot send its results anywhere. Ignore them.
-echo.
-avian-miner.exe -a x16rt --gpu --benchmark > result.txt 2>&1
-
-findstr /C:"no CUDA device found" result.txt >nul 2>&1
-if errorlevel 1 goto done
-
-echo First attempt found no card. Trying the compatibility option.
-echo. >> result.txt
-echo ==== second attempt, HSA_OVERRIDE_GFX_VERSION=10.3.0 ==== >> result.txt
-set HSA_OVERRIDE_GFX_VERSION=10.3.0
-avian-miner.exe -a x16rt --gpu --benchmark >> result.txt 2>&1
-
-:done
-echo.
-echo Done. Please send back the file result.txt from this folder.
-echo.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0run-test.ps1"
 pause
 '@
 $bat | Set-Content -Encoding ASCII "$Out\RUN-ME-first.bat"
@@ -80,7 +112,7 @@ WHAT IT DOES
   It hashes against a fixed test block to check whether this software
   calculates correctly on AMD graphics cards, and how fast. Nothing is
   mined, nothing is sent over the internet, and no wallet or account is
-  involved. It writes one text file and stops.
+  involved. It writes one text file and stops on its own.
 
 WHAT YOU NEED
   An AMD graphics card and AMD's normal graphics driver, which you will
@@ -92,14 +124,6 @@ HOW TO RUN IT
   3. A black window opens for about a minute, then says Done.
   4. Send back the file called result.txt that appears in this folder.
 
-IF IT SAYS IT CANNOT FIND YOUR CARD
-  It will automatically try a second time with a compatibility setting,
-  which is normal and takes another minute. Either way, send result.txt.
-
-IF IT CLOSES IMMEDIATELY OR SAYS SOMETHING ABOUT A MISSING DLL
-  That is useful information too, not a mistake on your part. Please say
-  which graphics card you have and send result.txt if there is one.
-
 YOU WILL SEE SOME LINES SAYING "failed". THAT IS NORMAL.
   Specifically "HTTP request failed: No URL set" and
   "submit_upstream_work json_rpc_call failed", over and over. The test
@@ -107,6 +131,14 @@ YOU WILL SEE SOME LINES SAYING "failed". THAT IS NORMAL.
   second, and since it is not connected to anything, sending them off
   fails every time. Nothing is wrong and nothing is being sent anywhere.
   Please ignore those and send the file regardless.
+
+IF IT SAYS IT CANNOT FIND YOUR CARD
+  It will automatically try a second time with a compatibility setting,
+  which is normal and takes another minute. Either way, send result.txt.
+
+IF IT CLOSES IMMEDIATELY OR SAYS SOMETHING ABOUT A MISSING DLL
+  That is useful information too, not a mistake on your part. Please say
+  which graphics card you have and send result.txt if there is one.
 
 WHAT WE ARE LOOKING FOR IN result.txt
   Lines saying "did not validate" would mean the card computed something
