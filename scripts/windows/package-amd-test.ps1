@@ -13,7 +13,8 @@ param(
     [string]$Release = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\winbuild\release-gpu",
     [string]$HipDll  = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\winbuild\hip\avian_cuda.dll",
     [string]$Out     = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\avian-amd-test",
-    [int]$Seconds    = 60
+    [int]$Seconds    = 60,
+    [string]$Rocm    = "C:\Program Files\AMD\ROCm\7.2"
 )
 
 foreach ($p in @($Release, $HipDll)) {
@@ -35,6 +36,19 @@ Copy-Item "$Release\*.exe" $Out -Force
 Copy-Item "$Release\*.dll" $Out -Force
 Copy-Item $HipDll "$Out\avian_cuda.dll" -Force
 
+# The HIP runtime travels with the package. It is not a driver file:
+# amdhip64_7.dll is an SDK redistributable, and a machine carrying only the
+# Adrenalin driver does not have it. Leaving it out made the first tester's
+# run produce a result.txt with nothing in it but the heading, because
+# Windows creates the process, fails to resolve the import, and kills it
+# before a single line reaches stdout.
+#
+# amd_comgr is deliberately not shipped. It is 114 MB and wanted only for
+# compiling kernels at run time, which this does not do.
+$hipRt = Join-Path $Rocm "bin\amdhip64_7.dll"
+if (-not (Test-Path $hipRt)) { Write-Output "missing HIP runtime: $hipRt"; exit 1 }
+Copy-Item $hipRt $Out -Force
+
 # The work is in PowerShell rather than the batch file, because the batch
 # file had no way to stop the miner. Windows `timeout` sleeps, it does not
 # end a process, so the first version of this ran until the tester closed the
@@ -55,13 +69,32 @@ function Run-Once([string]`$label, [hashtable]`$extraEnv) {
             -ArgumentList '-a','x16rt','--gpu','--benchmark' ``
             -RedirectStandardOutput `$o -RedirectStandardError `$e ``
             -NoNewWindow -PassThru
+    # Touching Handle caches it, without which ExitCode comes back empty
+    # after the process has gone, which is exactly when it is wanted.
+    `$null = `$p.Handle
+    `$stopped = `$false
     if (-not `$p.WaitForExit($($Seconds * 1000))) {
         `$p.Kill()
         [void]`$p.WaitForExit(5000)
+        `$stopped = `$true
     }
     Add-Content -Path `$res -Value "==== `$label ===="
+    # The exit code, always. A dependent DLL that cannot be resolved makes
+    # Windows create the process and end it immediately with 0xC0000135,
+    # printing nothing at all, and the first tester's result.txt was a
+    # heading and silence. The code says what the silence meant.
+    if (-not `$stopped) {
+        `$c = `$p.ExitCode
+        Add-Content -Path `$res -Value ("exited on its own, code " + `$c +
+            `$(if (`$c -eq -1073741515) { "  (0xC0000135, a required DLL was not found)" }
+              elseif (`$c -eq -1073741701) { "  (0xC000007B, a DLL is the wrong architecture)" }
+              else { "" }))
+    }
     foreach (`$f in @(`$o, `$e)) {
         if (Test-Path `$f) { Get-Content `$f | Add-Content -Path `$res }
+    }
+    if (-not (Get-Content `$res | Where-Object { `$_ -match 'avian-miner|GPU #|Total:' })) {
+        Add-Content -Path `$res -Value "the miner produced no output whatsoever"
     }
     Remove-Item `$o, `$e -Force -ErrorAction SilentlyContinue
     foreach (`$k in `$extraEnv.Keys) { Remove-Item -Path "env:`$k" -ErrorAction SilentlyContinue }
