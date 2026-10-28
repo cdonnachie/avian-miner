@@ -65,9 +65,19 @@ FENCE_BARRIER = (
 # The array name is captured because the table is not always read as
 # name[...]: several kernels pass it to a device helper, so a read can look
 # like aes_round_s(sharedMemory, ...) with no subscript in sight.
+#
+# shavite_gpu_init as well as aes_gpu_init, and its absence was not cosmetic.
+# The three 80-byte shavite kernels fill their shared table through that name
+# and follow it with __threadfence_block(), so they matched nothing here and
+# never got a barrier. The result is a kernel that disagrees with the CPU for
+# a few threads once in some thousands of batches, never reproducibly, on
+# Nvidia as much as AMD: 6 failing batches in 1670 on a 3090 against about 1
+# in 2000 on an MI325X. What identifies the device as the faulty side is that
+# the CPU returns the same answer twice for a nonce the GPU answers
+# differently on two runs.
 CALL = re.compile(
     r"^[ \t]*(?:if[ \t]*\([^)]*threadIdx\.x[^)]*\)[ \t]*)?"
-    r"aes_gpu_init[A-Za-z0-9_]*\(([A-Za-z_][A-Za-z0-9_]*)\);[ \t]*\n",
+    r"(?:aes|shavite)_gpu_init[A-Za-z0-9_]*\(([A-Za-z_][A-Za-z0-9_]*)\);[ \t]*\n",
     re.M)
 
 FENCE = re.compile(r"^[ \t]*__threadfence_block\(\);[ \t]*\n", re.M)

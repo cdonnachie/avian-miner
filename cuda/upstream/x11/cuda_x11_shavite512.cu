@@ -1686,7 +1686,11 @@ void x11_shavite512_gpu_hash_64(uint32_t threads, uint32_t startNounce, uint64_t
 	__shared__ uint32_t sharedMemory[1024];
 
 	shavite_gpu_init(sharedMemory);
-	__threadfence_block();
+	/* Was __threadfence_block(), which orders this thread's own accesses
+	 * and does not wait for any other thread's writes. Every read of the
+	 * shared AES table is cross-thread, so a fence was never the right
+	 * primitive here. */
+	__syncthreads();
 
 	uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
 	if (thread < threads)
@@ -1738,7 +1742,11 @@ void x11_shavite512_gpu_hash_80(uint32_t threads, uint32_t startNounce, void *ou
 	__shared__ uint32_t sharedMemory[1024];
 
 	shavite_gpu_init(sharedMemory);
-	__threadfence_block();
+	/* Was __threadfence_block(), which orders this thread's own accesses
+	 * and does not wait for any other thread's writes. Every read of the
+	 * shared AES table is cross-thread, so a fence was never the right
+	 * primitive here. */
+	__syncthreads();
 
 	uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
 	if (thread < threads)
