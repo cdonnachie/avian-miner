@@ -16,7 +16,19 @@
 # scales with the list.
 param(
     [switch]$NoPtx,
-    [string[]]$Arch = @("gfx1030", "gfx1100", "gfx1101", "gfx1102"),
+    # RX 6000, RX 7000 and RX 9000. A card outside this list will not launch
+    # at all, there being no PTX to fall back on, so the default errs towards
+    # covering consumer hardware rather than towards a quick build.
+    #
+    # gfx1031 and gfx1032 are the smaller RDNA2 parts, RX 6700 and RX 6600.
+    # AMD's own Windows support for them has been going backwards: the
+    # runtime row is a tick on the 5.6 through 7.1.1 pages and a cross on
+    # 7.2.0, while the HIP SDK row is a cross throughout. Building for them
+    # costs one pass each and makes the failure, if it comes, a clear message
+    # from the runtime rather than a kernel that silently will not launch.
+    [string[]]$Arch = @("gfx1030", "gfx1031", "gfx1032",
+                        "gfx1100", "gfx1101", "gfx1102",
+                        "gfx1200", "gfx1201"),
     [string]$Rocm = "C:\Program Files\AMD\ROCm\7.2"
 )
 

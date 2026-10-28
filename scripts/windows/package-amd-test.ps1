@@ -22,21 +22,44 @@ foreach ($p in @($Release, $HipDll)) {
 if (Test-Path $Out) { Remove-Item -Recurse -Force $Out }
 New-Item -ItemType Directory -Force $Out | Out-Null
 
-# Everything the miner needs except the kernels, then the AMD kernels over
-# the top. The Nvidia DLL is deliberately not carried: a tester running this
-# on an Nvidia box would otherwise get a pass that says nothing about AMD.
-Copy-Item "$Release\*" $Out -Force
+# The executable and its DLLs, and nothing else. Copying the directory
+# wholesale once carried a result.txt from a previous run into the package,
+# which is the one filename the tester is told to send back: they would have
+# had someone else's output sitting there before they started.
+#
+# The Nvidia kernels are then overwritten by the AMD ones. Not merely
+# overwritten but deliberately not shipped: a tester with both vendors in the
+# machine would otherwise get a clean pass that says nothing about AMD.
+Copy-Item "$Release\*.exe" $Out -Force
+Copy-Item "$Release\*.dll" $Out -Force
 Copy-Item $HipDll "$Out\avian_cuda.dll" -Force
 
 $bat = @'
 @echo off
-rem Runs for one minute, hashing against a fixed test header. Nothing is
+rem Runs for about a minute, hashing against a fixed test header. Nothing is
 rem mined, nothing is sent anywhere, no wallet or pool is involved.
+rem
+rem If the card is not found on the first attempt, it tries again pretending
+rem to be an RX 6800. AMD's runtime declines some of the smaller RDNA2 cards
+rem by name, the RX 6600 among them, and that override is the usual way
+rem round it. The tester should not have to know any of this, so both
+rem attempts land in one file.
 setlocal
 cd /d "%~dp0"
-echo Running the Avian AMD test for about a minute. Please wait.
+echo Running the Avian AMD test. This takes about a minute.
 echo.
 avian-miner.exe -a x16rt --gpu --benchmark > result.txt 2>&1
+
+findstr /C:"no CUDA device found" result.txt >nul 2>&1
+if errorlevel 1 goto done
+
+echo First attempt found no card. Trying the compatibility option.
+echo. >> result.txt
+echo ==== second attempt, HSA_OVERRIDE_GFX_VERSION=10.3.0 ==== >> result.txt
+set HSA_OVERRIDE_GFX_VERSION=10.3.0
+avian-miner.exe -a x16rt --gpu --benchmark >> result.txt 2>&1
+
+:done
 echo.
 echo Done. Please send back the file result.txt from this folder.
 echo.
@@ -65,6 +88,10 @@ HOW TO RUN IT
   2. Double-click RUN-ME-first.bat
   3. A black window opens for about a minute, then says Done.
   4. Send back the file called result.txt that appears in this folder.
+
+IF IT SAYS IT CANNOT FIND YOUR CARD
+  It will automatically try a second time with a compatibility setting,
+  which is normal and takes another minute. Either way, send result.txt.
 
 IF IT CLOSES IMMEDIATELY OR SAYS SOMETHING ABOUT A MISSING DLL
   That is useful information too, not a mistake on your part. Please say
