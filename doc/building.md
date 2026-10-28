@@ -216,11 +216,16 @@ scripts in `scripts/` and re-applied at staging time.
 
 ## AMD, via HIP
 
-It works. The miner builds, runs and hashes correctly on an AMD Instinct
-MI325X, verified against the CPU across the whole chain, and a Windows DLL
-can be built for consumer cards with `scripts/windows/build-hip-dll.ps1`.
-What has not happened is a run on a consumer RDNA card, only on CDNA.
-Nothing in this section is needed for an Nvidia build.
+It works, on both AMD architectures that matter. The miner builds, runs
+and hashes correctly on an AMD Instinct MI325X, verified against the CPU
+across the whole chain, and a Windows DLL built with
+`scripts/windows/build-hip-dll.ps1` runs on consumer hardware: an RX 6900 XT
+(`gfx1030`, RDNA2) hashes x16rt at 25.3 MH/s with no submission failing to
+validate. Nothing in this section is needed for an Nvidia build.
+
+Note which SDK, because it is not a detail: build consumer Windows kernels
+against **6.x**, and ship no HIP runtime with them. The section below says
+why, and getting it wrong fails silently on hardware that works.
 
 ```sh
 ./autogen.sh
@@ -243,6 +248,120 @@ the compiler and the runtime library are the whole of the difference, and
 `HAVE_CUDA` keeps its name for a HIP build because it gates host code whose
 every symbol is `avian_cuda_*` whichever card ends up running it.
 
+### Which SDK version, and it is not the architecture list
+
+Two separate things decide whether a Windows build runs on a given card. The
+first is easy to mistake for the whole story, which is what happened here:
+two packages were built and sent on that reasoning and both failed the same
+way.
+
+**The architecture list, which is the lesser one.** AMD's Windows support
+matrix moves backwards as well as forwards. 7.2.0 marks `gfx1030`, the RX
+6800, 6900 and 6950 XT and the PRO W6800, unsupported by both its runtime and
+its SDK, where 7.1.1 and 6.2.4 both mark it supported by both. That is real,
+but a card missing from the list fails to launch a kernel, which is not the
+failure anyone was seeing.
+
+**The runtime generation, which is the one that matters.** The kernel DLL
+imports its HIP runtime by exact versioned filename, fixed at link time: a
+7.x build imports `amdhip64_7.dll`, a 6.x build imports `amdhip64_6.dll`, and
+only the matching file satisfies it. A consumer Windows machine does not have
+the 7.x one. Measured on a tester's RX 6900 XT, driver dated 2026-10-15 and
+thirteen days old at the time:
+
+```
+amdhip64.dll     present,  21,762,488 bytes
+amdhip64_6.dll   present,  17,761,704 bytes
+amdhip64_7.dll   absent
+amd_comgr.dll    present, 105,432,984 bytes
+```
+
+So a current consumer Adrenalin driver supplies the 6.x HIP runtime and
+nothing newer, and `gfx1030` being ticked or crossed on the 7.1.1 page was
+never going to change that. The 6.4 SDK's own `amdhip64_6.dll` is 17,740,696
+bytes, within 21 KB of the driver's, so the two are the same vintage.
+
+**Build 6.x for consumer cards.** `build-hip-dll.ps1` takes `-Rocm` and `-Out`,
+the latter so both generations can exist at once, since the import name makes
+them different files rather than a runtime choice:
+
+```powershell
+.\build-hip-dll.ps1 -Rocm "C:\Program Files\AMD\ROCm\6.4" -Out ...\hip-6.4
+```
+
+6.4's device libraries cover every target the default list asks for:
+`gfx1030`, `gfx1031`, `gfx1032` (RDNA2), `gfx1100`, `gfx1101`, `gfx1102`
+(RDNA3) and `gfx1200`, `gfx1201` (RDNA4), as do 7.1.1's. Both also carry
+`gfx1033` through `gfx1036` and `gfx1150` through `gfx1153`, the RDNA2 and
+RDNA3.5 integrated parts, so adding those costs one compiler pass each and no
+source changes. At roughly 1.9 minutes and 2.3 MB per architecture, the
+default eight take about 16 minutes and produce a 21 MB DLL.
+
+**Whether to ship the runtime inverts between the two**, and getting it the
+wrong way round is silent both times.
+
+| | 7.x | 6.x |
+| --- | --- | --- |
+| Driver supplies it | no | yes |
+| Static imports | nothing AMD-specific | `amd_comgr_2.dll`, 121 MB |
+| Ship it? | must | must not |
+
+For 7.x the runtime has to travel with the kernels, because no consumer
+driver has the file and without it the process dies at load with
+`0xC0000135` having printed nothing. One 18 MB file is enough: its own
+imports are SETUPAPI, KERNEL32 and friends, and it loads comgr lazily, only
+to compile at run time, which this does not do.
+
+For 6.x the runtime must be left out. 6.4's `amdhip64_6.dll` imports
+`amd_comgr_2.dll` statically, so shipping it means shipping 121 MB beside
+it or getting that same silent load failure, which is exactly what the first
+6.4 package did. The driver's copy is already present, and is paired with the
+driver's own comgr rather than one nobody tested against that kernel driver.
+`package-amd-test.ps1 -NoRuntime` does this.
+
+The filename is the trap in both directions. The runtime carries only its
+**major** version, so 7.1.1 and 7.2.0 both produce `amdhip64_7.dll`:
+interchangeable by name and not by content, with no link error and no
+missing-DLL message when the wrong one is used. Both packaging scripts
+therefore find the runtime by pattern inside the SDK prefix they were given
+rather than naming the file.
+
+### Diagnosing a card that is not found
+
+A miner reporting no device gives one symptom for several unrelated causes,
+and guessing between them cost two builds and two round trips with a tester.
+`scripts/windows/package-amd-probe.ps1` builds a 6 MB zip that separates them,
+shipping AMD's own two tools rather than ours, which is the point: if AMD's
+probe cannot find the card either then nothing here is involved.
+
+- `amdgpu-arch.exe` prints the `gfx` name. It loads `amdhip64.dll`, the
+  **unversioned** name, so it uses the driver's own runtime and not anything
+  shipped beside it. Note it prints `Failed to get device count` whether the
+  runtime returned zero devices or could not be loaded at all, so a failure
+  from it does not distinguish those two.
+- `hipInfo.exe` asks the HIP runtime, needing only `amdhip64_7.dll`. It
+  returns the **identical** `no ROCm-capable device is detected` string the
+  miner prints, which is worth knowing: that message is AMD's, not ours.
+
+It also records the driver version, the session type, which AMD runtime
+components are installed and at what version, the same libraries in
+DriverStore, the registered OpenCL vendors and the device's PnP problem code.
+Two of those need explaining:
+
+- **Remote sessions.** AMD's compute runtime cannot enumerate a GPU under
+  Remote Desktop, because the session is handed a different display adapter.
+  A healthy card reports no device. The probe checks `SESSIONNAME` first
+  because it is the one answer that means nothing is wrong.
+- **Absence from system32 is not absence.** Modern AMD drivers keep
+  `amdocl64.dll` and `amdihk64.dll` in DriverStore and register them through
+  the ICD registry, so finding them missing from system32 proves nothing. The
+  probe looks in both before anyone concludes an install is broken.
+
+One thing that does not work, in case it is reached for:
+`HSA_OVERRIDE_GFX_VERSION` is read by ROCr on Linux and never by Windows HIP.
+A retry built around it ran identically to the first attempt, and two
+testers duly returned a `result.txt` whose halves were byte-identical.
+
 ### How it was taken this far without an AMD GPU
 
 Two measurements, and the second only became possible once the first was
@@ -251,13 +370,13 @@ hardware it emits code for. On Windows, with only the HIP SDK installed:
 
 ```powershell
 # 1. syntax, which is fast and finds the bulk of it
-& "C:\Program Files\AMD\ROCm\7.2\bin\clang++.exe" `
+& "C:\Program Files\AMD\ROCm\7.1\7.1\bin\clang++.exe" `
     -x hip --offload-arch=gfx942 -fsyntax-only -std=c++14 -w `
     -Icuda\hip -I. -Icuda -Icuda\upstream `
     cuda\upstream\quark\cuda_bmw512.cu
 
 # 2. object code, which is the one that counts
-& "C:\Program Files\AMD\ROCm\7.2\bin\clang++.exe" `
+& "C:\Program Files\AMD\ROCm\7.1\7.1\bin\clang++.exe" `
     -x hip --offload-arch=gfx942 -c -O3 -std=c++14 -w -ferror-limit=1 `
     -Icuda\hip -I. -Icuda -Icuda\upstream `
     cuda\upstream\quark\cuda_bmw512.cu -o bmw512.o
@@ -434,17 +553,27 @@ reference written from the definition rather than copied from the headers:
 
 ### Still unmeasured
 
-- **Any RDNA card.** Everything above is CDNA. `gfx1030`, `gfx1100` and
-  `gfx1201` all compile, and `scripts/windows/build-hip-dll.ps1` produces a
-  DLL for them, but no consumer card has run this. The wavefront worry is
-  much reduced, since the code is now correct at width 32 on Nvidia and 64
-  on CDNA, and RDNA's 32 is the width already proven.
+- **RDNA beyond one card and one chain order.** `gfx1030` has now run: an
+  RX 6900 XT on a Ryzen 9 5950X did a minute of x16rt at 25.34 MH/s peak,
+  intensity 19, with 176 submissions, none failing to validate and no
+  faults. Every nonce the GPU found was re-hashed on the CPU before
+  submission, so that is 176 independent agreements rather than merely an
+  absence of crashes, and it closes the wavefront question for RDNA.
+
+  What it does not cover: one chain order (`FE17C8172501B98C`) out of
+  sixteen, and only the final hash rather than each of the sixteen depths.
+  The CDNA verification did 17,720,576 comparisons across three orders and
+  all sixteen depths; this is a working miner, not that. Running the harness
+  on RDNA needs a card we control rather than a volunteer's, and
+  `gfx1100` through `gfx1201` remain untouched by any hardware.
 - **The `device_sm` block-size idiom**, meaningless off Nvidia and better
   deleted than translated.
-- **Hashrate as a figure worth quoting.** 83.5 MH/s is what it does, not
-  what it could do: the linker reports it cannot meet the
-  `amdgpu-waves-per-eu` occupancy the launch bounds ask for, and the block
-  sizes are still chosen from Nvidia SM versions.
+- **Hashrate as a figure worth quoting.** 83.5 MH/s on CDNA and 25.3 on a
+  6900 XT are what it does, not what it could do: the linker reports it
+  cannot meet the `amdgpu-waves-per-eu` occupancy the launch bounds ask
+  for, and the block sizes are still chosen from Nvidia SM versions. The
+  consumer figure was also still climbing when the minute ran out, so even
+  as a measurement it is a lower bound.
 - **`ldg4`**, whose fallback copies one 32-byte structure where the PTX
   loads three. Nothing calls it.
 
