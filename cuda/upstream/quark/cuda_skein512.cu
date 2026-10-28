@@ -458,7 +458,7 @@ __constant__ const uint2 buffer[112] = {
 };
 
 __global__
-#if __CUDA_ARCH__ > 500
+#if __CUDA_ARCH__ > 500 || defined(__HIPCC__)
 __launch_bounds__(TPB52, 3)
 #else
 __launch_bounds__(TPB50, 5)
@@ -1087,7 +1087,7 @@ void quark_skein512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t *d_
 static __constant__ uint2 c_buffer[120]; // padded message (80 bytes + 72*8 bytes midstate + align)
 
 __global__
-#if __CUDA_ARCH__ > 500
+#if __CUDA_ARCH__ > 500 || defined(__HIPCC__)
 __launch_bounds__(TPB52, 3)
 #else
 __launch_bounds__(TPB50, 5)

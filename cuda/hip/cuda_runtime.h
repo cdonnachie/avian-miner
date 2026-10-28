@@ -13,6 +13,23 @@
 #ifndef AVIAN_CUDASHIM_H
 #define AVIAN_CUDASHIM_H 1
 
+/* Before hip_runtime.h, and not incidentally. HIP declares a __device__
+ * memcpy in amd_detail/amd_device_functions.h, and in a translation unit
+ * where that is the only memcpy in scope a host call finds no viable
+ * candidate at all:
+ *
+ *   error: no matching function for call to 'memcpy'
+ *   note: candidate not viable: call to __device__ function from __host__
+ *         function
+ *
+ * Five kernels call memcpy from their __host__ setBlock_80 halves without
+ * including <string.h> themselves, because nvcc's own headers always put the
+ * host declaration in scope for them. These two restore that, and host and
+ * device overloads then coexist the way clang's HIP overload rules intend.
+ */
+#include <string.h>
+#include <stdlib.h>
+
 #include <hip/hip_runtime.h>
 
 /* CUDA annotates its own declarations with these. They carry no meaning for

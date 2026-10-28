@@ -404,7 +404,14 @@ endif
 
 # -w because the vendored kernels are not ours to make warning clean, and the
 # noise would bury warnings from code that is.
-GPU_FLAGS = @GPUCC_ARCH@ -std=c++14 -w $(GPU_SHIM_INCLUDES) $(GPU_INCLUDES)
+#
+# $(EXTRA_INCLUDES) because the kernels' host half includes miner.h, which
+# includes jansson.h, and on a machine with no system jansson that header is
+# the bundled one under compat/. The C sources reach it through ALL_INCLUDES
+# and this rule needs the same. A build host that has jansson installed never
+# notices the omission, which is why it survived until the first build on one
+# that does not.
+GPU_FLAGS = @GPUCC_ARCH@ -std=c++14 -w $(GPU_SHIM_INCLUDES) $(GPU_INCLUDES) $(EXTRA_INCLUDES)
 
 .cu.o:
 	@GPUCC@ $(GPU_FLAGS) -c -o $@ $<

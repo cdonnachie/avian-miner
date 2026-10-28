@@ -95,6 +95,17 @@ static int avian_trace_stages(void)
                                         "short and every sample differs for nothing");
                         cached = 0;
                 }
+                /* The same check AVIAN_GPU_TRACE_ALL makes above, and its
+                 * absence here was not a missing message but a crash: the
+                 * comparison calls straight through these pointers, so a
+                 * build that did not hand them over dumped core rather than
+                 * saying so. */
+                if (cached && (!avian_diag_hash_n || !avian_diag_prehash))
+                {
+                        applog(LOG_ERR, "GPU: the stage bisect needs the miner's "
+                                        "verifier, which this build did not hand over");
+                        cached = 0;
+                }
                 if (cached)
                         applog(LOG_NOTICE, "GPU: stage bisect on, stopping after %d "
                                            "kernel(s), up to %d threads sampled per "

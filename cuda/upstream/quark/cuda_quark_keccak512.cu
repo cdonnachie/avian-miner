@@ -53,7 +53,7 @@ uint2 keccak_round_constants[24] = {
 		{ 0x80008081, 0x80000000 }, { 0x00008080, 0x80000000 },	{ 0x80000001, 0x00000000 }, { 0x80008008, 0x80000000 }
 };
 
-#if __CUDA_ARCH__ > 500
+#if __CUDA_ARCH__ > 500 || defined(__HIPCC__)
 __global__ __launch_bounds__(TPB52,7)
 #else
 __global__ __launch_bounds__(TPB50,3)
@@ -243,7 +243,7 @@ void quark_keccak512_gpu_hash_64(uint32_t threads, uint2* g_hash, uint32_t *g_no
 	}
 }
 
-#if __CUDA_ARCH__ > 500
+#if __CUDA_ARCH__ > 500 || defined(__HIPCC__)
 __global__ __launch_bounds__(TPB52,6)
 #else
 __global__ __launch_bounds__(TPB50,3)

@@ -43,6 +43,25 @@ int scanhash_x16rt_cuda( struct work *work, uint32_t max_nonce,
     avian_cuda_job job;
     static __thread uint32_t s_ntime = UINT32_MAX;
 
+    /* Hand the backend the miner's own CPU chain, once, so the stage bisect
+     * has something to compare the device against. Nothing in the normal
+     * mining path goes through these: consensus verification is x16r_hash
+     * further down, on this side of the boundary, and stays there.
+     *
+     * This call was missing, and its absence was invisible on the development
+     * machine, because the binary used for verification there had been built
+     * from a working tree that carried it uncommitted. So the diagnostic that
+     * proves the device agrees with the CPU could not be reproduced from a
+     * clean checkout, which is the one property such a diagnostic has to
+     * have. On Linux it did worse than not work: AVIAN_GPU_TRACE_STAGES
+     * called through the null pointer and dumped core. */
+    static bool s_diag_wired = false;
+    if ( !s_diag_wired )
+    {
+        s_diag_wired = true;
+        avian_cuda_set_diagnostics( x16r_hash_generic, x16r_prehash );
+    }
+
     if ( opt_benchmark )
     {
         ptarget[7] = 0x0ff;

@@ -455,7 +455,7 @@ static void FFT_16(int *const __restrict__ y){
 }
 
 /***************************************************/
-#if __CUDA_ARCH__ > 500
+#if __CUDA_ARCH__ > 500 || defined(__HIPCC__)
 __global__ __launch_bounds__(TPB52_1, 9)
 #else
 __global__ __launch_bounds__(TPB50_1, 9)

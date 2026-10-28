@@ -40,7 +40,7 @@ uint32_t bfi(uint32_t x, uint32_t a, uint32_t bit, uint32_t numBits) {
 }
 
 
-#if __CUDA_ARCH__ > 500
+#if __CUDA_ARCH__ > 500 || defined(__HIPCC__)
 __global__ __launch_bounds__(TPB52, 2)
 #else
 __global__ __launch_bounds__(TPB50, 2)

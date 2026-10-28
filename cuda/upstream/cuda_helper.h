@@ -382,7 +382,28 @@ uint64_t ROTR64(const uint64_t x, const int offset)
 }
 #else
 /* host */
+#if defined(__HIPCC__)
+/* AVIAN_HIP_ROTATE: typed, because HIP's uint2 is a class whose << and >>
+ * are element-wise, so the macro below rotates each half separately and
+ * drops the carry between them. See scripts/fix-hip-uint2-rotate.py. */
+static __host__ __device__ __forceinline__
+uint64_t ROTR64(const uint64_t x, const int n)
+{
+	return (x >> n) | (x << (64 - n));
+}
+static __host__ __device__ __forceinline__
+uint2 ROTR64(const uint2 v, const int n)
+{
+	const uint64_t x = ((uint64_t)v.y << 32) | (uint64_t)v.x;
+	const uint64_t r = (x >> n) | (x << (64 - n));
+	uint2 out;
+	out.x = (uint32_t)(r & 0xffffffffULL);
+	out.y = (uint32_t)(r >> 32);
+	return out;
+}
+#else
 #define ROTR64(x, n)  (((x) >> (n)) | ((x) << (64 - (n))))
+#endif
 #endif
 
 // 64-bit ROTATE LEFT
@@ -434,7 +455,28 @@ uint64_t ROTL64(const uint64_t x, const int offset)
 }
 #else
 /* host */
+#if defined(__HIPCC__)
+/* AVIAN_HIP_ROTATE: typed, because HIP's uint2 is a class whose << and >>
+ * are element-wise, so the macro below rotates each half separately and
+ * drops the carry between them. See scripts/fix-hip-uint2-rotate.py. */
+static __host__ __device__ __forceinline__
+uint64_t ROTL64(const uint64_t x, const int n)
+{
+	return (x << n) | (x >> (64 - n));
+}
+static __host__ __device__ __forceinline__
+uint2 ROTL64(const uint2 v, const int n)
+{
+	const uint64_t x = ((uint64_t)v.y << 32) | (uint64_t)v.x;
+	const uint64_t r = (x << n) | (x >> (64 - n));
+	uint2 out;
+	out.x = (uint32_t)(r & 0xffffffffULL);
+	out.y = (uint32_t)(r >> 32);
+	return out;
+}
+#else
 #define ROTL64(x, n)  (((x) << (n)) | ((x) >> (64 - (n))))
+#endif
 #endif
 
 __device__ __forceinline__

@@ -266,7 +266,12 @@ if test "x$with_hip" != "x" && test "x$with_hip" != "xno" ; then
    done
    AC_MSG_RESULT([$hip_want])
 
-   HIP_LDFLAGS="-L$hip_prefix/lib"
+   dnl -rpath as well as -L, because a ROCm install does not necessarily put
+   dnl its library directory on ldconfig's path: the stock rocm/dev container
+   dnl does not, and the miner then compiles and links and dies at startup
+   dnl with "libamdhip64.so.7: cannot open shared object file". Recording the
+   dnl path in the binary beats needing LD_LIBRARY_PATH at every run.
+   HIP_LDFLAGS="-L$hip_prefix/lib -Wl,-rpath,$hip_prefix/lib"
    dnl -lstdc++ for the same reason the CUDA side needs it: the kernels are
    dnl C++ and this miner links with CC.
    HIP_LIBS="-lamdhip64 -lstdc++"
