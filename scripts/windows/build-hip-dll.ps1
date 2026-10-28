@@ -8,8 +8,11 @@
 # changes. That is what the DLL split was for, even though it was not written
 # with AMD in mind.
 #
-# What a tester needs is therefore only AMD's display driver, which ships
-# amdhip64_7.dll. The HIP SDK is needed to build this, not to run it.
+# What a tester needs is therefore AMD's display driver and nothing else: a
+# 6.x build imports amdhip64_6.dll, which the driver installs. The HIP SDK is
+# needed to build this, not to run it. A 7.x build imports amdhip64_7.dll
+# instead, which no consumer driver has, so that one has to ship a runtime
+# alongside. See the $Rocm note below.
 #
 # One architecture per --offload-arch, and unlike CUDA there is no PTX to
 # fall back on: a card not listed here will not run the result. Build time
@@ -26,14 +29,51 @@ param(
     # 7.2.0, while the HIP SDK row is a cross throughout. Building for them
     # costs one pass each and makes the failure, if it comes, a clear message
     # from the runtime rather than a kernel that silently will not launch.
-    [string[]]$Arch = @("gfx1030", "gfx1031", "gfx1032",
+    #
+    # The integrated and entry-level parts are gfx1033 to gfx1036, Van Gogh
+    # and the Rembrandt and Raphael APUs, and gfx1150 to gfx1153, Strix and
+    # Krackan. They will be slow wherever they work, and the value in having
+    # them is a clear "ran correctly" rather than throughput. They were added
+    # only once gfx1030 had hashed correctly on real hardware, so that a
+    # failure on one of them is that part's failure rather than a question
+    # about the whole port.
+    #
+    # Sixteen targets is roughly half an hour and a 40 MB DLL, at about 1.9
+    # minutes and 2.3 MB each. -Arch takes a shorter list when that matters.
+    [string[]]$Arch = @("gfx1030", "gfx1031", "gfx1032", "gfx1033",
+                        "gfx1034", "gfx1035", "gfx1036",
                         "gfx1100", "gfx1101", "gfx1102",
+                        "gfx1150", "gfx1151", "gfx1152", "gfx1153",
                         "gfx1200", "gfx1201"),
-    [string]$Rocm = "C:\Program Files\AMD\ROCm\7.2"
+    # 6.x, and this is the setting that decides whether a consumer card works
+    # at all. The runtime a DLL imports is fixed at link time by exact
+    # versioned filename: built against 6.4 it imports amdhip64_6.dll, which
+    # is what a current Adrenalin driver installs, and built against 7.x it
+    # imports amdhip64_7.dll, which no consumer driver has. Both 7.x builds
+    # reported no device on an RX 6900 XT whose driver was thirteen days old.
+    # The 6.4 build hashes on it at 25 MH/s.
+    #
+    # AMD's support matrix is a separate question and a lesser one. 7.2.0
+    # marks gfx1030 unsupported where 7.1.1 marks it supported, which is real
+    # and was not the failure: a card missing from the list cannot launch a
+    # kernel, rather than getting as far as reporting no device.
+    #
+    # 7.x is still reachable with -Rocm and needs its runtime shipped
+    # alongside. 6.x must not ship one, because 6.4's amdhip64_6.dll imports
+    # 121 MB of amd_comgr_2.dll statically where 7.1.1's loads comgr lazily.
+    # See package-amd-test.ps1 -NoRuntime and doc/building.md.
+    #
+    # The 7.1 installer nests a second version directory inside the first, so
+    # that one is ...\ROCm\7.1\7.1 rather than ...\ROCm\7.1.
+    [string]$Rocm = "C:\Program Files\AMD\ROCm\6.4",
+    # Named per SDK when building more than one, because the runtime a DLL
+    # imports is fixed at link time: a 6.x build and a 7.x build are
+    # different files rather than a choice made at run time.
+    [string]$Out = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\winbuild\hip"
 )
 
 $W = "C:\development\cpuminer-avian"
-$OUT = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\winbuild\hip"
+$OUT = $Out
 $VCVARS = "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
 
 New-Item -ItemType Directory -Force $OUT | Out-Null
@@ -58,6 +98,7 @@ $extraFiles = @("$W\algo\whirlpool\sph_whirlpool.c", "$W\algo\jh\sph_jh.c") |
 Write-Output "=== sources ==="
 Write-Output "  $($cu.Count) .cu files, plus $($extraFiles.Count) C files"
 Write-Output "  targets: $($Arch -join ', ')"
+Write-Output "  SDK: $Rocm"
 
 $list = ($cu | ForEach-Object { "`"$_`"" }) -join " "
 $extra = ($extraFiles | ForEach-Object { "`"$_`"" }) -join " "
