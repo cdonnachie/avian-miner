@@ -48,6 +48,9 @@ setlocal
 cd /d "%~dp0"
 echo Running the Avian AMD test. This takes about a minute.
 echo.
+echo Lines saying "failed" are expected: the test is not connected
+echo to anything, so it cannot send its results anywhere. Ignore them.
+echo.
 avian-miner.exe -a x16rt --gpu --benchmark > result.txt 2>&1
 
 findstr /C:"no CUDA device found" result.txt >nul 2>&1
@@ -96,6 +99,14 @@ IF IT SAYS IT CANNOT FIND YOUR CARD
 IF IT CLOSES IMMEDIATELY OR SAYS SOMETHING ABOUT A MISSING DLL
   That is useful information too, not a mistake on your part. Please say
   which graphics card you have and send result.txt if there is one.
+
+YOU WILL SEE SOME LINES SAYING "failed". THAT IS NORMAL.
+  Specifically "HTTP request failed: No URL set" and
+  "submit_upstream_work json_rpc_call failed", over and over. The test
+  deliberately uses a target so easy that it "finds" a result every
+  second, and since it is not connected to anything, sending them off
+  fails every time. Nothing is wrong and nothing is being sent anywhere.
+  Please ignore those and send the file regardless.
 
 WHAT WE ARE LOOKING FOR IN result.txt
   Lines saying "did not validate" would mean the card computed something
