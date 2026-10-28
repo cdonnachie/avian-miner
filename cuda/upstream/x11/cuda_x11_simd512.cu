@@ -1631,8 +1631,8 @@ void x11_simd512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t startn
 	//	const dim3 grid2((threads + tpb - 1) / tpb);
 	//	const dim3 block2(tpb);
 
-	x11_simd512_gpu_expand_64 << <grid1, block1 >> > (threads, d_hash, d_temp4[thr_id]);
-	x11_simd512_gpu_compress_64_pascal_final << < grid1, block1 >> > (threads, startnonce, d_hash, d_temp4[thr_id], d_resNonce, target);
+	x11_simd512_gpu_expand_64 <<<grid1, block1 >>> (threads, d_hash, d_temp4[thr_id]);
+	x11_simd512_gpu_compress_64_pascal_final <<< grid1, block1 >>> (threads, startnonce, d_hash, d_temp4[thr_id], d_resNonce, target);
 }
 
 
@@ -1650,8 +1650,8 @@ void x16_simd_echo512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t *d_hash
 	const dim3 grid2((threads + tpb - 1) / tpb);
 	const dim3 block2(tpb);
 
-	x11_simd512_gpu_expand_64 << <grid1, block1 >> > (threads, d_hash, d_temp4[thr_id]);
-	x16_simd512_gpu_compress_64_echo512 << < grid2, block2 >> > (d_hash, d_temp4[thr_id]);
+	x11_simd512_gpu_expand_64 <<<grid1, block1 >>> (threads, d_hash, d_temp4[thr_id]);
+	x16_simd512_gpu_compress_64_echo512 <<< grid2, block2 >>> (d_hash, d_temp4[thr_id]);
 }
 
 __host__
@@ -1668,8 +1668,8 @@ void x16_simd_echo512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t s
 	const dim3 grid2((threads + tpb - 1) / tpb);
 	const dim3 block2(tpb);
 
-	x11_simd512_gpu_expand_64 << <grid1, block1 >> > (threads, d_hash, d_temp4[thr_id]);
-	x16_simd512_gpu_compress_64_maxwell_echo512_final << < grid2, block2 >> > (d_hash, startnonce, d_temp4[thr_id], d_resNonce, target);
+	x11_simd512_gpu_expand_64 <<<grid1, block1 >>> (threads, d_hash, d_temp4[thr_id]);
+	x16_simd512_gpu_compress_64_maxwell_echo512_final <<< grid2, block2 >>> (d_hash, startnonce, d_temp4[thr_id], d_resNonce, target);
 }
 
 
@@ -1688,8 +1688,8 @@ void x16_simd_whirlpool512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t *d
 	const dim3 grid2((threads + tpb - 1) / tpb);
 	const dim3 block2(tpb);
 
-	x11_simd512_gpu_expand_64 << <grid1, block1 >> > (threads, d_hash, d_temp4[thr_id]);
-	x16_simd512_gpu_compress_64_whirlpool512 << < grid2, block2 >> > (d_hash, d_temp4[thr_id]);
+	x11_simd512_gpu_expand_64 <<<grid1, block1 >>> (threads, d_hash, d_temp4[thr_id]);
+	x16_simd512_gpu_compress_64_whirlpool512 <<< grid2, block2 >>> (d_hash, d_temp4[thr_id]);
 }
 
 __host__
@@ -1707,8 +1707,8 @@ void x16_simd_hamsi512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t *d_has
 	const dim3 grid2((threads + tpb - 1) / tpb);
 	const dim3 block2(tpb);
 
-	x11_simd512_gpu_expand_64 << <grid1, block1 >> > (threads, d_hash, d_temp4[thr_id]);
-	x16_simd512_gpu_compress_64_hamsi512 << < grid2, block2 >> > (d_hash, d_temp4[thr_id]);
+	x11_simd512_gpu_expand_64 <<<grid1, block1 >>> (threads, d_hash, d_temp4[thr_id]);
+	x16_simd512_gpu_compress_64_hamsi512 <<< grid2, block2 >>> (d_hash, d_temp4[thr_id]);
 }
 
 __host__
@@ -1726,6 +1726,6 @@ void x16_simd_fugue512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t *d_has
 	const dim3 grid2((threads + tpb - 1) / tpb);
 	const dim3 block2(tpb);
 
-	x11_simd512_gpu_expand_64 << <grid1, block1 >> > (threads, d_hash, d_temp4[thr_id]);
-	x16_simd512_gpu_compress_64_fugue512 << < grid2, block2 >> > (d_hash, d_temp4[thr_id]);
+	x11_simd512_gpu_expand_64 <<<grid1, block1 >>> (threads, d_hash, d_temp4[thr_id]);
+	x16_simd512_gpu_compress_64_fugue512 <<< grid2, block2 >>> (d_hash, d_temp4[thr_id]);
 }

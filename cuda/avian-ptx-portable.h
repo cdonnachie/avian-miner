@@ -34,6 +34,15 @@
 #  endif
 #endif
 
+/* nvcc has __device__ and __forceinline__ built in. HIP does not: they come
+ * from hip/hip_runtime.h, so without this the header compiles only when
+ * something else happened to include that first. Measured with HIP 7.2:
+ * __forceinline__ is undefined before that include and defined after.
+ */
+#if defined(__HIPCC__)
+#  include <hip/hip_runtime.h>
+#endif
+
 #if defined(__CUDACC__) || defined(__HIPCC__)
 #  define AVIAN_PTX_FN static __device__ __forceinline__
 #else

@@ -864,5 +864,5 @@ void x11_cubehash_shavite512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t 
 	dim3 grid((threads + 256 - 1) / 256);
 	dim3 block(256);
 
-	x11_cubehashShavite512_gpu_hash_64 << <grid, block >> > (threads, d_hash);
+	x11_cubehashShavite512_gpu_hash_64 <<<grid, block >>> (threads, d_hash);
 }

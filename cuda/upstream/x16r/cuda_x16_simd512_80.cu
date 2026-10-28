@@ -1842,5 +1842,5 @@ void x16_simd512_cuda_hash_80_sp(int thr_id, const uint32_t threads, const uint3
 	const uint32_t tpb = TPB_SIMD;
 	const dim3 grid((threads + tpb - 1) / tpb);
 	const dim3 block(tpb);
-	x16_simd512_gpu_80_sp << <grid, block >> > (threads, startNonce, (uint64_t*)d_hash);
+	x16_simd512_gpu_80_sp <<<grid, block >>> (threads, startNonce, (uint64_t*)d_hash);
 }

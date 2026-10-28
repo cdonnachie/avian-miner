@@ -620,7 +620,7 @@ void x13_hamsi512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t *d_hash)
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	x13_hamsi512_gpu_hash_64 << <grid, block >> >(threads, d_hash);
+	x13_hamsi512_gpu_hash_64 <<<grid, block >>>(threads, d_hash);
 }
 
 /*
@@ -631,7 +631,7 @@ void x16_hamsi512_cuda_hash_80(int thr_id, const uint32_t threads, uint32_t star
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	x13_hamsi512_gpu_hash_80 << <grid, block >> > (threads, startnonce, d_hash);
+	x13_hamsi512_gpu_hash_80 <<<grid, block >>> (threads, startnonce, d_hash);
 }
 */
 
@@ -642,5 +642,5 @@ void x13_hamsi512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t *d_ha
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	x13_hamsi512_gpu_hash_64_final << <grid, block >> >(threads, d_hash, d_resNonce, target);
+	x13_hamsi512_gpu_hash_64_final <<<grid, block >>>(threads, d_hash, d_resNonce, target);
 }

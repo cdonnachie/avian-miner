@@ -465,5 +465,5 @@ void x13_fugue512_cpu_hash_64_final_sp(int thr_id, uint32_t threads, uint32_t *d
 	dim3 grid((threads + threadsperblock-1)/threadsperblock);
 	dim3 block(threadsperblock);
 
-	x13_fugue512_gpu_hash_64_final_sp << <grid, block >> >(threads, d_hash, d_resNonce, target);
+	x13_fugue512_gpu_hash_64_final_sp <<<grid, block >>>(threads, d_hash, d_resNonce, target);
 }

@@ -896,5 +896,5 @@ void x16_shabal512_cuda_hash_80(int thr_id, const uint32_t threads, const uint32
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	x16_shabal512_gpu_hash_80 << <grid, block >> >(threads, startNonce, d_hash);
+	x16_shabal512_gpu_hash_80 <<<grid, block >>>(threads, startNonce, d_hash);
 }

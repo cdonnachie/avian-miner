@@ -316,7 +316,7 @@ void cubehash512_cuda_hash_80(const int thr_id, const uint32_t threads, const ui
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	cubehash512_gpu_hash_80 << <grid, block >> > (threads, startNounce, (uint64_t*)d_hash);
+	cubehash512_gpu_hash_80 <<<grid, block >>> (threads, startNounce, (uint64_t*)d_hash);
 }
 
 #endif

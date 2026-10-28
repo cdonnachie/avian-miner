@@ -920,5 +920,5 @@ void x11_luffa512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t *d_ha
 	// berechne wie viele Thread Blocks wir brauchen
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
-	x11_luffa512_gpu_hash_64_final << <grid, block >> >(threads, d_hash, d_resNonce, target);
+	x11_luffa512_gpu_hash_64_final <<<grid, block >>>(threads, d_hash, d_resNonce, target);
 }

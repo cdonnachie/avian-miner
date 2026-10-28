@@ -268,5 +268,5 @@ void x16_echo512_cuda_hash_80(int thr_id, const uint32_t threads, const uint32_t
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	x16_echo512_gpu_hash_80_sp << <grid, block >> >(threads, startNonce, (uint64_t*)d_hash);
+	x16_echo512_gpu_hash_80_sp <<<grid, block >>>(threads, startNonce, (uint64_t*)d_hash);
 }

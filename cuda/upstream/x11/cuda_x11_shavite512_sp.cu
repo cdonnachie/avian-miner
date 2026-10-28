@@ -993,5 +993,5 @@ void x11_shavite512_cpu_hash_64_sp_final(int thr_id, uint32_t threads, uint32_t 
 	dim3 grid((threads + 384 - 1) / 384);
 	dim3 block(384);
 
-	x11_shavite512_gpu_hash_64_sp_final << <grid, block >> >(threads, (uint64_t*)d_hash,resNonce,target);
+	x11_shavite512_gpu_hash_64_sp_final <<<grid, block >>>(threads, (uint64_t*)d_hash,resNonce,target);
 }

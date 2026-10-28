@@ -17,6 +17,7 @@ set -u
 S=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # Overridable so a clone somewhere else can be staged without editing this.
 W=${W:-/mnt/c/development/cpuminer-avian}
+SCRIPTS=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 echo "########## 1. stage ##########"
 bash "$S/stage-cuda-windows.sh" || exit 1
@@ -53,6 +54,30 @@ echo "########## 6. the portable lop3 forms ##########"
 # Selected only when AVIAN_NO_PTX is set, so this does not change what the
 # default Windows DLL compiles.
 python3 "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/make-ptx-portable.py" "$W/cuda/upstream" || exit 1
+
+echo
+echo "########## 7. the HIP-visible __CUDA_ARCH__ guards ##########"
+# hipcc never defines __CUDA_ARCH__. That is what hands us the guarded
+# plain-C fallbacks for free, and the same fact breaks three other things:
+# the host declarations of blockDim and threadIdx in both helper headers.
+# Harmless to the CUDA build, where the condition is unchanged.
+python3 "$SCRIPTS/fix-hip-guards.py" "$W/cuda/upstream" || exit 1
+
+echo
+echo "########## 8. the portable xor.b64 forms ##########"
+# The xor1/3/5/8/9 helpers are chains of inline PTX for an operation every
+# compiler emits optimally on its own. Selected only when AVIAN_NO_PTX is
+# set, so this does not change what the default Windows DLL compiles.
+python3 "$SCRIPTS/fix-xor-asm.py" "$W/cuda/upstream" || exit 1
+
+echo
+echo "########## 9. kernel-launch syntax ##########"
+# Upstream writes launches as `f << <grid, block >> > (args)`. nvcc accepts
+# the spaces and clang in HIP mode does not, reporting "expected expression"
+# about a line that is plainly a launch. The normalised form is identical to
+# nvcc, so this is applied unconditionally rather than behind a flag.
+python3 "$SCRIPTS/fix-launch-syntax.py" "$W/cuda" || exit 1
+python3 "$SCRIPTS/fix-launch-syntax.py" "$W/algo/x16" || exit 1
 
 echo
 echo "########## assertions ##########"

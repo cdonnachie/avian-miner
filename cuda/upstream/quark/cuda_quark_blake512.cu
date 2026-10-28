@@ -593,7 +593,7 @@ __host__ void quark_blake512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t 
 	if (device_sm[dev_id] <= 500) tpb = TPB50_64;
 	const dim3 grid((threads + tpb - 1) / tpb);
 	const dim3 block(tpb);
-	quark_blake512_gpu_hash_64 << <grid, block >> >(threads, d_nonceVector, (uint2*)d_hash);
+	quark_blake512_gpu_hash_64 <<<grid, block >>>(threads, d_nonceVector, (uint2*)d_hash);
 }
 
 extern void quark_blake512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t *d_nonceVector, uint32_t *d_outputHash, uint32_t *resNonce, const uint64_t target)
@@ -604,7 +604,7 @@ extern void quark_blake512_cpu_hash_64_final(int thr_id, uint32_t threads, uint3
 	if (device_sm[dev_id] <= 500) tpb = TPB50_64;
 	const dim3 grid((threads + tpb - 1) / tpb);
 	const dim3 block(tpb);
-	quark_blake512_gpu_hash_64_final << <grid, block >> >(threads, d_nonceVector, (uint2*)d_outputHash, resNonce, target);
+	quark_blake512_gpu_hash_64_final <<<grid, block >>>(threads, d_nonceVector, (uint2*)d_outputHash, resNonce, target);
 }
 
 
@@ -614,7 +614,7 @@ void quark_blake512_cpu_hash_80(int thr_id, uint32_t threads, uint32_t startNoun
 	dim3 grid((threads + 512 - 1) / 512);
 	dim3 block(512);
 
-	quark_blake512_gpu_hash_80 << <grid, block >> >(threads, startNounce, (uint2x4*)d_outputHash);
+	quark_blake512_gpu_hash_80 <<<grid, block >>>(threads, startNounce, (uint2x4*)d_outputHash);
 }
 
 // ---------------------------- END CUDA quark_blake512 functions ------------------------------------

@@ -265,7 +265,7 @@ __host__ void x14_shabal512_cpu_hash_64_final_sp(int thr_id, uint32_t threads, u
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	x14_shabal512_gpu_hash_64_final_sp << <grid, block >> >(threads, d_hash, d_resNonce, target);
+	x14_shabal512_gpu_hash_64_final_sp <<<grid, block >>>(threads, d_hash, d_resNonce, target);
 }
 
 

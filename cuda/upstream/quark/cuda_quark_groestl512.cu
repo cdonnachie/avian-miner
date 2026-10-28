@@ -219,7 +219,7 @@ void quark_groestl512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t *
 
 	dim3 grid((THF*threads + tpb - 1) / tpb);
 	dim3 block(tpb);
-	quark_groestl512_gpu_hash_64_quad_final << <grid, block >> >(threads, d_hash, d_nonceVector);
+	quark_groestl512_gpu_hash_64_quad_final <<<grid, block >>>(threads, d_hash, d_nonceVector);
 }
 
 
@@ -339,7 +339,7 @@ void groestl512_cuda_hash_80(const int thr_id, const uint32_t threads, const uin
 	dim3 grid(factor*((threads + threadsperblock - 1) / threadsperblock));
 	dim3 block(threadsperblock);
 
-	groestl512_gpu_hash_80_quad << <grid, block >> > (threads, startNounce, d_hash);
+	groestl512_gpu_hash_80_quad <<<grid, block >>> (threads, startNounce, d_hash);
 
 }
 
@@ -618,7 +618,7 @@ void quark_groestl512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t *
 
 	dim3 grid((THF*threads + tpb - 1) / tpb);
 	dim3 block(tpb);
-	quark_groestl512_gpu_hash_64_quad_final << <grid, block >> >(threads, d_hash, d_resNonce, target);
+	quark_groestl512_gpu_hash_64_quad_final <<<grid, block >>>(threads, d_hash, d_resNonce, target);
 }
 
 __host__ void quark_groestl512_cpu_free(int kake)

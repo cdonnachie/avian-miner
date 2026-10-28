@@ -643,7 +643,7 @@ __host__ void quark_bmw512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t st
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	quark_bmw512_gpu_hash_64 << <grid, block >> >(threads, (uint64_t*)d_hash, d_nonceVector);
+	quark_bmw512_gpu_hash_64 <<<grid, block >>>(threads, (uint64_t*)d_hash, d_nonceVector);
 }
 
 
@@ -910,7 +910,7 @@ void quark_bmw512_cpu_hash_80(int thr_id, uint32_t threads, uint32_t startNounce
 	const uint32_t threadsperblock = 256;
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
-	quark_bmw512_gpu_hash_80 << <grid, block >> >(threads, startNounce, (uint64_t*)d_hash);
+	quark_bmw512_gpu_hash_80 <<<grid, block >>>(threads, startNounce, (uint64_t*)d_hash);
 }
 
 __host__ void quark_bmw512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t *d_nonceVector, uint32_t *d_hash, uint32_t *resNonce, const uint64_t target)
@@ -921,5 +921,5 @@ __host__ void quark_bmw512_cpu_hash_64_final(int thr_id, uint32_t threads, uint3
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	quark_bmw512_gpu_hash_64_final << <grid, block >> >(threads, (uint64_t*)d_hash, d_nonceVector, resNonce, target);
+	quark_bmw512_gpu_hash_64_final <<<grid, block >>>(threads, (uint64_t*)d_hash, d_nonceVector, resNonce, target);
 }

@@ -42,7 +42,11 @@ extern void cudaReportHardwareFailure(int thr_id, cudaError_t error, const char*
 extern __device__ __device_builtin__ void __syncthreads(void);
 extern __device__ __device_builtin__ void __threadfence(void);
 
-#ifndef __CUDA_ARCH__
+/* __HIPCC__ as well as __CUDA_ARCH__: hipcc never defines the latter, so
+ * without this these host declarations are compiled into a device build and
+ * collide with HIP's own blockDim and threadIdx. See
+ * scripts/fix-hip-guards.py. */
+#if !defined(__CUDA_ARCH__) && !defined(__HIPCC__)
 // define blockDim and threadIdx for host
 extern const dim3 blockDim;
 extern const uint3 threadIdx;

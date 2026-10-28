@@ -9,6 +9,7 @@ else on that side.
 - [Windows](#windows)
 - [Why Windows is split in two](#why-windows-is-split-in-two)
 - [Regenerating the driver](#regenerating-the-driver)
+- [AMD, via HIP](#amd-via-hip)
 - [Known rough edges](#known-rough-edges)
 
 A CPU-only build needs none of the CUDA apparatus below:
@@ -212,6 +213,102 @@ say it has gone. Changes belong in `scripts/gen-driver.py`,
 `scripts/add-tracer.py` or `scripts/make-dll-driver.py`. The same rule covers
 `cuda/upstream/**`, where changes are expressed as the idempotent patch
 scripts in `scripts/` and re-applied at staging time.
+
+## AMD, via HIP
+
+Not buildable yet, and this section records exactly how far it gets so the
+remaining work is a list rather than an investigation. Nothing here is needed
+for an Nvidia build.
+
+There is no AMD GPU on the development machine, so none of this has been
+*run*. What has been done is compiled, with the HIP SDK's clang targeting
+gfx1030, which finds every portability error without any AMD silicon:
+
+```powershell
+& "C:\Program Files\AMD\ROCm\7.2\bin\clang++.exe" `
+    -x hip --offload-arch=gfx1030 -fsyntax-only -std=c++14 -w `
+    -I<a cuda-name shim> -I. -Icuda -Icuda/upstream `
+    cuda/upstream/quark/cuda_bmw512.cu
+```
+
+The shim is a handful of headers named `cuda_runtime.h`, `cuda.h` and so on
+that include `hip/hip_runtime.h` and map the CUDA runtime names the kernels'
+host side uses. It is not in the repository, because it belongs to whatever
+form the AMD build eventually takes rather than to the CUDA one.
+
+### One fact explains most of it
+
+**hipcc never defines `__CUDA_ARCH__`.** That single difference is both the
+largest help and the cause of three separate problems.
+
+It helps because the vendored headers already carry portable fallbacks for
+their rotates and shifts behind `#ifdef __CUDA_ARCH__`, and HIP selects all
+of them for free. Of 146 PTX mnemonic occurrences in the tree, 107 are
+guarded that way and needed no work at all.
+
+It hurts wherever upstream used the same macro to mean "host compiler":
+
+- both helper headers declare `blockDim` and `threadIdx` for the host, which
+  under HIP collide with its real builtins;
+- `cuda_x13_hamsi512.cu` defines its 64x16 table twice, `__constant__` for
+  the device and a plain host array otherwise, and HIP took the host one,
+  giving "reference to `__host__` variable `d_T512` in `__global__` function".
+
+`scripts/fix-hip-guards.py` widens those guards to say what they meant.
+Nothing changes for CUDA, where `__HIPCC__` is undefined.
+
+### What has been done
+
+| Script | What it addresses |
+| --- | --- |
+| `make-ptx-portable.py` | all 60 `lop3.b32` sites, decoded from their own immediates |
+| `fix-xor-asm.py` | 22 `xor.b64` statements in `xor1`/`3`/`5`/`8`/`9` |
+| `fix-hip-guards.py` | the three `__CUDA_ARCH__`-as-host-compiler guards |
+| `fix-launch-syntax.py` | 43 launches written `f << <grid, block >> > (args)` |
+
+The launch one is worth a note: nvcc accepts the spaces and clang in HIP mode
+does not, reporting `expected expression` about a line that is plainly a
+launch. The normalised form is identical to nvcc, so it is applied
+unconditionally rather than behind a flag.
+
+Everything else is selected by `AVIAN_NO_PTX`, which `cuda/avian-ptx-portable.h`
+sets automatically under `__HIPCC__` and which can be forced on nvcc with
+`-DAVIAN_NO_PTX=1`. That flag is the reason any of this is trustworthy: the
+portable path is verifiable on the hardware that is actually here. See
+`build-cuda-dll.ps1 -NoPtx`.
+
+Measured progress, as distinct error locations rather than error reports,
+since one bad line in a shared header reports once per file that includes it:
+
+```
+47  starting point
+27  after a shim for __builtin_align__, which alone accounted for 228 reports
+22  after the launch syntax, the guards and the xor.b64 chains
+16  after the hamsi table guard
+```
+
+### What is left
+
+Eleven code sites and five shim entries.
+
+- **8 PTX expressions.** A 64-bit `and.b64`/`or.b64` majority function, two
+  `shr.b64`, two `shl.b64`, two `mov.b64` halves-of-a-64-bit-word, and one
+  `ld.global.nc.v4.u32` in `cuda_x11_simd512_func.cuh`. All straightforward;
+  the first six are plain C expressions and the load is a `uint4` read.
+- **3 sites in `cuda_bmw512.cu`.** `const uint2 cmsg[16] = { 0xaaaaaaa0,
+  0xaaaaaaaa, ... }` initialises an array of `uint2` from a flat list of 32
+  scalars. CUDA's `uint2` is a plain struct so brace elision applies; HIP's
+  is a class template, so it does not. This is the only genuine type-system
+  difference found.
+- **5 runtime names** for the shim: `cudaThreadSynchronize` four times and
+  `cudaDeviceScheduleBlockingSync` once.
+
+Beyond compiling, and untested because it needs hardware: the `device_sm`
+block-size idiom, which is meaningless off Nvidia and should be deleted
+rather than translated, and the wavefront assumptions at the 205 shuffle
+sites. Those use only widths 4 and 8 and derive their lane maths from
+`threadIdx.x & 3` and `& 7` rather than from `warpSize`, so they should be
+wave-size agnostic, but "should be" is not a measurement.
 
 ## Known rough edges
 

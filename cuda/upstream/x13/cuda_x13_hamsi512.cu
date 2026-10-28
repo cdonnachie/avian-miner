@@ -318,7 +318,9 @@ __constant__ static uint64_t __align__(64) c_PaddedMessage80[10];
 __constant__ static uint32_t __align__(64) c_c[17];
 __constant__ static uint32_t __align__(64) c_h[16];
 
-#if defined(__CUDA_ARCH__)
+/* || __HIPCC__ so the __constant__ table, not the host copy, is the one
+ * a HIP build sees. See scripts/fix-hip-guards.py. */
+#if defined(__CUDA_ARCH__) || defined(__HIPCC__)
 
 __constant__ static const uint32_t d_alpha_n[] = {
 	0xff00f0f0, 0xccccaaaa, 0xf0f0cccc, 0xff00aaaa, 0xccccaaaa, 0xf0f0ff00, 0xaaaacccc, 0xf0f0ff00,
@@ -814,7 +816,7 @@ void x16_hamsi512_cuda_hash_80(int thr_id, const uint32_t threads, const uint32_
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	x16_hamsi512_gpu_hash_80 << <grid, block >> > (threads, startNounce, (uint64_t*)d_hash);
+	x16_hamsi512_gpu_hash_80 <<<grid, block >>> (threads, startNounce, (uint64_t*)d_hash);
 }
 
 __global__
@@ -915,7 +917,7 @@ void x13_hamsi512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t startNounce
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	x13_hamsi512_gpu_hash_64 << <grid, block >> >(threads, startNounce, (uint64_t*)d_hash, d_nonceVector);
+	x13_hamsi512_gpu_hash_64 <<<grid, block >>>(threads, startNounce, (uint64_t*)d_hash, d_nonceVector);
 	//MyStreamSynchronize(NULL, order, thr_id);
 }
 

@@ -50,7 +50,11 @@ extern __device__ __device_builtin__ void __threadfence(void);
 #define AS_UL2(addr)   *((ulonglong2*)(addr))
 
 
-#ifndef __CUDA_ARCH__
+/* __HIPCC__ as well as __CUDA_ARCH__: hipcc never defines the latter, so
+ * without this these host declarations are compiled into a device build and
+ * collide with HIP's own blockDim and threadIdx. See
+ * scripts/fix-hip-guards.py. */
+#if !defined(__CUDA_ARCH__) && !defined(__HIPCC__)
 // define blockDim and threadIdx for host
 extern const dim3 blockDim;
 extern const uint3 threadIdx;
@@ -235,38 +239,53 @@ uint32_t ROR8(const uint32_t a){
 __device__ __forceinline__
 uint64_t xor1(uint64_t a, uint64_t b)
 {
+#if AVIAN_NO_PTX
+	return a ^ b;
+#else
 	uint64_t result;
 	asm("xor.b64 %0, %1, %2;" : "=l"(result) : "l"(a), "l"(b));
 	return result;
+#endif
 }
 
 // device asm for whirpool
 __device__ __forceinline__
 uint64_t xor3(uint64_t a, uint64_t b, uint64_t c)
 {
+#if AVIAN_NO_PTX
+	return a ^ b ^ c;
+#else
 	uint64_t result;
 	asm("xor.b64 %0, %2, %3;\n\t"
 	    "xor.b64 %0, %0, %1;\n\t"
 		/* output : input registers */
 		: "=l"(result) : "l"(a), "l"(b), "l"(c));
 	return result;
+#endif
 }
 
 // device asm for whirpool
 __device__ __forceinline__
 uint64_t xor5(uint64_t a, uint64_t b, uint64_t c, uint64_t d,uint64_t e)
 {
+#if AVIAN_NO_PTX
+	return a ^ b ^ c ^ d ^ e;
+#else
 	uint64_t result;
 	asm("xor.b64 %0, %1, %2;" : "=l"(result) : "l"(d) ,"l"(e));
 	asm("xor.b64 %0, %0, %1;" : "+l"(result) : "l"(c));
 	asm("xor.b64 %0, %0, %1;" : "+l"(result) : "l"(b));
 	asm("xor.b64 %0, %0, %1;" : "+l"(result) : "l"(a));
 	return result;
+#endif
 }
 
 __device__ __forceinline__
 uint64_t xor9(const uint64_t a, const uint64_t b, const uint64_t c, const uint64_t d, const uint64_t e, const uint64_t f, const uint64_t g, const  uint64_t h,const  uint64_t i)
 {
+#if AVIAN_NO_PTX
+	return a ^ b ^ c ^ d ^ e ^ f ^ g ^ h ^ i;
+#else
 	uint64_t result;
 	asm("xor.b64 %0, %1, %2;" : "=l"(result) : "l"(h) ,"l"(i));
 	asm("xor.b64 %0, %0, %1;" : "+l"(result) : "l"(g));
@@ -277,11 +296,15 @@ uint64_t xor9(const uint64_t a, const uint64_t b, const uint64_t c, const uint64
 	asm("xor.b64 %0, %0, %1;" : "+l"(result) : "l"(b));
 	asm("xor.b64 %0, %0, %1;" : "+l"(result) : "l"(a));	
 	return result;
+#endif
 }
 
 __device__ __forceinline__
 uint64_t xor8(uint64_t a, uint64_t b, uint64_t c, uint64_t d,uint64_t e,uint64_t f,uint64_t g, uint64_t h)
 {
+#if AVIAN_NO_PTX
+	return a ^ b ^ c ^ d ^ e ^ f ^ g ^ h;
+#else
 	uint64_t result;
 	asm("xor.b64 %0, %1, %2;" : "=l"(result) : "l"(g) ,"l"(h));
 	asm("xor.b64 %0, %0, %1;" : "+l"(result) : "l"(f));
@@ -291,6 +314,7 @@ uint64_t xor8(uint64_t a, uint64_t b, uint64_t c, uint64_t d,uint64_t e,uint64_t
 	asm("xor.b64 %0, %0, %1;" : "+l"(result) : "l"(b));
 	asm("xor.b64 %0, %0, %1;" : "+l"(result) : "l"(a));
 	return result;
+#endif
 }
 
 static __device__ __forceinline__ uint2 xorswap32(uint2 u, uint2 v)
