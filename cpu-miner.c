@@ -3885,7 +3885,12 @@ int main(int argc, char *argv[])
       }
       if ( opt_n_threads > active_cpus )
          applog( LOG_WARNING, "More miner threads (%d) than active CPUs in affinity mask (%d)", opt_n_threads, active_cpus );
-      if ( !opt_quiet )
+      // Not under --gpu. The map has one column per logical CPU, and with a
+      // single host thread per GPU it says where that thread may sit rather
+      // than anything about the mining. Printed immediately after "using 1
+      // mining thread, one per GPU" it reads as though the CPU is about to
+      // start hashing as well.
+      if ( !opt_quiet && !opt_gpu )
       {
          char affinity_mask[64];
          format_affinity_mask( affinity_mask, opt_affinity );
@@ -4049,8 +4054,16 @@ int main(int argc, char *argv[])
    memcpy( &total_hashes_time, &last_submit_time, sizeof (struct timeval) );
    pthread_mutex_unlock( &stats_lock );
 
-   applog( LOG_INFO, "%d of %d miner threads started using '%s' algorithm",
-                     opt_n_threads, num_cpus, algo_names[opt_algo] );
+   // "of num_cpus" is a CPU statement. Under --gpu the thread count is the
+   // number of GPUs, so comparing it to the CPU count described nothing and
+   // suggested 23 idle mining threads that were never going to exist.
+   if ( opt_gpu )
+      applog( LOG_INFO, "%d GPU mining thread%s started using '%s' algorithm",
+                        opt_n_threads, opt_n_threads == 1 ? "" : "s",
+                        algo_names[opt_algo] );
+   else
+      applog( LOG_INFO, "%d of %d miner threads started using '%s' algorithm",
+                        opt_n_threads, num_cpus, algo_names[opt_algo] );
 
       /* main loop - simply wait for workio thread to exit */
 	pthread_join( thr_info[work_thr_id].pth, NULL );
