@@ -1,3 +1,16 @@
+# avian-miner
+
+An Avian fork of cpuminer-opt, adding a CUDA backend for Avian's dual proof
+of work, X16RT and MinotaurX, and a Stratum v2 client.
+
+**Building: see [doc/building.md](doc/building.md).** A CPU-only build is
+upstream's `./build.sh`; the GPU build is not, and on Windows it is split
+across two toolchains for reasons that document explains.
+
+Upstream's README follows.
+
+---
+
 cpuminer-opt is a fork of cpuminer-multi by TPruvot with optimizations
 imported from other miners developped by lucas Jones, djm34, Wolf0, pooler,
 Jeff garzik, ig0tik3d, elmad, palmd, and Optiminer, with additional

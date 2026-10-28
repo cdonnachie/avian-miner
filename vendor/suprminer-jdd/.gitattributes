@@ -1,0 +1,6 @@
+# This is a verbatim copy of an upstream release, so git must store it exactly
+# as published. Without this, 24 files with CRLF endings (the MSVC project
+# files, the API samples, compat/jansson, LICENSE.txt) get normalised to LF on
+# add, and the copy stops being byte for byte what upstream shipped, which is
+# the one property that makes vendoring worth doing.
+* -text

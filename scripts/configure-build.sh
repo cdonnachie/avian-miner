@@ -10,18 +10,14 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 S=$SCRIPT_DIR
 MINER=${MINER:-$(cd "$SCRIPT_DIR/.." && pwd)}
 SV2=${SV2:-$HOME/avian-gpu/avian-sv2}
-# The pinned upstream checkout the driver is generated from. Was missing, and
-# with set -u that aborted the script just before the generate step, so make
-# quietly rebuilt the previous driver and two fixes went untested.
-# The generator input: a clone of the upstream this port is derived from.
-#   https://github.com/JayDDee/suprminer-jdd  at e4efcea
-# Pinned here because it is the one input to the pipeline that is not in
-# this repository, and the generated driver it produced is. Without the
-# revision recorded, a rebuild could silently generate from a different
-# upstream than the committed algo/x16/x16rt-cuda-batch.cu came from.
-# Only needed to regenerate; the generated driver is tracked, so a plain
-# build does not need this at all.
-SRC=${SRC:-$HOME/avian-gpu/.suprminer-src}
+# The upstream the driver is generated from, now vendored at
+# vendor/suprminer-jdd rather than expected in a sibling directory. It used
+# to default to $HOME/avian-gpu/.suprminer-src, which was absent on any other
+# machine, and with set -u that aborted the script just before the generate
+# step, so make quietly rebuilt the previous driver and two fixes went
+# untested. Vendoring also means an upstream that disappears cannot take the
+# only copy of the generator's input with it. See the README beside it.
+SRC=${SRC:-$MINER/vendor/suprminer-jdd}
 
 # Prefer the newest 12.x present, since 12.8 was the first with Blackwell.
 for v in 12.9 12.8 12.6; do
