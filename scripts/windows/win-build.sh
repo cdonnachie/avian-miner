@@ -9,8 +9,13 @@
 # Built from a fresh clone, not the working checkout, because that checkout
 # holds object files from Linux builds and make would happily mix them.
 set -u
+# The build directory, a sibling of the repository unless
+# AVIAN_BUILD_DIR says otherwise. Computed from this script rather than
+# written out, so the PowerShell and MSYS2 stages of the pipeline agree
+# on where each other's output went.
+BUILD_ROOT=${AVIAN_BUILD_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/avian-winbuild}
 SRC=${SRC:-/c/development/cpuminer-avian}
-WORK=${WORK:-/c/Users/craig/AppData/Local/Temp/claude/c--development-Avian-v5-0/9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635/scratchpad/winbuild}
+WORK=${WORK:-$BUILD_ROOT}
 B=$WORK/cpuminer-avian
 
 echo "=== environment ==="

@@ -24,7 +24,7 @@
 # No kernels, no miner. Nothing here is flagged by antivirus, which also
 # makes it a clean thing to send someone whose Defender ate the last zip.
 param(
-    [string]$Out  = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\avian-amd-probe",
+    [string]$Out  = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR\avian-amd-probe" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild\avian-amd-probe" }),
     [string]$Rocm = "C:\Program Files\AMD\ROCm\7.1\7.1"
 )
 

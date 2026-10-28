@@ -101,6 +101,24 @@ configurations. It surfaces as undefined references to things like
 Six stages: two in MSYS2's MINGW64 shell, two from PowerShell, then two more
 in MINGW64. They must run in this order, each depending on the last.
 
+All six write to one directory, `avian-winbuild` beside the repository,
+which `AVIAN_BUILD_DIR` overrides:
+
+```sh
+export AVIAN_BUILD_DIR=/d/builds/avian      # MSYS2
+```
+
+```powershell
+$env:AVIAN_BUILD_DIR = "D:\builds\avian"       # PowerShell
+```
+
+Beside the repository rather than inside it because stage 1 clones the tree
+into that directory, so a subdirectory of the clone would nest. Both shells
+derive the default from the script's own location rather than naming a path,
+which matters because the stages hand work to each other: if the PowerShell
+default were the Windows temp and the MSYS2 default were `/tmp`, stage 5
+would look for the DLL stage 4 built and not find it.
+
 ```sh
 # MSYS2 MINGW64
 scripts/windows/win-build.sh     # 1. fresh clone, CPU miner

@@ -69,7 +69,7 @@ param(
     # Named per SDK when building more than one, because the runtime a DLL
     # imports is fixed at link time: a 6.x build and a 7.x build are
     # different files rather than a choice made at run time.
-    [string]$Out = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\winbuild\hip"
+    [string]$Out = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR\hip" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild\hip" })
 )
 
 $W = "C:\development\cpuminer-avian"

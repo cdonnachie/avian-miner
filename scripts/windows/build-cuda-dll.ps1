@@ -18,10 +18,10 @@ param([switch]$NoPtx)
 
 $ErrorActionPreference = "Stop"
 $W = "C:\development\cpuminer-avian"
-$OUT = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\winbuild\cuda"
+$BUILD = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild" })
+$OUT = Join-Path $BUILD "cuda"
 $CUDA = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9"
 $VCVARS = "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
-$S = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad"
 
 New-Item -ItemType Directory -Force -Path $OUT | Out-Null
 # The support file is NOT copied in from the scratchpad. It used to be, and

@@ -14,7 +14,12 @@
 # plain data, so the miner needs no CUDA headers, no nvcc, and no knowledge
 # of the kernels beyond cuda/avian-cuda-api.h.
 set -u
-WORK=${WORK:-/c/Users/craig/AppData/Local/Temp/claude/c--development-Avian-v5-0/9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635/scratchpad/winbuild}
+# The build directory, a sibling of the repository unless
+# AVIAN_BUILD_DIR says otherwise. Computed from this script rather than
+# written out, so the PowerShell and MSYS2 stages of the pipeline agree
+# on where each other's output went.
+BUILD_ROOT=${AVIAN_BUILD_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/avian-winbuild}
+WORK=${WORK:-$BUILD_ROOT}
 B=$WORK/cpuminer-avian
 DLLDIR=${DLLDIR:-$WORK/cuda}
 SV2_SRC=${SV2_SRC:-/c/development/avian-sv2}

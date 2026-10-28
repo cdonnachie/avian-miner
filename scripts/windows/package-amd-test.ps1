@@ -15,9 +15,9 @@ param(
     # copy kept for swapping DLLs by hand, so its miner is whatever was
     # last dropped into it, and right now it has no miner at all. This
     # one is written by the build and carries the corrected banner.
-    [string]$Release = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\winbuild\release",
-    [string]$HipDll  = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\winbuild\hip\avian_cuda.dll",
-    [string]$Out     = "C:\Users\craig\AppData\Local\Temp\claude\c--development-Avian-v5-0\9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635\scratchpad\avian-amd-test",
+    [string]$Release = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR\release" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild\release" }),
+    [string]$HipDll  = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR\hip\avian_cuda.dll" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild\hip\avian_cuda.dll" }),
+    [string]$Out     = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR\avian-amd-test" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild\avian-amd-test" }),
     [int]$Seconds    = 60,
     # Leaves the HIP runtime out, so the import resolves to the copy the
     # driver installed. Right for a 6.x build, where consumer drivers

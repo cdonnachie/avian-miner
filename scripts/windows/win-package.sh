@@ -6,8 +6,13 @@
 # zip that works on the build machine and fails everywhere else, which is the
 # classic way to ship a broken Windows build.
 set -u
-B=${B:-/c/Users/craig/AppData/Local/Temp/claude/c--development-Avian-v5-0/9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635/scratchpad/winbuild/cpuminer-avian}
-REL=${REL:-/c/Users/craig/AppData/Local/Temp/claude/c--development-Avian-v5-0/9e1a4f58-d2d0-4ac5-b59e-ba1e8ee54635/scratchpad/winbuild/release}
+# The build directory, a sibling of the repository unless
+# AVIAN_BUILD_DIR says otherwise. Computed from this script rather than
+# written out, so the PowerShell and MSYS2 stages of the pipeline agree
+# on where each other's output went.
+BUILD_ROOT=${AVIAN_BUILD_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/avian-winbuild}
+B=${B:-$BUILD_ROOT/cpuminer-avian}
+REL=${REL:-$BUILD_ROOT/release}
 
 rm -rf "$REL"; mkdir -p "$REL"
 cp "$B/avian-miner.exe" "$REL/" || exit 1
