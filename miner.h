@@ -786,9 +786,12 @@ extern bool opt_debug_diff;
 /* --gpu. Read by register_x16rt_algo, which hands the gate to the CUDA
  * backend instead of a CPU scanhash. */
 extern bool opt_gpu;
-/* --sv2-hashrate, in hashes per second. What the miner claims when it
- * opens a channel; the pool sizes its rate limiter from it. */
+/* --sv2-hashrate, in hashes per second. What the miner declares when it
+ * opens a channel, which is what the pool derives its share target from.
+ * Measured at startup unless the flag was given, which is what the second
+ * of these records. */
 extern double opt_sv2_hashrate;
+extern bool opt_sv2_hashrate_set;
 extern bool opt_benchmark;
 extern bool opt_protocol;
 extern bool opt_extranonce;
@@ -998,9 +1001,10 @@ Options:\n\
       --sv2-expect-payout=ADDR  check the assembled coinbase pays this address\n\
       --avian-selftest          check -a's proof of work against hashes a real node reported\n\
       --gpu                     mine x16rt on the GPU instead of the CPU, one thread per card\n\
-      --sv2-hashrate=RATE       tell the pool how fast this miner is, eg 30M. The pool sizes\n\
-                                its share rate limit from this, so leaving it low gets shares\n\
-                                refused as too-many-shares\n\
+      --sv2-hashrate=RATE       how fast this miner is, eg 30M. Measured at startup if\n\
+                                unset, which is the intended way. The pool works out this\n\
+                                worker's share target from it, so a wrong figure changes how\n\
+                                often shares are submitted and nothing else\n\
   -b, --api-bind=address[:port]   IP address for the miner API, default port is 4048)\n\
       --api-remote      allow remote control\n\
       --max-temp=N      only mine if cpu temp is less than specified value (linux)\n\

@@ -7,6 +7,9 @@
 #include <string.h>
 #include <time.h>
 
+#include <sys/time.h>
+
+#include "algo-gate-api.h"
 #include "avian/ntime.h"
 #include "avian/sv2.h"
 
@@ -650,4 +653,177 @@ void *avian_sv2_thread(void *userdata)
 
     tq_freeze(mythr->q);
     return NULL;
+}
+
+/* ---- measuring this machine, so nobody has to type a hash rate ---- */
+
+/* Measuring what this machine actually does, so nobody has to type it.
+ *
+ * A Stratum v2 pool derives each channel's share target from the hash rate
+ * the miner declares when it opens the channel. An ASIC knows its own rate
+ * from its clock and its core count, which is the case the protocol field was
+ * designed for. Nothing on a CPU or a GPU is a constant like that, and a
+ * table of hardware models would be wrong the day a new card ships, so the
+ * miner counts instead: it runs the algorithm it is about to mine, on every
+ * thread it is about to mine with, for a couple of seconds.
+ *
+ * The figure only has to be right to within a factor of a few. It sets how
+ * often shares are submitted and nothing else: a pool reports hash rate from
+ * work actually done, and a block is a block whatever target the channel is
+ * carrying.
+ */
+
+/* X16RT reshuffles its chain of sixteen hashes every 128 seconds and the
+ * orders are not equally fast, so a single sample measures a single order.
+ * MinotaurX picks its six algorithms per hash out of the hash itself, so it
+ * averages within one sample and needs only the one. */
+#define X16RT_EPOCHS 4
+
+/* Long enough for the slowest thing here. One MinotaurX core is about 1200
+ * hashes a second, so even a quarter of this run is thousands of hashes. */
+#define DEFAULT_SECONDS 3.0
+
+struct bench_arg
+{
+   int thread;
+   uint32_t ntime;
+   double seconds;
+   uint64_t hashes;
+   double elapsed;
+};
+
+static double since( const struct timeval *start )
+{
+   struct timeval now, diff;
+   gettimeofday( &now, NULL );
+   timeval_subtract( &diff, &now, start );
+   return (double) diff.tv_sec + (double) diff.tv_usec * 1e-6;
+}
+
+static void *bench_thread( void *untyped )
+{
+   struct bench_arg *arg = (struct bench_arg *) untyped;
+   struct work work __attribute__((aligned(64)));
+   struct thr_info thr;
+   struct timeval start;
+   uint32_t nonce = 0;
+   /* Grows until a call takes long enough to be worth timing. MinotaurX runs
+    * at about a thousand hashes a second and X16RT on a card at tens of
+    * millions, and one fixed chunk cannot serve both. */
+   uint32_t chunk = 64;
+
+   memset( &thr, 0, sizeof( thr ) );
+   thr.id = arg->thread;
+   if ( algo_gate.miner_thread_init && !algo_gate.miner_thread_init( arg->thread ) )
+      return NULL;
+
+   memset( &work, 0, sizeof( work ) );
+   /* Words as Stratum sends them, byte-reversed against the header, which is
+    * what scanhash expects and reverses back. Any header will do: the ntime
+    * word is the only one that changes how much work a hash is. */
+   for ( int w = 0; w < 20; w++ )
+      work.data[w] = 0x01020304u + (uint32_t) w;
+   work.data[17] = bswap_32( arg->ntime );
+   /* A target of zero, so no hash can pass and nothing is ever submitted.
+    * This measures the cost of hashing and nothing else. */
+   memset( work.target, 0, sizeof( work.target ) );
+
+   gettimeofday( &start, NULL );
+   for ( ;; )
+   {
+      uint64_t done = 0;
+      double before = since( &start );
+      double elapsed;
+
+      /* Wrap rather than letting max_nonce overflow, which would leave
+       * scanhash with a range that runs backwards. */
+      if ( nonce > UINT32_MAX - chunk - 16 )
+         nonce = 0;
+      work.data[19] = nonce;
+      /* scanhash needs room for one whole pass: a wide one computes its last
+       * nonce as max_nonce - 8 and underflows on a tighter range. */
+      algo_gate.scanhash( &work, nonce + chunk, &done, &thr );
+      arg->hashes += done;
+      nonce += chunk;
+
+      elapsed = since( &start );
+      if ( elapsed >= arg->seconds )
+      {
+         arg->elapsed = elapsed;
+         break;
+      }
+      if ( elapsed - before < 0.05 && chunk < ( 1u << 22 ) )
+         chunk *= 4;
+   }
+   return NULL;
+}
+
+double avian_sv2_measure_hash_rate( double seconds )
+{
+   int threads = opt_n_threads;
+   int epochs = ( opt_algo == ALGO_X16RT ) ? X16RT_EPOCHS : 1;
+   uint32_t base = (uint32_t) time( NULL );
+   struct bench_arg *args;
+   pthread_t *ids;
+   uint64_t hashes = 0;
+   double elapsed = 0.0;
+   int epoch;
+
+   /* work_restart is allocated with one slot per mining thread and every
+    * scanhash reads its own, so this cannot run before that or outside it. */
+   if ( threads < 1 || !work_restart || !algo_gate.scanhash )
+      return 0.0;
+   if ( !( seconds > 0.0 ) )
+      seconds = DEFAULT_SECONDS;
+
+   args = (struct bench_arg *) calloc( threads, sizeof( *args ) );
+   ids = (pthread_t *) calloc( threads, sizeof( *ids ) );
+   if ( !args || !ids )
+   {
+      free( args );
+      free( ids );
+      return 0.0;
+   }
+
+   for ( epoch = 0; epoch < epochs; epoch++ )
+   {
+      /* One chain order per epoch, the same on every thread, because that is
+       * how a miner meets them: all threads share one job. */
+      uint32_t ntime = base + (uint32_t) epoch * 128u;
+      double slowest = 0.0;
+      int started = 0;
+      int t;
+
+      for ( t = 0; t < threads; t++ )
+      {
+         args[t].thread = t;
+         args[t].ntime = ntime;
+         args[t].seconds = seconds / (double) epochs;
+         args[t].hashes = 0;
+         args[t].elapsed = 0.0;
+         if ( pthread_create( &ids[t], NULL, bench_thread, &args[t] ) != 0 )
+            break;
+         started++;
+      }
+      for ( t = 0; t < started; t++ )
+         pthread_join( ids[t], NULL );
+      if ( started == 0 )
+         break;
+
+      /* The longest of the threads, not the shortest: dividing by a thread
+       * that finished early would report a rate nobody sustained. */
+      for ( t = 0; t < started; t++ )
+      {
+         hashes += args[t].hashes;
+         if ( args[t].elapsed > slowest )
+            slowest = args[t].elapsed;
+      }
+      elapsed += slowest;
+   }
+
+   free( args );
+   free( ids );
+   if ( !( elapsed > 0.0 ) )
+      return 0.0;
+   return (double) hashes / elapsed;
 }

@@ -125,7 +125,11 @@ enum algos opt_algo = ALGO_NULL;
 bool opt_gpu = false;
 /* Hashes per second. The old hardcoded 1000.0 put every miner on the
  * pool's 2/s share floor regardless of what it could actually do. */
+/* A last resort if the measurement at startup fails, and deliberately
+ * the same as the slowest rate a pool believes by default, so falling
+ * back lands exactly on that floor rather than under it. */
 double opt_sv2_hashrate = 1000.0;
+bool opt_sv2_hashrate_set = false;
 char* opt_param_key = NULL;
 int opt_param_n = 0;
 int opt_param_r = 0;
@@ -3171,21 +3175,33 @@ void parse_arg(int key, char *arg )
    {
       char *end = NULL;
       double v = strtod( arg, &end );
-      /* k, M and G, because nobody wants to type 30000000. */
+      /* k, M and G, because nobody wants to type 30000000. One suffix
+       * character and then the end of the string: this used to read only the
+       * first, so "17kiB" quietly became 17000. */
       if ( end && *end )
       {
-         if ( *end == 'k' || *end == 'K' )      v *= 1e3;
+         if ( end[1] != '\0' )                 v = 0.0;
+         else if ( *end == 'k' || *end == 'K' ) v *= 1e3;
          else if ( *end == 'm' || *end == 'M' ) v *= 1e6;
          else if ( *end == 'g' || *end == 'G' ) v *= 1e9;
          else v = 0.0;
       }
-      if ( !( v > 0.0 ) )
+      /* The bounds are a pool's own: under the first it stops believing the
+       * figure and over the second it stops using it. Either way it clamps
+       * silently, and a complaint here is worth more than a share rate that
+       * is wrong for reasons nothing reports. Written as one range so that
+       * a NaN fails it: strtod returns a positive infinity for 1e400, and
+       * every comparison against a NaN is false. */
+      if ( !( v >= 100.0 && v <= 1e12 ) )
       {
-         applog( LOG_ERR, "--sv2-hashrate wants a positive rate, "
-                          "optionally suffixed k, M or G: %s", arg );
+         applog( LOG_ERR, "--sv2-hashrate wants a rate between 100 and 1e12 "
+                          "hashes a second, optionally suffixed k, M or G, "
+                          "not '%s'. Leave it unset and it is measured.",
+                          arg );
          show_usage_and_exit(1);
       }
       opt_sv2_hashrate = v;
+      opt_sv2_hashrate_set = true;
       break;
    }
    case 1207:  // gpu
@@ -3990,6 +4006,30 @@ int main(int argc, char *argv[])
          applog( LOG_INFO, "Creating Stratum v2 thread" );
 
       /* init Stratum v2 thread info */
+      /* Nobody should have to look up what their own hardware does, so
+       * measure it. This is the whole reason --sv2-hashrate can be left
+       * alone, and it has to happen here: after work_restart exists, which
+       * scanhash reads, and before the channel opens and declares a figure
+       * that is then fixed for the session. */
+      if ( !opt_sv2_hashrate_set )
+      {
+         double measured = avian_sv2_measure_hash_rate( 0.0 );
+         if ( measured > 0.0 )
+         {
+            char rate[32];
+            opt_sv2_hashrate = measured;
+            format_hashrate( measured, rate );
+            applog( LOG_NOTICE, "measured %s across %d threads; the pool "
+                                "sizes this miner's share target from it",
+                    rate, opt_n_threads );
+         }
+         else
+            applog( LOG_WARNING, "could not measure this machine, so the pool "
+                                 "will be told %.0f H/s. Pass --sv2-hashrate "
+                                 "if shares arrive far too often or not at all",
+                    opt_sv2_hashrate );
+      }
+
       int sv2_thr_id = opt_n_threads + 4;
       thr = &thr_info[sv2_thr_id];
       thr->id = sv2_thr_id;

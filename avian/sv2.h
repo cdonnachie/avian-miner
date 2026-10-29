@@ -56,6 +56,14 @@ bool avian_sv2_roll_ntime(void);
  * they agree. */
 int avian_pow_selftest(void);
 
+/* What this machine does on the configured algorithm, in hashes a second,
+ * measured by running it for `seconds` on every mining thread. Zero if it
+ * cannot be measured, which leaves the caller to fall back.
+ *
+ * Must not be called before work_restart is allocated: scanhash reads its
+ * own slot. */
+double avian_sv2_measure_hash_rate( double seconds );
+
 /* submit_solution's first call. False in every ordinary run, so nothing about
  * mining changes; the self-test uses it to take the hash the miner computed
  * without a share going anywhere. */
