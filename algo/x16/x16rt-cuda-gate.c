@@ -17,11 +17,12 @@
 #include "algo-gate-api.h"
 #include "algo/x16/x16r-gate.h"
 #include "algo/x16/x16rt-cuda.h"
-#include "cuda/avian-cuda-api.h"
+#include "cuda/avian-gpu-backend.h"
 
 /* The kernels have plenty to say and no business owning the miner's log, so
- * they are handed one. On Linux they could reach applog directly, but going
- * through the callback on both platforms keeps startup identical. */
+ * they are handed one. Not a stylistic choice any more: the backends are
+ * loaded libraries on both platforms now and cannot reach the executable's
+ * applog at all, so this callback is the only way a line gets back here. */
 static void x16rt_cuda_log( int level, const char *msg )
 {
    applog( level, "%s", msg );
@@ -31,16 +32,28 @@ bool register_x16rt_cuda_algo( algo_gate_t* gate )
 {
    int devices;
 
-   avian_cuda_set_logger( x16rt_cuda_log );
-
-   devices = avian_cuda_device_count();
+   /* Loads whichever vendors are present and numbers their devices as one
+    * list, so the rest of the miner, and every "GPU #n" below, means one
+    * thing whether this machine has Nvidia cards, AMD cards or both. */
+   devices = avian_gpu_init( x16rt_cuda_log );
    if ( devices <= 0 )
    {
-      applog( LOG_ERR, "no CUDA device found, so --gpu cannot be honoured" );
+      /* Two different faults with one symptom, which is worth separating
+       * here rather than in a support thread. Note the second keeps the
+       * exact words package-amd-test.ps1 looks for to decide whether its
+       * retry is worth running: that retry swaps the shipped runtime for the
+       * driver's, which only makes sense once a library has loaded. */
+      if ( avian_gpu_backend_count() == 0 )
+         applog( LOG_ERR, "no GPU backend beside the miner, so --gpu cannot be "
+                          "honoured: expected %s or %s in this directory",
+                 AVIAN_GPU_NVIDIA_LIB_NAME, AVIAN_GPU_AMD_LIB_NAME );
+      else
+         applog( LOG_ERR, "no CUDA device found, so --gpu cannot be honoured" );
       return false;
    }
    for ( int d = 0; d < devices; d++ )
-      applog( LOG_INFO, "GPU #%d: %s", d, avian_cuda_device_name( d ) );
+      applog( LOG_INFO, "GPU #%d: %s (%s)", d, avian_gpu_device_name( d ),
+              avian_gpu_vendor( d ) );
 
    gate->scanhash = (void*)&scanhash_x16rt_cuda;
 
@@ -60,8 +73,10 @@ bool register_x16rt_cuda_algo( algo_gate_t* gate )
                        | NEON_OPT;
    opt_target_factor = 256.0;
 
-   /* One mining thread per device. The gate's default get_new_work splits the
-    * nonce range by opt_n_threads, which is then exactly one range per card.
+   /* One mining thread per device, across both vendors: thread n drives
+    * device n, which is what x16rt-cuda-host.c passes to the loader. The
+    * gate's default get_new_work splits the nonce range by opt_n_threads,
+    * which is then exactly one range per card.
     * Set here rather than left to the CPU count, where sixteen threads would
     * each claim a sixteenth of the range and all drive the same GPU. */
    if ( opt_n_threads != devices )

@@ -34,7 +34,9 @@ while [ ${#queue[@]} -gt 0 ]; do
     done
 done
 
-# The GPU backend, when one was built. avian_cuda.dll carries the kernels;
+# The GPU backends, when any were built. Both are copied when both exist:
+# that is what a machine with an Nvidia and an AMD card needs, and the miner
+# takes whichever of them loads. avian_cuda.dll carries the kernels;
 # VCRUNTIME140.dll is what nvcc's MSVC host code needs, and is the only
 # Microsoft runtime required because nvcc links the CUDA runtime statically.
 # The UCRT (api-ms-win-crt-*) is part of Windows 10 and later.
@@ -49,7 +51,21 @@ if [ -f "$CUDA_DLL" ]; then
         if [ -f "$vc" ]; then cp "$vc" "$REL/VCRUNTIME140.dll"; echo "  + VCRUNTIME140.dll"; break; fi
     done
 else
-    echo "  (no GPU backend: $CUDA_DLL not present)"
+    echo "  (no Nvidia backend: $CUDA_DLL not present)"
+fi
+
+# The AMD backend, independently of the Nvidia one: a rig with one card of
+# each needs both files, and the miner loads whichever are there. Its own HIP
+# runtime is deliberately not handled here, because whether to ship one
+# inverts between the 6.x and 7.x SDKs and getting it the wrong way round is
+# silent both times; scripts/windows/package-amd-test.ps1 is what knows the
+# rule. See doc/building.md.
+AMD_DLL=${AMD_DLL:-$(dirname "$B")/hip/avian_amd.dll}
+if [ -f "$AMD_DLL" ]; then
+    cp "$AMD_DLL" "$REL/"
+    echo "  + avian_amd.dll (AMD GPU backend)"
+else
+    echo "  (no AMD backend: $AMD_DLL not present)"
 fi
 
 echo "=== packaged ==="

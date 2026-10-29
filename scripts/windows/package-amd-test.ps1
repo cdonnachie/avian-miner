@@ -16,7 +16,7 @@ param(
     # last dropped into it, and right now it has no miner at all. This
     # one is written by the build and carries the corrected banner.
     [string]$Release = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR\release" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild\release" }),
-    [string]$HipDll  = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR\hip\avian_cuda.dll" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild\hip\avian_cuda.dll" }),
+    [string]$HipDll  = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR\hip\avian_amd.dll" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild\hip\avian_amd.dll" }),
     [string]$Out     = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR\avian-amd-test" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild\avian-amd-test" }),
     [int]$Seconds    = 60,
     # Leaves the HIP runtime out, so the import resolves to the copy the
@@ -44,7 +44,7 @@ New-Item -ItemType Directory -Force $Out | Out-Null
 # machine would otherwise get a clean pass that says nothing about AMD.
 Copy-Item "$Release\*.exe" $Out -Force
 Copy-Item "$Release\*.dll" $Out -Force
-Copy-Item $HipDll "$Out\avian_cuda.dll" -Force
+Copy-Item $HipDll "$Out\avian_amd.dll" -Force
 
 # Checked rather than assumed. Defender flags this miner
 # Trojan:Win32/Bearfoos.B!ml, an ml-suffixed machine-learning guess
@@ -311,7 +311,7 @@ try {
 # gets sent to someone, and every earlier guard here was added after
 # a package shipped or nearly shipped incomplete.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$want = @("avian-miner.exe", "avian_cuda.dll",
+$want = @("avian-miner.exe", "avian_amd.dll",
           "run-test.ps1", "RUN-ME-first.bat", "README.txt")
 if (-not $NoRuntime) { $want += $hipRt.Name }
 $have = @()

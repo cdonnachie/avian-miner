@@ -2878,12 +2878,13 @@ out:
 static void show_credits()
 {
    printf("\n         **********  avian-miner  ********** \n");
-   // Which vendor is not a compile-time fact. The same binary drives either,
-   // through the plain-data ABI in cuda/avian-cuda-api.h, and the backend DLL
-   // beside it decides which. The card's own name is printed a few lines
-   // later, once the backend has been asked.
+   // Which vendor is not a compile-time fact, and it is not one vendor. The
+   // same binary drives either or both, through the plain-data ABI in
+   // cuda/avian-cuda-api.h: it loads whichever backend libraries sit beside
+   // it. Each card's own name is printed a few lines later, once they have
+   // been asked.
 #if defined(HAVE_CUDA)
-   printf("     Avian (AVN): x16rt and minotaurx, on CPU and GPU (NVIDIA or AMD),\n");
+   printf("     Avian (AVN): x16rt and minotaurx, on CPU and GPU (NVIDIA and AMD),\n");
 #else
    printf("     Avian (AVN): x16rt and minotaurx, on CPU,\n");
 #endif

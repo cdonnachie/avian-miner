@@ -134,7 +134,7 @@ dnl unchanged.
 AC_ARG_WITH([cuda],
    [  --with-cuda@<:@=PATH@:>@  build the CUDA X16RT backend; PATH is the toolkit prefix @<:@default=/usr/local/cuda@:>@])
 
-have_cuda=false
+have_nv=false
 if test "x$with_cuda" != "x" && test "x$with_cuda" != "xno" ; then
    if test "x$with_cuda" = "xyes" ; then
       cuda_prefix=/usr/local/cuda
@@ -204,8 +204,7 @@ if test "x$with_cuda" != "x" && test "x$with_cuda" != "xno" ; then
    CUDA_LDFLAGS="-L$cuda_prefix/lib64 -L$cuda_prefix/lib"
    dnl -lstdc++ because the kernels are C++ while this miner links with CC.
    CUDA_LIBS="-lcudart -lstdc++"
-   AC_DEFINE([HAVE_CUDA], [1], [Define to 1 to build the CUDA X16RT backend.])
-   have_cuda=true
+   have_nv=true
 fi
 # The same kernels, for AMD hardware. This is a smaller change than it looks:
 # the miner's own C never names a GPU runtime symbol, it goes through the
@@ -214,11 +213,9 @@ fi
 AC_ARG_WITH([hip],
    [  --with-hip@<:@=PATH@:>@   build the HIP X16RT backend for AMD; PATH is the ROCm prefix @<:@default=/opt/rocm@:>@])
 
-have_hip=false
+have_amd=false
+have_gpu=false
 if test "x$with_hip" != "x" && test "x$with_hip" != "xno" ; then
-   if test x$have_cuda = xtrue ; then
-      AC_MSG_ERROR([--with-cuda and --with-hip build the same kernels for different hardware; pass one])
-   fi
    if test "x$with_hip" = "xyes" ; then
       hip_prefix=/opt/rocm
    else
@@ -275,41 +272,44 @@ if test "x$with_hip" != "x" && test "x$with_hip" != "xno" ; then
    dnl -lstdc++ for the same reason the CUDA side needs it: the kernels are
    dnl C++ and this miner links with CC.
    HIP_LIBS="-lamdhip64 -lstdc++"
-   have_hip=true
+   have_amd=true
 fi
 
-dnl At most one backend, and the rest of the build does not care which. Note
-dnl that HAVE_CUDA keeps its name for a HIP build. It gates the host-side GPU
-dnl code, every name in which is avian_cuda_* whichever card ends up running
-dnl it, and it is what cpu-miner.c, x16r-gate.c and the Windows build scripts
-dnl already test. A rename that stopped at this one symbol would leave those
-dnl testing something different from the sources.
-if test x$have_hip = xtrue ; then
+dnl Either vendor, or both. They are no longer alternatives: each builds its
+dnl own library exporting the same avian_cuda_* ABI, and the miner loads them
+dnl rather than linking them. That is what lets one binary drive an Nvidia
+dnl card, an AMD card, or both in the same machine, and it is also why
+dnl building for both does not make a binary that needs both drivers
+dnl installed to start. See cuda/avian-gpu-backend.h.
+dnl
+dnl HAVE_CUDA keeps its name and now means no more than "this binary has GPU
+dnl support". It gates the host-side code, every name in which is
+dnl avian_cuda_* or avian_gpu_* whichever card ends up running it, and it is
+dnl what cpu-miner.c, x16r-gate.c and the Windows build scripts already test.
+dnl A rename that stopped at this one symbol would leave those testing
+dnl something different from the sources.
+if test x$have_nv = xtrue || test x$have_amd = xtrue ; then
    AC_DEFINE([HAVE_CUDA], [1], [Define to 1 to build a GPU X16RT backend.])
-   have_cuda=true
-   GPUCC="$HIPCC"
-   dnl -x hip because these files are named .cu, which hipcc otherwise hands
-   dnl to the host compiler as plain C++.
-   GPUCC_ARCH="$HIPCC_ARCH -x hip"
-   GPU_LDFLAGS="$HIP_LDFLAGS"
-   GPU_LIBS="$HIP_LIBS"
-else
-   GPUCC="$NVCC"
-   GPUCC_ARCH="$NVCC_ARCH"
-   GPU_LDFLAGS="$CUDA_LDFLAGS"
-   GPU_LIBS="$CUDA_LIBS"
+   have_gpu=true
 fi
 
-AM_CONDITIONAL([HAVE_CUDA], [test x$have_cuda = xtrue])
-AM_CONDITIONAL([HAVE_HIP], [test x$have_hip = xtrue])
+dnl -x hip because these files are named .cu, which hipcc otherwise hands to
+dnl the host compiler as plain C++.
+if test x$have_amd = xtrue ; then
+   HIPCC_ARCH="$HIPCC_ARCH -x hip"
+fi
+
+AM_CONDITIONAL([HAVE_CUDA], [test x$have_gpu = xtrue])
+AM_CONDITIONAL([HAVE_GPU_NV], [test x$have_nv = xtrue])
+AM_CONDITIONAL([HAVE_GPU_AMD], [test x$have_amd = xtrue])
 AC_SUBST(NVCC)
 AC_SUBST(NVCC_ARCH)
 AC_SUBST(CUDA_LDFLAGS)
 AC_SUBST(CUDA_LIBS)
-AC_SUBST(GPUCC)
-AC_SUBST(GPUCC_ARCH)
-AC_SUBST(GPU_LDFLAGS)
-AC_SUBST(GPU_LIBS)
+AC_SUBST(HIPCC)
+AC_SUBST(HIPCC_ARCH)
+AC_SUBST(HIP_LDFLAGS)
+AC_SUBST(HIP_LIBS)
 
 # libcurl install path (for mingw : --with-curl=/usr/local)
 AC_ARG_WITH([curl],

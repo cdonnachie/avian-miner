@@ -25,11 +25,10 @@ static avian_cuda_log_fn g_log = NULL;
 
 #ifdef AVIAN_CUDA_BUILDING_DLL
 /* Several vendored kernels read opt_debug directly to gate extra logging.
- * It stays 0 in the DLL rather than being wired to the miner's copy: it
- * controls nothing but log verbosity inside the kernels, and plumbing a
- * debug flag across the ABI would be a Windows-only divergence for no
- * behavioural difference. The batch function uses job->debug where it
- * matters. */
+ * The library carries its own at 0 rather than reaching the miner's, which
+ * it could not do anyway: it controls nothing but log verbosity inside the
+ * kernels, and plumbing a debug flag across the ABI would buy no change in
+ * behaviour. The batch function uses job->debug where it matters. */
 extern "C" int opt_debug = 0;
 #endif
 
@@ -43,10 +42,10 @@ extern "C" AVIAN_CUDA_API void avian_cuda_set_logger(avian_cuda_log_fn fn)
  * formatted here, so the miner receives a finished line and does not have to
  * reproduce printf semantics across the boundary.
  *
- * Only in the DLL. Linked into the miner directly, as it is on Linux, the
- * kernels reach the miner's own applog and defining a second one here would
- * be a duplicate symbol. g_log then goes unused, which is harmless and
- * keeps the gate's startup identical on both platforms. */
+ * Only in the library, which is now how both platforms build it. The
+ * miner's own applog is in the executable and out of reach from here, so
+ * this is the only one the kernels can have, and the logger the miner
+ * installs through avian_cuda_set_logger is how a line gets back to it. */
 extern "C" void applog(int level, const char *fmt, ...)
 {
     char buf[1024];
@@ -72,6 +71,14 @@ extern "C" void applog(int level, const char *fmt, ...)
  * with the CPU: 153 disagreements and not one accepted share. The inventory
  * belongs on this side of the boundary, because device.cu is in the DLL and
  * the miner cannot reach it. */
+/* Compiled into the library, so it reports the header this library was
+ * built with rather than the one the miner was. That difference is the whole
+ * point of asking. */
+extern "C" AVIAN_CUDA_API int avian_cuda_abi_version(void)
+{
+    return AVIAN_CUDA_ABI_VERSION;
+}
+
 extern "C" AVIAN_CUDA_API int avian_cuda_device_count(void)
 {
     static int done = 0;

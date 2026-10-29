@@ -8,6 +8,13 @@
 .libs/
 Makefile
 avian-miner
+# One backend library per vendor, built from the same kernels and loaded at
+# run time rather than linked, so they are build output that has to sit
+# beside the binary.
+libavian_cuda.so
+libavian_amd.so
+.dirstamp
+configure~
 cpuminer-config.h
 cpuminer-config.h.in~
 config.log

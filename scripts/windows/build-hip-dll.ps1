@@ -1,12 +1,14 @@
-# Build the kernels into avian_cuda.dll with the HIP SDK, for AMD cards.
+# Build the kernels into avian_amd.dll with the HIP SDK, for AMD cards.
 #
-# The name is not a mistake. The miner reaches the backend through the
-# plain-data ABI in cuda/avian-cuda-api.h, every symbol of which is called
-# avian_cuda_* whichever card runs it, and it loads that ABI from a DLL of
-# this name. Building the HIP kernels into the same shape means an existing
-# avian-miner.exe runs on AMD with no rebuild: swap the DLL and nothing else
-# changes. That is what the DLL split was for, even though it was not written
-# with AMD in mind.
+# The exported symbols are still called avian_cuda_*, which is not a mistake:
+# the miner reaches a backend through the plain-data ABI in
+# cuda/avian-cuda-api.h and that ABI has one set of names whichever card runs
+# it. Only the file name differs, because the miner loads both DLLs rather
+# than importing either, and two files cannot share a name in a directory.
+#
+# So an existing avian-miner.exe runs on AMD with no rebuild, and runs on
+# both vendors at once if both DLLs are beside it. That is what the DLL split
+# was for, even though it was not written with AMD in mind.
 #
 # What a tester needs is therefore AMD's display driver and nothing else: a
 # 6.x build imports amdhip64_6.dll, which the driver installs. The HIP SDK is
@@ -142,7 +144,7 @@ $bat = @"
 call "$VCVARS" >nul 2>&1
 cd /d "$W"
 $($cCmds -join "`r`n")
-"$clang" -O3 -shared -o "$OUT\avian_cuda.dll" ^
+"$clang" -O3 -shared -o "$OUT\avian_amd.dll" ^
   -DAVIAN_CUDA_BUILDING_DLL ^
   $archArgs -std=c++14 -w ^
   -fms-runtime-lib=dll ^
@@ -160,15 +162,15 @@ $log = & cmd /c "`"$OUT\build.bat`"" 2>&1
 $log | Select-String -Pattern "error|hipcc_exit" | Select-Object -First 20 |
     ForEach-Object { "  $_" }
 
-if (Test-Path "$OUT\avian_cuda.dll") {
+if (Test-Path "$OUT\avian_amd.dll") {
     Write-Output ""
-    Write-Output "DLL: $((Get-Item "$OUT\avian_cuda.dll").Length) bytes"
+    Write-Output "DLL: $((Get-Item "$OUT\avian_amd.dll").Length) bytes"
     $vs = "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\MSVC"
     $dumpbin = Get-ChildItem -Path $vs -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue |
                Select-Object -First 1
     if ($dumpbin) {
         Write-Output "=== exported entry points ==="
-        & $dumpbin.FullName /exports "$OUT\avian_cuda.dll" 2>&1 |
+        & $dumpbin.FullName /exports "$OUT\avian_amd.dll" 2>&1 |
             Select-String -Pattern "avian_cuda_" | ForEach-Object { "  $_" }
     }
 } else {

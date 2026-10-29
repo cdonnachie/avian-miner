@@ -16,21 +16,35 @@
  * path that --avian-selftest now covers, and it is what stands between a
  * wrong GPU hash and a bad share.
  *
- * Linux links the same function directly, so there is one implementation
- * rather than a Windows-only path that nothing exercises.
+ * Linux builds the same thing as a shared object rather than linking the
+ * objects in, so there is one implementation and one code path rather than a
+ * Windows-only one that nothing exercises. Both vendors' libraries export
+ * the names below, and the miner loads them; see cuda/avian-gpu-backend.h.
  */
 
 #include <stdint.h>
 
-#ifdef _WIN32
-#  ifdef AVIAN_CUDA_BUILDING_DLL
-#    define AVIAN_CUDA_API __declspec(dllexport)
-#  else
-#    define AVIAN_CUDA_API __declspec(dllimport)
-#  endif
+#if defined(_WIN32) && defined(AVIAN_CUDA_BUILDING_DLL)
+#  define AVIAN_CUDA_API __declspec(dllexport)
 #else
+/* Deliberately not dllimport. Both vendors' libraries export these same
+ * names and neither is statically imported: the miner loads them and reads
+ * the entry points into a table, which is what lets one binary drive either
+ * or both. See cuda/avian-gpu-backend.h. A dllimport here would put the
+ * names back in the import table and bind them to one library again. */
 #  define AVIAN_CUDA_API
 #endif
+
+/* Bumped whenever avian_cuda_job or an entry point changes shape. The miner
+ * refuses a backend that disagrees, because the struct is plain data with
+ * nothing in it to detect a mismatch from: a stale library would simply read
+ * the fields in the wrong places.
+ *
+ *   1  the original: thr_id selected the device through the backend's own
+ *      device_map, which only works when there is one backend
+ *   2  job.device names the device, so two backends can each number from
+ *      zero, and avian_cuda_abi_version exists to say so */
+#define AVIAN_CUDA_ABI_VERSION 2
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,6 +59,11 @@ typedef struct {
     uint32_t start_nonce;
     uint32_t max_nonce;
     int      thr_id;
+    /* The backend's own device index, which is not thr_id. With two backends
+     * loaded each numbers its devices from zero, so the miner's flat
+     * numbering has to be translated before it crosses this boundary, and
+     * avian-gpu-backend.c is the only thing that knows how. */
+    int      device;
     int      benchmark;
     int      quiet;
     int      debug;
@@ -64,6 +83,9 @@ typedef struct {
 AVIAN_CUDA_API int avian_cuda_scan_batch(const avian_cuda_job *job,
                                          uint32_t *out_nonces, int max_out,
                                          uint32_t *throughput_used);
+
+/* AVIAN_CUDA_ABI_VERSION as this library was built with it. */
+AVIAN_CUDA_API int avian_cuda_abi_version(void);
 
 AVIAN_CUDA_API int avian_cuda_device_count(void);
 AVIAN_CUDA_API const char *avian_cuda_device_name(int dev_id);

@@ -6,11 +6,11 @@
  * library are MinGW), and a DLL boundary cannot carry struct work or
  * thread-local state. See cuda/avian-cuda-api.h.
  *
- * Linux links avian_cuda_scan_batch directly rather than keeping a separate
- * in-process driver, so there is one implementation that every test
- * exercises. That is deliberate: the defect found on 2026-10-27 lived in a
- * path the selftest could not reach, and a Windows-only code path would be
- * the same mistake in a new place.
+ * Linux loads the same library through the same entry point rather than
+ * keeping a separate in-process driver, so there is one implementation that
+ * every test exercises. That is deliberate: the defect found on 2026-10-27
+ * lived in a path the selftest could not reach, and a Windows-only code path
+ * would be the same mistake in a new place.
  *
  * Verification stays here, on the miner's side, for the same reason. A
  * candidate is only the device's opinion. The CPU hash is what stands
@@ -23,7 +23,7 @@
 
 #include "algo/x16/x16r-gate.h"
 #include "algo/x16/x16rt-cuda.h"
-#include "cuda/avian-cuda-api.h"
+#include "cuda/avian-gpu-backend.h"
 #include "miner.h"
 
 /* Two is what a batch can report: the winning nonce and one runner-up. */
@@ -59,7 +59,7 @@ int scanhash_x16rt_cuda( struct work *work, uint32_t max_nonce,
     if ( !s_diag_wired )
     {
         s_diag_wired = true;
-        avian_cuda_set_diagnostics( x16r_hash_generic, x16r_prehash );
+        avian_gpu_set_diagnostics( x16r_hash_generic, x16r_prehash );
     }
 
     if ( opt_benchmark )
@@ -112,8 +112,12 @@ int scanhash_x16rt_cuda( struct work *work, uint32_t max_nonce,
          * moments later, and on any vardiff pool afterwards. */
         memcpy( job.target, ptarget, sizeof(job.target) );
 
-        int found = avian_cuda_scan_batch( &job, candidates,
-                                           AVIAN_MAX_CANDIDATES, &throughput );
+        /* thr_id is also the device, because the gate set one thread per
+         * device over the whole list. The loader turns it into the owning
+         * backend and that backend's own index, which are not the same
+         * number once both vendors are present. */
+        int found = avian_gpu_scan_batch( thr_id, &job, candidates,
+                                          AVIAN_MAX_CANDIDATES, &throughput );
         if ( found < 0 )
         {
             applog( LOG_ERR, "GPU #%d: the batch failed (%d)", thr_id, found );

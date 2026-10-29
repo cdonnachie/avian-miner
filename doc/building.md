@@ -255,12 +255,14 @@ make -j$(nproc)
 ```
 
 `--with-hip` and `--with-cuda` build the same kernels for different hardware
-and are mutually exclusive. The architecture list is asked of the machine
-rather than defaulted, because there is no safe guess: a CUDA binary carries
-PTX, so a card newer than the build still runs by driver JIT, whereas an AMD
-binary built for the wrong `gfx` target simply fails to launch. Pass
-`--with-hip-arch=gfx942` to build for a card that is not in the build
-machine.
+and are independent: pass both and you get both libraries, which is what a
+machine with one card of each needs. See "Both vendors at once" below.
+
+The architecture list is asked of the machine rather than defaulted, because
+there is no safe guess: a CUDA binary carries PTX, so a card newer than the
+build still runs by driver JIT, whereas an AMD binary built for the wrong
+`gfx` target simply fails to launch. Pass `--with-hip-arch=gfx942` to build
+for a card that is not in the build machine.
 
 This is a smaller change to the build than it sounds, and the reason is the
 Windows DLL split: the miner's own C never names a GPU runtime symbol, it
@@ -313,10 +315,11 @@ them different files rather than a runtime choice:
 6.4's device libraries cover every target the default list asks for:
 `gfx1030`, `gfx1031`, `gfx1032` (RDNA2), `gfx1100`, `gfx1101`, `gfx1102`
 (RDNA3) and `gfx1200`, `gfx1201` (RDNA4), as do 7.1.1's. Both also carry
-`gfx1033` through `gfx1036` and `gfx1150` through `gfx1153`, the RDNA2 and
-RDNA3.5 integrated parts, so adding those costs one compiler pass each and no
-source changes. At roughly 1.9 minutes and 2.3 MB per architecture, the
-default eight take about 16 minutes and produce a 21 MB DLL.
+`gfx1033` through `gfx1036` and `gfx1150` through `gfx1153`, which are the
+RDNA3.5 and RDNA2 integrated parts and, in `gfx1034`'s case, the discrete
+RX 6500 XT and RX 6400. All of them are in the default list. At roughly 1.9
+minutes and 2.3 MB per architecture, those sixteen take about half an hour
+and produce a 40 MB DLL. `-Arch` takes a shorter list when that matters.
 
 **Whether to ship the runtime inverts between the two**, and getting it the
 wrong way round is silent both times.
@@ -598,44 +601,87 @@ reference written from the definition rather than copied from the headers:
 - **`ldg4`**, whose fallback copies one 32-byte structure where the PTX
   loads three. Nothing calls it.
 
-### Both vendors at once, which is not built
+### Both vendors at once
 
-Today a binary drives one vendor: the DLL beside it decides which. Running an
-AMD and an Nvidia card in the same machine needs three things, none of them
-large, and the ABI is already the right shape for all of them.
+One binary drives an Nvidia card, an AMD card, or both in the same machine.
+There is no build-time choice between them any more: `--with-cuda` and
+`--with-hip` are independent and may both be given.
 
-**Load the backends instead of importing them.** The miner links
-`avian_cuda.lib`, so the loader binds `avian_cuda_scan_batch` to exactly
-one DLL at startup, and two DLLs exporting that name cannot both satisfy a
-static import. Loaded explicitly, the identical names stop being a collision
-and become the point:
+**The backends are loaded, not imported.** Both export the same
+`avian_cuda_*` names, and two libraries exporting one name cannot both
+satisfy a static import, so nothing is linked against either:
 
 ```c
 HMODULE h = LoadLibrary("avian_amd.dll");
 backend.scan_batch = GetProcAddress(h, "avian_cuda_scan_batch");
 ```
 
-One ABI, two implementations, each behind its own table of five function
-pointers. It also makes the miner degrade gracefully where a static import
-cannot: a missing DLL, or a runtime whose vendor is not installed, becomes a
-backend that is skipped rather than a process that will not start.
+One ABI, two implementations, each behind its own table of six function
+pointers. `cuda/avian-gpu-backend.c` is the whole of it, and
+`RTLD_LOCAL`/`GetProcAddress` are what keep the duplicate names apart: loaded
+into the global namespace instead, whichever library arrived first would
+answer for both.
 
-**Enumerate across both.** Concatenate the device lists, CUDA first, so
-`--gpu` and the device numbering stay one namespace rather than two that
-collide at zero.
+This is also what makes a single-vendor machine the ordinary case rather than
+a special one. A static import of a missing library is a process that will
+not start; a load that fails is a backend that is skipped. So the same
+binary, and the same package, works on a machine with neither vendor's
+driver.
 
-**Route each thread.** Each GPU thread already owns one device index; it
-needs to know which backend that index belongs to, which falls out of the
-enumeration above.
+**Devices are numbered across both backends, Nvidia first.** `--gpu`, the
+thread count and every `GPU #n` in the log mean one thing. Each backend still
+numbers its own devices from zero, so the miner's index is translated on the
+way in: that is the `device` field in `avian_cuda_job`, and the only layer
+that knows the mapping is the loader. Getting that wrong would mine the wrong
+card rather than fail, which is why `avian/gpu-dispatch-test.sh` asserts on
+it specifically.
 
-Call it two to three hundred lines. The DLLs must then be separately named,
-`avian_cuda.dll` and `avian_amd.dll`, since two files cannot share a name in
-one directory; build-hip-dll.ps1 writes the former today because that is what
-makes it a drop-in for testing, and changing it is one line.
+**The ABI is versioned,** because the libraries are separate files that can
+be updated apart from the miner and the struct between them is plain data
+with nothing in it to detect a mismatch from. A backend reporting a different
+`avian_cuda_abi_version` is refused with a line saying so, rather than called
+with the fields in the wrong places.
 
-Worth doing after a consumer AMD card has been shown to hash correctly, not
-before. If RDNA turns out to miscompute, that wants isolating rather than
-debugging through a new dispatch layer.
+#### Two things to know when building it
+
+**Each vendor is a shared library on Linux too**, where the objects used to
+be linked straight into the binary. So `libavian_cuda.so` and
+`libavian_amd.so` have to sit beside `avian-miner`, which is where `make`
+leaves them and where the loader looks first. A loaded library cannot reach
+the executable's symbols, which is why both compiles now pass
+`-DAVIAN_CUDA_BUILDING_DLL`, the define that gives the kernels their own
+`applog` and `opt_debug`, and why the two sphlib sources the kernels call for
+their midstates are compiled into each backend. Without the define the
+library builds and then fails to load with `undefined symbol: opt_debug`.
+
+**The Windows DLLs are separately named**, `avian_cuda.dll` and
+`avian_amd.dll`, since two files cannot share a name in one directory. The
+exported symbols in both are still `avian_cuda_*`: only the file name differs.
+
+#### Testing it without owning both vendors
+
+`avian/gpu-dispatch-test.sh` builds `cuda/avian-gpu-stub.c` as the AMD
+backend. The stub implements the ABI, owns no hardware, and logs the
+arguments of every call, so the test asserts on the miner's own output. With
+a real `libavian_cuda.so` present it covers the mixed case, which is
+otherwise untestable without an Nvidia and an AMD card in one machine:
+
+```
+GPU #0: NVIDIA GeForce RTX 3090 (Nvidia)
+GPU #1: STUB AMD device 0 (AMD)
+GPU #2: STUB AMD device 1 (AMD)
+using 3 mining threads, one per GPU
+STUB: batch thr_id=2 device=1 ...
+```
+
+That last line is the point: the miner's GPU #2 arrives at the backend as its
+own device 1. The script also checks that a backend claiming the wrong ABI
+version is refused and never called. It works with no GPU at all, where it
+covers the numbering but not the mixed case.
+
+The stub is in no build. The test compiles it into a temporary directory
+holding copies of the miner, so a stub can never be left where a real build
+would find it.
 
 ## Known rough edges
 

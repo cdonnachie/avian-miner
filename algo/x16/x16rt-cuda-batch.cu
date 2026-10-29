@@ -471,7 +471,14 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
         uint32_t *pdata = pdata_copy;
         uint32_t *ptarget = ptarget_copy;
         uint32_t nonce0 = UINT32_MAX, nonce1 = UINT32_MAX;
-        const int dev_id = device_map[thr_id];
+        /* The miner chooses the device, not this library. With both vendors
+         * loaded each one numbers its devices from zero, so a thread id says
+         * nothing about which card a thread owns; only the miner knows, and
+         * it says so here. Recorded in device_map because everything below
+         * that picks a launch size or names a card in an error still indexes
+         * by thread. */
+        device_map[thr_id] = (short) job->device;
+        const int dev_id = job->device;
         uint64_t hashes_done_local = 0;
         uint64_t *hashes_done = &hashes_done_local;
 

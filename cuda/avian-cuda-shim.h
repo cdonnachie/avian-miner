@@ -36,10 +36,13 @@
  */
 #ifdef AVIAN_CUDA_BUILDING_DLL
 
-/* The DLL build. The kernels need a logger, the log levels, an alignment
- * macro and the byte-order helpers, and nothing else: the split moved
- * struct work and every miner-side call to the other side of the ABI, so
- * miner.h and the POSIX headers it needs no longer come into it. */
+/* Building the backend as a loadable library, which is now both platforms:
+ * a Windows DLL and a Linux shared object alike. The kernels need a logger,
+ * the log levels, an alignment macro and the byte-order helpers, and nothing
+ * else: the split moved struct work and every miner-side call to the other
+ * side of the ABI, so miner.h and the POSIX headers it needs no longer come
+ * into it. Nothing here may reach a symbol the executable defines, because a
+ * loaded library cannot. */
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -55,8 +58,14 @@
 #define LOG_DEBUG   7
 #define LOG_BLUE    0x10
 
+/* Both spellings, because this block is no longer MSVC-only: Linux builds
+ * the same backend as a shared object and compiles through here too. */
 #ifndef _ALIGN
-#define _ALIGN(x) __declspec(align(x))
+#  ifdef _MSC_VER
+#    define _ALIGN(x) __declspec(align(x))
+#  else
+#    define _ALIGN(x) __attribute__((aligned(x)))
+#  endif
 #endif
 
 /* __thread is a GCC extension; MSVC spells it __declspec(thread). Nine of

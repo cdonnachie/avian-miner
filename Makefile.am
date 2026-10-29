@@ -386,21 +386,10 @@ CUDA_SOURCES = \
   cuda/upstream/x16r/cuda_x16_whirlpool.cu \
   cuda/upstream/x17/cuda_x17_sha512.cu
 
-CUDA_OBJECTS = $(CUDA_SOURCES:.cu=.o)
-
 # -I. and -I$(top_srcdir) find cpuminer-config.h, miner.h and compat.h;
 # cuda/ finds the shim; cuda/upstream/ finds the vendored headers at the paths
 # upstream's own includes expect.
 GPU_INCLUDES = -I. -I$(top_srcdir) -I$(top_srcdir)/cuda -I$(top_srcdir)/cuda/upstream
-
-if HAVE_HIP
-# Ahead of everything else, so a kernel's #include <cuda_runtime.h> finds the
-# rename shim rather than a CUDA toolkit that may also be installed. An Nvidia
-# build never sees this directory.
-GPU_SHIM_INCLUDES = -I$(top_srcdir)/cuda/hip
-else
-GPU_SHIM_INCLUDES =
-endif
 
 # -w because the vendored kernels are not ours to make warning clean, and the
 # noise would bury warnings from code that is.
@@ -408,16 +397,90 @@ endif
 # $(EXTRA_INCLUDES) because the kernels' host half includes miner.h, which
 # includes jansson.h, and on a machine with no system jansson that header is
 # the bundled one under compat/. The C sources reach it through ALL_INCLUDES
-# and this rule needs the same. A build host that has jansson installed never
+# and these rules need the same. A build host that has jansson installed never
 # notices the omission, which is why it survived until the first build on one
 # that does not.
-GPU_FLAGS = @GPUCC_ARCH@ -std=c++14 -w $(GPU_SHIM_INCLUDES) $(GPU_INCLUDES) $(EXTRA_INCLUDES)
+#
+# -DAVIAN_CUDA_BUILDING_DLL because both vendors now build a library the
+# miner loads, and a loaded library cannot reach the executable's globals.
+# The define is what gives the kernels their own applog, opt_debug and log
+# levels instead of miner.h's. It was Windows-only when Linux linked the
+# objects straight into the binary; without it here the library builds and
+# then fails to load with "undefined symbol: opt_debug". The name is kept
+# for the same reason HAVE_CUDA's is: two PowerShell scripts and three
+# headers test it, and a rename stopping at one of them would leave the rest
+# testing something different from the sources.
+GPU_FLAGS = -std=c++14 -w -DAVIAN_CUDA_BUILDING_DLL \
+            $(GPU_INCLUDES) $(EXTRA_INCLUDES)
 
-.cu.o:
-	@GPUCC@ $(GPU_FLAGS) -c -o $@ $<
+# One library per vendor, each exporting the same avian_cuda_* ABI, neither
+# linked into the miner: it loads whichever are present at startup. So the
+# two are no longer alternatives, the binary carries no vendor runtime
+# dependency, and a machine with one card of each works. See
+# cuda/avian-gpu-backend.h.
+#
+# The sources are the same for both and the objects cannot be, so each
+# vendor compiles to its own suffix. Pattern rules rather than a .cu.o
+# suffix rule, since a suffix rule cannot name two compilers, and they match
+# across directories, which the vendored kernels need.
+#
+# These rules are for the make build, which means Linux. Windows cannot run
+# nvcc from this Makefile at all, because nvcc insists on MSVC as its host
+# compiler while the miner is MinGW, and builds its DLLs through
+# scripts/windows/build-cuda-dll.ps1 and build-hip-dll.ps1 instead.
+# Two sphlib files the kernels' host side calls to precompute the 80-byte
+# midstates: whirlpool for its table setup and jh for jh512_setBlock_80.
+# Compiled into each backend rather than called back into the miner, because
+# a loaded library cannot see the executable's symbols. The Windows DLL has
+# carried them from the start for the same reason; see $extraFiles in
+# scripts/windows/build-cuda-dll.ps1. Through the GPU compiler, not $(CC),
+# so their linkage matches the C++ kernels that call them.
+GPU_CPU_SOURCES = algo/whirlpool/sph_whirlpool.c algo/jh/sph_jh.c
 
-avian_miner_LDADD += $(CUDA_OBJECTS) @GPU_LDFLAGS@ @GPU_LIBS@
-avian_miner_SOURCES += algo/x16/x16rt-cuda-gate.c                        algo/x16/x16rt-cuda-host.c
-EXTRA_DIST = $(CUDA_SOURCES)
-CLEANFILES = $(CUDA_OBJECTS)
+GPU_BACKENDS =
+
+if HAVE_GPU_NV
+NV_OBJECTS = $(CUDA_SOURCES:.cu=.nv.o) $(GPU_CPU_SOURCES:.c=.nv.o)
+GPU_BACKENDS += libavian_cuda.so
+
+%.nv.o: %.cu
+	@NVCC@ @NVCC_ARCH@ $(GPU_FLAGS) -Xcompiler -fPIC -c -o $@ $<
+
+%.nv.o: %.c
+	@NVCC@ @NVCC_ARCH@ $(GPU_FLAGS) -Xcompiler -fPIC -c -o $@ $<
+
+libavian_cuda.so: $(NV_OBJECTS)
+	@NVCC@ -shared -o $@ $(NV_OBJECTS) @CUDA_LDFLAGS@ @CUDA_LIBS@
+endif
+
+if HAVE_GPU_AMD
+AMD_OBJECTS = $(CUDA_SOURCES:.cu=.amd.o) $(GPU_CPU_SOURCES:.c=.amd.o)
+GPU_BACKENDS += libavian_amd.so
+
+# The rename shim ahead of everything else, so a kernel's
+# #include <cuda_runtime.h> finds it rather than a CUDA toolkit that may be
+# installed on the same machine. It is in this rule and not in GPU_FLAGS
+# because an Nvidia compile must never see that directory, and with both
+# vendors built the two compiles happen side by side.
+%.amd.o: %.cu
+	@HIPCC@ @HIPCC_ARCH@ -I$(top_srcdir)/cuda/hip $(GPU_FLAGS) -fPIC -c -o $@ $<
+
+%.amd.o: %.c
+	@HIPCC@ @HIPCC_ARCH@ -I$(top_srcdir)/cuda/hip $(GPU_FLAGS) -fPIC -c -o $@ $<
+
+libavian_amd.so: $(AMD_OBJECTS)
+	@HIPCC@ -shared -o $@ $(AMD_OBJECTS) @HIP_LDFLAGS@ @HIP_LIBS@
+endif
+
+# Built by `make`, not only by `make libavian_cuda.so`, and left beside the
+# binary, which is the first place the loader looks.
+all-local: $(GPU_BACKENDS)
+
+avian_miner_SOURCES += algo/x16/x16rt-cuda-gate.c \
+                       algo/x16/x16rt-cuda-host.c \
+                       cuda/avian-gpu-backend.c
+# += rather than =, which silently dropped example-cfg.json and nomacro.pl
+# from a `make dist` of any GPU build.
+EXTRA_DIST += $(CUDA_SOURCES) cuda/avian-cuda-api.h cuda/avian-gpu-backend.h
+CLEANFILES = $(NV_OBJECTS) $(AMD_OBJECTS) $(GPU_BACKENDS)
 endif
