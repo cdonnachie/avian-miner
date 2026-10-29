@@ -15,7 +15,7 @@ BUILD_ROOT=${AVIAN_BUILD_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && 
 # overrides, which is how a library checked out elsewhere is used.
 SV2_SRC=${SV2_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/avian-sv2}
 WORK=${WORK:-$BUILD_ROOT}
-B=$WORK/cpuminer-avian
+B=$WORK/avian-miner
 PREFIX=$WORK/sv2-prefix
 
 echo "=== rust ==="

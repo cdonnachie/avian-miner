@@ -20,7 +20,7 @@ set -u
 # on where each other's output went.
 BUILD_ROOT=${AVIAN_BUILD_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/avian-winbuild}
 WORK=${WORK:-$BUILD_ROOT}
-B=$WORK/cpuminer-avian
+B=$WORK/avian-miner
 DLLDIR=${DLLDIR:-$WORK/cuda}
 # A sibling of this tree, derived rather than named. $SV2_SRC still
 # overrides, which is how a library checked out elsewhere is used.

@@ -12,7 +12,7 @@
 set -u
 # Both overridable. They were hard-coded, which made the Windows DLL build
 # require a WSL clone at one particular path.
-L=${L:-$HOME/avian-gpu/cpuminer-avian}
+L=${L:-$HOME/avian-gpu/avian-miner}
 # Derived rather than named. This stage runs under WSL, which sees
 # the tree as /mnt/c/..., and the derivation reports it in whatever
 # notation the running shell uses, so no form is written out.

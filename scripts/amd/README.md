@@ -43,7 +43,7 @@ log is `/var/lib/dkms/amdgpu/*/build/make.log`.
 ## Then
 
 ```sh
-scp -r <this tree> user@host:~/src/cpuminer-avian
+scp -r <this tree> user@host:~/src/avian-miner
 bash scripts/amd/build.sh
 bash scripts/amd/first.sh                                   # the 16 _80 kernels
 ORDERS="1F80675605446D40 542CB1E146A7D915" bash scripts/amd/verify.sh

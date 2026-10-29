@@ -4,7 +4,7 @@
 # be thrown away.
 #
 # This matters for the named build context the miner image uses
-# (--build-context cpuminer-avian=../cpuminer-avian). Building through
+# (--build-context miner-src=../avian-miner). Building through
 # scripts/stage-sources.sh in avian-sv2-deploy sidesteps it by exporting
 # tracked files only, but building straight from a checkout does not.
 *.o

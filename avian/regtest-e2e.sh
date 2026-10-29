@@ -1,7 +1,7 @@
 #!/bin/bash
 # The milestone, asserted rather than observed:
 #
-#   aviand -> pool -> cpuminer-avian -> pool -> aviand
+#   aviand -> pool -> avian-miner -> pool -> aviand
 #
 # A real MinotaurX block, mined by this miner over Stratum v2, accepted by the
 # node, with getblock reporting minotaurx and the coinbase paying the address
@@ -50,7 +50,7 @@ free_port() {
 RPC_PORT=$(free_port 29432)
 SV2_PORT=$(free_port $((RPC_PORT + 1)))
 MINING_PORT=$(free_port $((SV2_PORT + 1)))
-DATADIR="${TMPDIR:-/tmp}/cpuminer-avian-e2e-$$"
+DATADIR="${TMPDIR:-/tmp}/avian-miner-e2e-$$"
 LOGDIR="$DATADIR/logs"
 NODE_PID=""
 POOL_PID=""
@@ -120,7 +120,7 @@ echo "== starting the pool"
     --connect "127.0.0.1:$SV2_PORT" \
     --mining-bind "127.0.0.1:$MINING_PORT" \
     --pool-key "$DATADIR/pool-authority-key" \
-    --coinbase-tag "Sv2/cpuminer-avian e2e//" \
+    --coinbase-tag "Sv2/avian-miner e2e//" \
     --algo "$ALGO" > "$LOGDIR/pool.log" 2>&1 &
 POOL_PID=$!
 
@@ -143,7 +143,7 @@ if [ "${CHANNEL:-extended}" = "standard" ]; then
     CHANNEL_ARG="--sv2-standard"
 fi
 
-echo "== starting cpuminer-avian over Stratum v2 ($ALGO, ${CHANNEL:-extended} channel)"
+echo "== starting avian-miner over Stratum v2 ($ALGO, ${CHANNEL:-extended} channel)"
 "$MINER" -a "$ALGO" -t 4 $CHANNEL_ARG \
     "--sv2=127.0.0.1:$MINING_PORT" \
     "--sv2-authority=$POOL_KEY" \
@@ -254,7 +254,7 @@ if [ "${RECONNECT:-0}" = "1" ] && [ "$rc" -eq 0 ]; then
         --connect "127.0.0.1:$SV2_PORT" \
         --mining-bind "127.0.0.1:$MINING_PORT" \
         --pool-key "$DATADIR/pool-authority-key" \
-        --coinbase-tag "Sv2/cpuminer-avian e2e//" \
+        --coinbase-tag "Sv2/avian-miner e2e//" \
         --algo "$ALGO" >> "$LOGDIR/pool.log" 2>&1 &
     POOL_PID=$!
 
@@ -289,4 +289,4 @@ if [ "$rc" -ne 0 ]; then
     echo "logs in $LOGDIR"
     exit 1
 fi
-echo "OK: aviand -> pool -> cpuminer-avian -> pool -> aviand, $ALGO, paid"
+echo "OK: aviand -> pool -> avian-miner -> pool -> aviand, $ALGO, paid"

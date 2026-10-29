@@ -18,7 +18,7 @@ BUILD_ROOT=${AVIAN_BUILD_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && 
 # overrides, which is how a build from a different tree is done.
 SRC=${SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}
 WORK=${WORK:-$BUILD_ROOT}
-B=$WORK/cpuminer-avian
+B=$WORK/avian-miner
 
 echo "=== environment ==="
 echo "MSYSTEM=${MSYSTEM:-unset}"

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Collect cpuminer.exe and every non-system DLL it needs, transitively.
+# Collect avian-miner.exe and every non-system DLL it needs, transitively.
 #
 # The first level is short, but MSYS2's libcurl drags in OpenSSL, zstd,
 # brotli, nghttp2, idn2 and more. Walking only the direct imports produces a
@@ -11,7 +11,7 @@ set -u
 # written out, so the PowerShell and MSYS2 stages of the pipeline agree
 # on where each other's output went.
 BUILD_ROOT=${AVIAN_BUILD_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/avian-winbuild}
-B=${B:-$BUILD_ROOT/cpuminer-avian}
+B=${B:-$BUILD_ROOT/avian-miner}
 REL=${REL:-$BUILD_ROOT/release}
 
 rm -rf "$REL"; mkdir -p "$REL"

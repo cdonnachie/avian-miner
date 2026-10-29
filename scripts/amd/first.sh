@@ -9,7 +9,7 @@
 # A uniform order makes stage one that algorithm's _80 kernel, and tracing
 # only depth 1 keeps this to about two minutes for all sixteen.
 set -u
-SRC=${SRC:-$HOME/src/cpuminer-avian}
+SRC=${SRC:-$HOME/src/avian-miner}
 R=$(getent group render | cut -d: -f3)
 V=$(getent group video | cut -d: -f3)
 SECS=${SECS:-6}

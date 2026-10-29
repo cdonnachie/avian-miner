@@ -14,7 +14,7 @@
 # --benchmark rather than a pool: a forced order makes every share invalid by
 # construction, and those would otherwise land in someone's pool logs.
 set -u
-SRC=${SRC:-$HOME/src/cpuminer-avian}
+SRC=${SRC:-$HOME/src/avian-miner}
 R=$(getent group render | cut -d: -f3)
 V=$(getent group video | cut -d: -f3)
 SECS=${SECS:-8}

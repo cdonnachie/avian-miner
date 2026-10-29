@@ -116,13 +116,13 @@ grep -iE "GPU architectures|nvcc" /tmp/configure.log | head -5
 echo "== make =="
 if make -j"$(nproc)" > /tmp/make.log 2>&1; then
     echo "BUILD OK"
-    ls -la cpuminer
+    ls -la avian-miner
     echo
     echo "== is the GPU backend really in it? =="
-    nm cpuminer | grep -cE " [Tt] (scanhash_x16rt_cuda|register_x16rt_cuda_algo)" || true
-    nm cpuminer | grep -E " [Tt] (scanhash_x16rt_cuda|register_x16rt_cuda_algo|cuda_detect_devices)"
+    nm avian-miner | grep -cE " [Tt] (scanhash_x16rt_cuda|register_x16rt_cuda_algo)" || true
+    nm avian-miner | grep -E " [Tt] (scanhash_x16rt_cuda|register_x16rt_cuda_algo|cuda_detect_devices)"
     echo "-- linked CUDA runtime --"
-    ldd cpuminer | grep -i cuda || echo "(statically linked or absent)"
+    ldd avian-miner | grep -i cuda || echo "(statically linked or absent)"
 
     echo
     echo "===================================================================="
@@ -140,7 +140,7 @@ if make -j"$(nproc)" > /tmp/make.log 2>&1; then
     # `|| true` because timeout returns 124 and set -e would end the script
     # there, which is how the first attempt lost all its GPU output.
     echo "--- CPU, as the control ---"
-    timeout 120 ./cpuminer --algo x16rt --avian-selftest > /tmp/selftest-cpu.log 2>&1 || true
+    timeout 120 ./avian-miner --algo x16rt --avian-selftest > /tmp/selftest-cpu.log 2>&1 || true
     tail -4 /tmp/selftest-cpu.log
 
     echo
@@ -152,7 +152,7 @@ if make -j"$(nproc)" > /tmp/make.log 2>&1; then
     # nonce satisfies an all-ones target, so it reports an arbitrary one and
     # disagrees with the node's hash for the block's own nonce. What is worth
     # reading here is whether it gets through all six without stalling.
-    timeout 180 ./cpuminer --algo x16rt --gpu --avian-selftest > /tmp/selftest-gpu.log 2>&1 || true
+    timeout 180 ./avian-miner --algo x16rt --gpu --avian-selftest > /tmp/selftest-gpu.log 2>&1 || true
     echo "blocks reached: $(grep -c 'block [0-9]' /tmp/selftest-gpu.log)/6"
     grep -E "Intensity|did not validate" /tmp/selftest-gpu.log | head -4
 

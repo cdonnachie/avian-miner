@@ -11,7 +11,7 @@
 #
 # Run on the droplet: bash ~/droplet-build.sh
 set -eu
-SRC=${SRC:-$HOME/src/cpuminer-avian}
+SRC=${SRC:-$HOME/src/avian-miner}
 RENDER=$(getent group render | cut -d: -f3)
 VIDEO=$(getent group video | cut -d: -f3)
 mkdir -p "$SRC/buildlogs"
