@@ -1,22 +1,16 @@
 {
-	"_comment" : "Any long-format command line argument ",
-	"_comment" : "may be used in this JSON configuration file",
-   "_comment" : "Additional arguments may be added to the command line.",
-   "_comment" : "Usage: cpuminer -c myconfig.json [additional arguments]",
+  "_comment": "Any long option works here. Run: avian-miner -c config.json",
+  "_comment_algo": "minotaurx on the CPU, or x16rt with gpu true",
 
-   "_comment" : "Required arguments, replace dummy values",
-   
-	"url" : "stratum+tcp://example.com:3333",
-	"user" : "read.pool.instructions",
-	"pass" : "x.often.works",
-	"algo" : "algo",
+  "algo": "minotaurx",
+  "url": "stratum+tcp://pool.example:3333",
+  "user": "YOUR_AVN_ADDRESS.worker",
+  "pass": "x",
 
-   "_comment" : "Often used optional arguments with default values selected.",
-   "_comment" : "Change values, add or delete arguments as desired.",
-
-   "threads" : 0,
-	"cpu-affinity" : -1,
-   "api-bind" : "127.0.0.1:4048",
-	"benchmark" : false,
-	"quiet" : false
+  "threads": 0,
+  "cpu-affinity": -1,
+  "api-bind": "127.0.0.1:4048",
+  "retries": -1,
+  "retry-pause": 10,
+  "quiet": false
 }

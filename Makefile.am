@@ -25,7 +25,7 @@ endif
 
 endif
 
-EXTRA_DIST = example-cfg.json nomacro.pl
+EXTRA_DIST = config-template.json
 
 SUFFIXES = .cu
 
@@ -35,7 +35,6 @@ ALL_INCLUDES = @PTHREAD_FLAGS@ -fno-strict-aliasing $(EXTRA_INCLUDES) -I. @AVIAN
 
 bin_PROGRAMS = avian-miner
 
-dist_man_MANS = cpuminer.1
 
 avian_miner_SOURCES = \
   dummy.cpp \

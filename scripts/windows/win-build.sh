@@ -3,8 +3,8 @@
 #
 # Native rather than cross-compiled because MSYS2 packages every dependency
 # the miner needs, which is the part that makes cross-compiling from Linux
-# tedious: upstream's winbuild-cross.sh wants hand-built curl and gmp under
-# $HOME/usr/lib.
+# tedious: upstream's cross-build script wanted hand-built curl and gmp
+# under $HOME/usr/lib, which is why it is not in this tree any more.
 #
 # Built from a fresh clone, not the working checkout, because that checkout
 # holds object files from Linux builds and make would happily mix them.
