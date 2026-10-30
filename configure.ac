@@ -292,7 +292,15 @@ if test "x$with_hip" != "x" && test "x$with_hip" != "xno" ; then
    dnl does not, and the miner then compiles and links and dies at startup
    dnl with "libamdhip64.so.7: cannot open shared object file". Recording the
    dnl path in the binary beats needing LD_LIBRARY_PATH at every run.
-   HIP_LDFLAGS="-L$hip_prefix/lib -Wl,-rpath,$hip_prefix/lib"
+   dnl
+   dnl $ORIGIN first, so the HIP runtime can sit beside the backend instead.
+   dnl A mining distribution ships the ROCm kernel module and OpenCL but not
+   dnl HIP, and installing ROCm there would repoint the /opt/rocm that every
+   dnl other AMD miner on the rig resolves against; three files next to the
+   dnl binary break nothing. First rather than last so a bundled runtime wins
+   dnl over a system one of the wrong generation. $$ twice: make eats one,
+   dnl and the quotes keep the rest from the shell.
+   HIP_LDFLAGS="-Wl,-rpath,'\$\$ORIGIN' -L$hip_prefix/lib -Wl,-rpath,$hip_prefix/lib"
    dnl -lstdc++ for the same reason the CUDA side needs it: the kernels are
    dnl C++ and this miner links with CC.
    HIP_LIBS="-lamdhip64 -lstdc++"
