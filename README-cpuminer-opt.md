@@ -6,6 +6,11 @@ most of this miner is that work. Bug reports for **this** fork belong in
 this repository rather than upstream's tracker, and the algorithms listed
 below are upstream's full set rather than what Avian uses.
 
+Two files this text refers to are gone or renamed: `RELEASE_NOTES` is
+`RELEASE_NOTES-cpuminer-opt`, and `INSTALL_WINDOWS` was removed because it
+pointed at build instructions that do not apply to this fork. Building is
+covered by [doc/building.md](doc/building.md).
+
 ---
 
 cpuminer-opt is a fork of cpuminer-multi by TPruvot with optimizations
