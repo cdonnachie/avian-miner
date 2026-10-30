@@ -1,11 +1,14 @@
-# The package name reaches pools as the User-Agent and in
-# mining.subscribe, via USER_AGENT in miner.h. It said cpuminer-opt,
-# so operators saw cpuminer-opt-26.1-x64W and had no way to tell an
-# Avian miner from any other fork. The version stays at upstream's,
-# which is what this is built on, and the banner still credits it.
+# The package name and version reach pools as the User-Agent and in
+# mining.subscribe, via USER_AGENT in miner.h, so both are this
+# project's own. They were cpuminer-opt's, which told an operator
+# nothing about which fork had connected, and then avian-miner-26.1,
+# which reads as a version of this and is upstream's: two builds
+# thirteen commits apart both reported it. What this was forked from
+# is history rather than a property of the package, so the banner in
+# cpu-miner.c names cpuminer-opt 26.1 literally.
 # AC_CONFIG_HEADERS below pins cpuminer-config.h, so renaming the
 # package does not rename the generated header.
-AC_INIT([avian-miner], [26.1])
+AC_INIT([avian-miner], [1.0.0])
 
 AC_PREREQ([2.59c])
 AC_CANONICAL_SYSTEM

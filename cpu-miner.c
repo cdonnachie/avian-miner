@@ -2877,7 +2877,7 @@ out:
 
 static void show_credits()
 {
-   printf("\n         **********  avian-miner  ********** \n");
+   printf("\n         **********  avian-miner "PACKAGE_VERSION"  ********** \n");
    // Which vendor is not a compile-time fact, and it is not one vendor. The
    // same binary drives either or both, through the plain-data ABI in
    // cuda/avian-cuda-api.h: it loads whichever backend libraries sit beside
@@ -2889,7 +2889,10 @@ static void show_credits()
    printf("     Avian (AVN): x16rt and minotaurx, on CPU,\n");
 #endif
    printf("     over Stratum v1 and v2.\n\n");
-   printf("     Built on "PACKAGE_NAME" "PACKAGE_VERSION", a CPU miner with multi algo\n");
+   // Named literally rather than through PACKAGE_*: those became this
+   // project's in 92eb97b, which left this line saying avian-miner was
+   // built on itself and crediting this fork to JayDDee.
+   printf("     Built on cpuminer-opt 26.1, a CPU miner with multi algo\n");
    printf("     support optimized for AVX512, SHA, AES and NEON, by JayDDee.\n");
    printf("     BTC donation address: 12tdvfF7KmAsihBXQXynT6E6th2c2pByTT\n\n");
 }
