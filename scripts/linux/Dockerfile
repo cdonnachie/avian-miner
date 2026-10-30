@@ -18,7 +18,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential autoconf automake libtool pkg-config \
         git ca-certificates curl \
-        libcurl4-openssl-dev libjansson-dev libgmp-dev \
+        libcurl4-openssl-dev libjansson-dev libgmp-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Rust, because libavian-sv2 has to be built in here too. A .a compiled
