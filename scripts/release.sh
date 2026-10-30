@@ -112,7 +112,7 @@ if [ "$STAGE" = linux ]; then
     rm -rf "$D"; mkdir -p "$D"
     cp avian-miner "$D/"
     for so in libavian_cuda.so libavian_amd.so; do [ -f "$so" ] && cp "$so" "$D/"; done
-    cp "$REPO/README.md" "$REPO/LICENSE" "$REPO/COPYING" "$D/"
+    cp "$REPO/README.md" "$REPO/LICENSE" "$REPO/COPYING" "$REPO/doc/licensing.md" "$D/"
     tar -C "$OUT" -czf "$OUT/$NAME-linux-x86_64.tar.gz" "$NAME-linux-x86_64"
     rm -rf "$D"
     echo "  $OUT/$NAME-linux-x86_64.tar.gz"
@@ -133,7 +133,7 @@ elif [ "$STAGE" = windows ]; then
     D=$OUT/$NAME-windows-x64
     rm -rf "$D"; mkdir -p "$D"
     cp "$REL"/* "$D/"
-    cp "$REPO/README.md" "$REPO/LICENSE" "$REPO/COPYING" "$D/"
+    cp "$REPO/README.md" "$REPO/LICENSE" "$REPO/COPYING" "$REPO/doc/licensing.md" "$D/"
     # Signed in the output directory, after the copy, so nothing rewrites a
     # binary once it carries a signature.
     powershell.exe -ExecutionPolicy Bypass -File \

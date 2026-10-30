@@ -150,5 +150,6 @@ lines, and whether it worked before.
 ## License
 
 GPL version 3. The vendored CUDA kernels are GPL-3, and cpuminer-opt is GPL-2
-or later, so the combined work is distributed under GPL-3. See
-[COPYING](COPYING).
+or later, so the combined work is distributed under GPL-3. The full text is in
+[COPYING](COPYING); [doc/licensing.md](doc/licensing.md) says why the version
+differs from upstream's.
