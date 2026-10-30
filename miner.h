@@ -786,6 +786,7 @@ extern bool opt_debug_diff;
 /* --gpu. Read by register_x16rt_algo, which hands the gate to the CUDA
  * backend instead of a CPU scanhash. */
 extern bool opt_gpu;
+extern bool gpu_backend_active;
 /* --sv2-hashrate, in hashes per second. What the miner declares when it
  * opens a channel, which is what the pool derives its share target from.
  * Measured at startup unless the flag was given, which is what the second

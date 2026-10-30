@@ -63,6 +63,7 @@ bool register_x16rt_cuda_algo( algo_gate_t* gate )
               avian_gpu_vendor( d ) );
 
    gate->scanhash = (void*)&scanhash_x16rt_cuda;
+   gpu_backend_active = true;
 
    /* The CPU hash stays registered, and is not dead weight: the backend
     * checks every candidate the device reports against it before submitting.

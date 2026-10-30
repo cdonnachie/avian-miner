@@ -123,6 +123,10 @@ const int min_scantime = 1;
 //static const bool opt_time = true;
 enum algos opt_algo = ALGO_NULL;
 bool opt_gpu = false;
+/* Set by whichever gate actually installs a GPU scanhash. Tested rather
+ * than a list of algorithm names, so an algorithm that never grows a
+ * backend cannot be forgotten in two places and claim one. */
+bool gpu_backend_active = false;
 /* Hashes per second. The old hardcoded 1000.0 put every miner on the
  * pool's 2/s share floor regardless of what it could actually do. */
 /* A last resort if the measurement at startup fails, and deliberately
@@ -2884,11 +2888,16 @@ static void show_credits()
    // it. Each card's own name is printed a few lines later, once they have
    // been asked.
 #if defined(HAVE_CUDA)
-   printf("     Avian (AVN): x16rt and minotaurx, on CPU and GPU (NVIDIA and AMD),\n");
+   /* Which algorithm each kind of hardware is for, rather than what will
+    * run. x16rt runs on a CPU and finds very little; minotaurx has no GPU
+    * backend at all. The pairing is the useful thing to say first, and
+    * README.md carries the full matrix. */
+   printf("     Avian (AVN): minotaurx on CPU, x16rt on GPU (NVIDIA and AMD),\n");
+   printf("     over Stratum v1 and v2.\n\n");
 #else
    printf("     Avian (AVN): x16rt and minotaurx, on CPU,\n");
-#endif
    printf("     over Stratum v1 and v2.\n\n");
+#endif
    // Named literally rather than through PACKAGE_*: those became this
    // project's in 92eb97b, which left this line saying avian-miner was
    // built on itself and crediting this fork to JayDDee.
@@ -3739,6 +3748,19 @@ int main(int argc, char *argv[])
    // Would need to split register function into 2 parts. First part sets algo
    // optimizations but no logging, second part does any logging.   
    if ( !register_algo_gate( opt_algo, &algo_gate ) )  exit(1);
+
+   /* --gpu is accepted by the option parser for every algorithm, and only
+    * x16rt has a backend to honour it. Without this the miner reported
+    * "GPU mining thread started" and hashed on the CPU, so the reading
+    * that explains a tenth of the expected rate was never on screen. */
+   if ( opt_gpu && !gpu_backend_active )
+   {
+      applog( LOG_ERR, "--gpu was given, but '%s' has no GPU backend in "
+                       "this build and would mine on the CPU; x16rt is "
+                       "the only algorithm with one",
+              algo_names[opt_algo] );
+      exit(1);
+   }
 
    if ( !check_cpu_capability() ) exit(1);
 
