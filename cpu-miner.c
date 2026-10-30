@@ -3565,12 +3565,6 @@ void parse_arg(int key, char *arg )
 		opt_randomize = true;
       applog(LOG_NOTICE,"--randomize is deprecated and will be removed from a future release");
       break;
-   case 1027:  // data-file
-      opt_data_file = strdup( arg );
-      break;
-   case 1028:  // verify
-      opt_verify = true;
-      break;
    case 1029:  // stratum-keepalive
       opt_stratum_keepalive = true;
       break;

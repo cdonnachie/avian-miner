@@ -14,8 +14,20 @@ GPU backend for X16RT and a Stratum v2 client.
 | X16RT | yes | yes, CUDA | builds and loads, **never tested on a real card** |
 | MinotaurX | yes | no | no |
 
-MinotaurX is memory hard and has no GPU backend. Passing `--gpu` with it
-currently mines on the CPU while reporting a GPU thread, so don't.
+MinotaurX is memory hard and has no GPU backend, and `--gpu` is refused
+rather than quietly mining on the CPU.
+
+`-a` takes four names and nothing else, where upstream offers ninety:
+
+| `-a` | what it is |
+| --- | --- |
+| `minotaurx` | Avian, on the CPU |
+| `x16rt` | Avian, on the GPU |
+| `minotaur` | MinotaurX without its yespower node, for measurement |
+| `yespower` | that node alone, with `-N 2048 -R 8 -K 'et in arcadia ego'` |
+
+The last two mine nothing. They are kept because the pair is what measures
+how much of a MinotaurX nonce is memory hard, which turns out to be 98.4%.
 
 **On AMD:** the kernels compile for RDNA2, RDNA3 and RDNA4, the library loads
 and reports the right ABI, and the dispatch path is covered by a test. No AMD
@@ -90,8 +102,9 @@ Most of this code is Jay D Dee's cpuminer-opt, which is itself a fork of
 cpuminer-multi by TPruvot, with work from Lucas Jones, djm34, Wolf0, pooler,
 Jeff Garzik, ig0tik3d, elmad, palmd and Optiminer. The CUDA kernels derive
 from suprminer. Upstream's README is kept at
-[README-cpuminer-opt.md](README-cpuminer-opt.md) and lists the full set of
-algorithms it supports, most of which Avian does not use.
+[README-cpuminer-opt.md](README-cpuminer-opt.md) and lists the ninety or so
+algorithms it supports. This fork offers four of them, so treat that document
+as history rather than as this miner's manual.
 
 **Report bugs about this fork here**, not to upstream. A problem report needs
 the command line, the miner's startup output including the banner and device

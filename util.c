@@ -1964,48 +1964,14 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 {
 	const char *job_id, *prevhash, *coinb1, *coinb2, *version, *nbits, *stime;
    const char *finalsaplinghash = NULL;
-   const char *denom10 = NULL, *denom100 = NULL, *denom1000 = NULL,
-              *denom10000 = NULL, *prooffullnode = NULL;
-   const char *extradata = NULL;
 	size_t coinb1_size, coinb2_size;
 	bool clean, ret = false;
 	int merkle_count, i, p = 0;
 	json_t *merkle_arr;
 	uchar **merkle = NULL;
-	int jsize = json_array_size(params);
-   bool has_claim = ( opt_algo == ALGO_LBRY ) && ( jsize == 10 );
-   bool has_roots = ( opt_algo == ALGO_PHI2 ) && ( jsize == 10 );
-   bool is_veil  = ( opt_algo == ALGO_X16RT_VEIL );
 
    job_id = json_string_value(json_array_get(params, p++));
 	prevhash = json_string_value(json_array_get(params, p++));
-   if ( has_claim )
-   {
-       extradata = json_string_value(json_array_get(params, p++));
-       if ( !extradata || strlen( extradata ) != 64 ) 
-       {
-           applog(LOG_ERR, "Stratum notify: invalid claim parameter");
-           goto out;
-       }
-   }
-   else if ( has_roots )
-   {
-       extradata = json_string_value(json_array_get(params, p++));
-       if ( !extradata || strlen( extradata ) != 128 )
-       {
-           applog(LOG_ERR, "Stratum notify: invalid UTXO root parameter");
-           goto out;
-       }
-   }
-   if ( is_veil )
-   {
-      denom10 = json_string_value(json_array_get(params, p++));
-      denom100 = json_string_value(json_array_get(params, p++));
-      denom1000 = json_string_value(json_array_get(params, p++));
-      denom10000 = json_string_value(json_array_get(params, p++));
-      prooffullnode = json_string_value(json_array_get(params, p++));
-   }
-
 	coinb1 = json_string_value(json_array_get(params, p++));
 	coinb2 = json_string_value(json_array_get(params, p++));
 	merkle_arr = json_array_get(params, p++);
@@ -2036,18 +2002,6 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
       }
    }
    
-   if ( is_veil )
-   {
-      if ( !denom10 || !denom100 || !denom1000 || !denom10000
-        || !prooffullnode || strlen(denom10) != 64 || strlen(denom100) != 64
-        || strlen(denom1000) != 64 || strlen(denom10000) != 64
-        || strlen(prooffullnode) != 64 )
-      {
-         applog(LOG_ERR, "Stratum notify: invalid veil parameters");
-         goto out;
-      }
-   }
-
    pthread_mutex_lock( &sctx->work_lock );
 
    if ( merkle_count )
@@ -2096,19 +2050,8 @@ static bool stratum_notify(struct stratum_ctx *sctx, json_t *params)
 	free( sctx->job.job_id );
 	sctx->job.job_id = strdup( job_id );
 	hex2bin( sctx->job.prevhash, prevhash, 32 );
-   if ( has_claim ) hex2bin( sctx->job.extra, extradata, 32 );
-   if ( has_roots ) hex2bin( sctx->job.extra, extradata, 64 );
    if ( opt_sapling )
       hex2bin( sctx->job.final_sapling_hash, finalsaplinghash, 32 );
-
-   if ( is_veil )
-   {
-      hex2bin( sctx->job.denom10, denom10, 32 );
-      hex2bin( sctx->job.denom100, denom100, 32 );
-      hex2bin( sctx->job.denom1000, denom1000, 32 );
-      hex2bin( sctx->job.denom10000, denom10000, 32 );
-      hex2bin( sctx->job.proofoffullnode, prooffullnode, 32 );
-   }
 
 	sctx->block_height = getblocheight( sctx );
 	hex2bin( sctx->job.nbits, nbits, 4 );

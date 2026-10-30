@@ -585,196 +585,25 @@ struct workio_cmd {
 
 uint32_t* get_stratum_job_ntime();
 
+// Four, where upstream has ninety. Avian mines two of them. minotaur and
+// yespower are kept because they are minotaurx with and without its one
+// memory-hard node, which is how that node's share of the work was measured.
 enum algos {
         ALGO_NULL,
-        ALGO_ALLIUM,
-        ALGO_ANIME,
-        ALGO_ARGON2D250,
-        ALGO_ARGON2D500,
-        ALGO_ARGON2D1000,
-        ALGO_ARGON2D16000,
-        ALGO_ARGON2D4096,
-        ALGO_AXIOM,       
-        ALGO_BLAKE,       
-        ALGO_BLAKE2B,
-        ALGO_BLAKE2S,     
-        ALGO_BLAKECOIN,
-        ALGO_BMW,        
-        ALGO_BMW512,
-        ALGO_C11,         
-        ALGO_DEEP,
-        ALGO_DMD_GR,
-        ALGO_GROESTL,     
-        ALGO_HEX,
-        ALGO_HMQ1725,
-        ALGO_JHA,
-        ALGO_KECCAK,
-        ALGO_KECCAKC,
-        ALGO_LBRY,
-        ALGO_LYRA2H,
-        ALGO_LYRA2RE,       
-        ALGO_LYRA2REV2,   
-        ALGO_LYRA2REV3,
-        ALGO_LYRA2Z,
-        ALGO_LYRA2Z330,
-        ALGO_M7M,
         ALGO_MINOTAUR,
         ALGO_MINOTAURX,
-        ALGO_MYR_GR,      
-        ALGO_NEOSCRYPT,
-        ALGO_NIST5,       
-        ALGO_PENTABLAKE,  
-        ALGO_PHI1612,
-        ALGO_PHI2,
-        ALGO_POLYTIMOS,
-        ALGO_POWER2B,
-        ALGO_QUARK,
-        ALGO_QUBIT,       
-        ALGO_SCRYPT,
-        ALGO_SHA256D,
-        ALGO_SHA256DT,
-        ALGO_SHA256Q,
-        ALGO_SHA256T,
-        ALGO_SHA3D,
-        ALGO_SHA512256D,
-        ALGO_SKEIN,       
-        ALGO_SKEIN2,      
-        ALGO_SKUNK,
-        ALGO_SONOA,
-        ALGO_TIMETRAVEL,
-        ALGO_TIMETRAVEL10,
-        ALGO_TRIBUS,
-        ALGO_VANILLA,
-        ALGO_VELTOR,
-        ALGO_VERTHASH,
-        ALGO_WHIRLPOOL,
-        ALGO_WHIRLPOOLX,
-        ALGO_X11,
-        ALGO_X11EVO,         
-        ALGO_X11GOST,
-        ALGO_X12,
-        ALGO_X13,         
-        ALGO_X13BCD,
-        ALGO_X13SM3,
-        ALGO_X14,        
-        ALGO_X15,       
-        ALGO_X16R,
-        ALGO_X16RV2,
         ALGO_X16RT,
-        ALGO_X16RT_VEIL,
-        ALGO_X16S,
-        ALGO_X17,
-        ALGO_X20R,
-        ALGO_X21S,
-        ALGO_X22I,
-        ALGO_X25X,
-        ALGO_XEVAN,
-        ALGO_YESCRYPT,
-        ALGO_YESCRYPTR8,
-        ALGO_YESCRYPTR8G,
-        ALGO_YESCRYPTR16,
-        ALGO_YESCRYPTR32,
         ALGO_YESPOWER,
-        ALGO_YESPOWERR16,
-        ALGO_YESPOWER_B2B,
-        ALGO_ZR5,
         ALGO_COUNT
 };
 
 // This list must be in exactly the same order as above.
 static const char* const algo_names[] = {
         NULL,
-        "allium",
-        "anime",
-        "argon2d250",
-        "argon2d500",
-        "argon2d1000",
-        "argon2d16000",
-        "argon2d4096",
-        "axiom",
-        "blake",
-        "blake2b",
-        "blake2s",
-        "blakecoin",
-        "bmw",
-        "bmw512",
-        "c11",
-        "deep",
-        "dmd-gr",
-        "groestl",
-        "hex",
-        "hmq1725",
-        "jha",
-        "keccak",
-        "keccakc",
-        "lbry",
-        "lyra2h",
-        "lyra2re",
-        "lyra2rev2",
-        "lyra2rev3",
-        "lyra2z",
-        "lyra2z330",
-        "m7m",
         "minotaur",
         "minotaurx",
-        "myr-gr",
-        "neoscrypt",
-        "nist5",
-        "pentablake",
-        "phi1612",
-        "phi2",
-        "polytimos",
-        "power2b",
-        "quark",
-        "qubit",
-        "scrypt",
-        "sha256d",
-        "sha256dt",
-        "sha256q",
-        "sha256t",
-        "sha3d",
-        "sha512256d",
-        "skein",
-        "skein2",
-        "skunk",
-        "sonoa",
-        "timetravel",
-        "timetravel10",
-        "tribus",
-        "vanilla",
-        "veltor",
-        "verthash",
-        "whirlpool",
-        "whirlpoolx",
-        "x11",
-        "x11evo",
-        "x11gost",
-        "x12",
-        "x13",
-        "x13bcd",
-        "x13sm3",
-        "x14",
-        "x15",
-        "x16r",
-        "x16rv2",
         "x16rt",
-        "x16rt-veil",
-        "x16s",
-        "x17",
-        "x20r",
-        "x21s",
-        "x22i",
-        "x25x",
-        "xevan",
-        "yescrypt",
-        "yescryptr8",
-        "yescryptr8g",
-        "yescryptr16",
-        "yescryptr32",
         "yespower",
-        "yespowerr16",
-        "yespower-b2b",
-        "zr5",
         "\0"
 };
 
@@ -858,99 +687,12 @@ static char const usage[] = "\
 Usage: cpuminer [OPTIONS]\n\
 Options:\n\
   -a, --algo=ALGO       specify the algorithm to use\n\
-                          allium        Garlicoin (GRLC)\n\
-                          anime         Animecoin (ANI)\n\
-                          argon2d250\n\
-                          argon2d500\n\
-                          argon2d1000\n\
-                          argon2d16000\n\
-                          argon2d4096\n\
-                          axiom         Shabal-256 MemoHash\n\
-                          blake         blake256r14 (SFR)\n\
-                          blake2b       Blake2b 256\n\
-                          blake2s       Blake-2 S\n\
-                          blakecoin     blake256r8\n\
-                          bmw           BMW 256\n\
-                          bmw512        BMW 512\n\
-                          c11           Chaincoin\n\
-                          deep          Deepcoin (DCN)\n\
-                          dmd-gr        Diamond\n\
-                          groestl       Groestl coin\n\
-                          hex           x16r-hex\n\
-                          hmq1725       Espers\n\
-                          jha           jackppot (Jackpotcoin)\n\
-                          keccak        Maxcoin\n\
-                          keccakc       Creative Coin\n\
-                          lbry          LBC, LBRY Credits\n\
-                          lyra2h        Hppcoin\n\
-                          lyra2re       lyra2\n\
-                          lyra2rev2     lyrav2\n\
-                          lyra2rev3     lyrav2v3\n\
-                          lyra2z\n\
-                          lyra2z330     Lyra2 330 rows\n\
-                          m7m           Magi (XMG)\n\
-                          myr-gr        Myriad-Groestl\n\
-                          minotaur\n\
                           minotaurx     Avian (AVN)\n\
-                          neoscrypt     NeoScrypt(128, 2, 1)\n\
-                          nist5         Nist5\n\
-                          pentablake    5 x blake512\n\
-                          phi1612       phi\n\
-                          phi2\n\
-                          polytimos\n\
-                          power2b       MicroBitcoin (MBC)\n\
-                          quark         Quark\n\
-                          qubit         Qubit\n\
-                          scrypt        scrypt(1024, 1, 1) (default)\n\
-                          scrypt:N      scrypt(N, 1, 1)\n\
-                          scryptn2      scrypt(1048576, 1,1)\n\
-                          sha256d       Double SHA-256\n\
-                          sha256dt      Modified sha256d (Novo)\n\
-                          sha256q       Quad SHA-256, Pyrite (PYE)\n\
-                          sha256t       Triple SHA-256, Onecoin (OC)\n\
-                          sha3d         Double Keccak256 (BSHA3)\n\
-                          sha512256d    Double SHA-512 (Radiant)\n\
-                          skein         Skein+Sha (Skeincoin)\n\
-                          skein2        Double Skein (Woodcoin)\n\
-                          skunk         Signatum (SIGT)\n\
-                          sonoa         Sono\n\
-                          timetravel    timeravel8, Machinecoin (MAC)\n\
-                          timetravel10  Bitcore (BTX)\n\
-                          tribus        Denarius (DNR)\n\
-                          vanilla       blake256r8vnl (VCash)\n\
-                          veltor\n\
-                          verthash\n\
-                          whirlpool\n\
-                          whirlpoolx\n\
-                          x11           Dash\n\
-                          x11evo        Revolvercoin (XRE)\n\
-                          x11gost       sib (SibCoin)\n\
-                          x12           Galaxie Cash (GCH)\n\
-                          x13           X13\n\
-                          x13bcd        bcd \n\
-                          x13sm3        hsr (Hshare)\n\
-                          x14           X14\n\
-                          x15           X15\n\
-                          x16r\n\
-                          x16rv2\n\
-                          x16rt         Avian (AVN)\n\
-                          x16rt-veil    Veil (VEIL)\n\
-                          x16s\n\
-                          x17\n\
-                          x20r\n\
-                          x21s\n\
-                          x22i\n\
-                          x25x\n\
-                          xevan         Bitsend (BSD)\n\
-                          yescrypt      Globalboost-Y (BSTY)\n\
-                          yescryptr8    BitZeny (ZNY)\n\
-                          yescryptr8g   Koto (KOTO)\n\
-                          yescryptr16   Eli\n\
-                          yescryptr32   WAVI\n\
-                          yespower      Cryply\n\
-                          yespowerr16   Yenten (YTN)\n\
-                          yespower-b2b  generic yespower + blake2b\n\
-                          zr5           Ziftr\n\
+                          x16rt         Avian (AVN), and the only one with a\n\
+                                        GPU backend\n\
+                          minotaur      minotaurx without its yespower node\n\
+                          yespower      that node on its own, with -N 2048\n\
+                                        -R 8 -K 'et in arcadia ego'\n\
   -N, --param-n=N       N parameter for scrypt based algos\n\
   -R, --param-r=N       R parameter for scrypt based algos\n\
   -K, --param-key=STRING  Key (pers) parameter for algos that use it\n\
@@ -1014,8 +756,6 @@ Options:\n\
       --max-rate=N[KMG] only mine if net hashrate is less than specified value\n\
       --max-diff=N      only mine if net difficulty is less than specified value\n\
   -c, --config=FILE     load a JSON-format configuration file\n\
-      --data-file=FILE  path and name of data file\n\
-      --verify          enable additional time consuming start up tests\n\
       --stratum-keepalive  prevent disconnects when difficulty is too high\n\
   -V, --version         display version and CPU information and exit\n\
   -h, --help            display this help text and exit\n\
@@ -1084,8 +824,6 @@ static struct option const options[] = {
         { "url", 1, NULL, 'o' },
         { "user", 1, NULL, 'u' },
         { "userpass", 1, NULL, 'O' },
-        { "data-file", 1, NULL, 1027 },
-        { "verify", 0, NULL, 1028 },
         { "stratum-keepalive", 0, NULL, 1029 },
         { "version", 0, NULL, 'V' },
         { "bell", 0, NULL, 1031 },
