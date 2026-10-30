@@ -89,8 +89,24 @@ if [ "$STAGE" = linux ]; then
     fi
     SV2=""
     [ -d "$REPO/../avian-sv2" ] && SV2="--with-avian-sv2=$(cd "$REPO/../avian-sv2" && pwd)"
-    ./autogen.sh >/dev/null
+    # Checked, because the committed configure is deliberately stale and has
+    # never known --with-cuda: a failed autogen leaves it in place, and
+    # configure then warns about "unrecognized options" and builds a release
+    # with no GPU backend in it. One run of this stage did exactly that.
+    ./autogen.sh >/dev/null || { echo "autogen.sh failed"; exit 1; }
+    for opt in with-cuda with-hip with-avian-sv2; do
+        grep -q -- "$opt" configure || {
+            echo "configure does not know --$opt, so autogen left a stale one"
+            exit 1; }
+    done
     CFLAGS="$CF" ./configure --with-curl $CUDA $SV2 $HIP >/dev/null
+    # configure warns rather than fails on an option it does not know, so ask
+    # config.log what it actually took. The alternative is a release that is
+    # quietly CPU-only.
+    took() { grep -q "^$1='.\+'" config.log; }
+    [ -z "$CUDA" ] || took NVCC  || { echo "CUDA was asked for, configure did not take it"; exit 1; }
+    [ -z "$HIP" ]  || took HIPCC || { echo "HIP was asked for, configure did not take it"; exit 1; }
+    [ -z "$SV2" ]  || took AVIAN_SV2_LIBS || { echo "Stratum v2 was asked for, configure did not take it"; exit 1; }
     make -j"$(nproc)" >/dev/null
     D=$OUT/$NAME-linux-x86_64
     rm -rf "$D"; mkdir -p "$D"
