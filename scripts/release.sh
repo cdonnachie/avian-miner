@@ -8,15 +8,17 @@
 # last one is also why none of this belongs in CI: a hosted runner cannot
 # hold the key, so the signed artifacts are made here or not at all.
 #
-#   scripts/release.sh linux     # in WSL, or on Linux
+#   scripts/release.sh linux     # in WSL, or on Linux; needs docker
 #   scripts/release.sh windows   # in MSYS2 MINGW64
-#
-# The build directories are per stage and named differently: $B for linux,
-# $AVIAN_BUILD_DIR for windows, since that is what the win-* scripts already
-# read. On Windows there is no speed reason to move it, both paths being the
-# same NTFS volume, but there is a good one: keeping the build tree away from
-# wherever a miner is running, because win-package.sh starts with rm -rf.
 #   scripts/release.sh finish    # in MSYS2, once both are present
+#
+# The linux stage builds in a container and so needs docker, but nothing on
+# the host beyond it: no CUDA toolkit, no Rust, not even a GPU. The windows
+# stage builds in place and uses $AVIAN_BUILD_DIR, which is what the win-*
+# scripts already read. There is no speed reason to move that one, both paths
+# being the same NTFS volume, but there is a good one: keeping the build tree
+# away from wherever a miner is running, because win-package.sh starts with
+# rm -rf.
 #
 # finish is not "either": the signing key is in Gpg4win, and neither MSYS2's
 # own gpg nor WSL's can see that keyring. It uses whatever git is configured
@@ -58,64 +60,27 @@ mkdir -p "$OUT"
 echo "avian-miner $VERSION from $COMMIT -> $OUT"
 
 if [ "$STAGE" = linux ]; then
-    B=${B:-$(cd "$REPO/.." && pwd)/avian-linuxbuild}
-    rm -rf "$B"; git clone -q "$REPO" "$B"; cd "$B"
-    # Not -march=native, which build.sh uses and which is right for a local
-    # build and wrong for every machine that is not this one.
-    CF=${AVIAN_CFLAGS:-"-O3 -march=x86-64-v2"}
-    CUDA=""
-    for v in 12.9 12.8 12.6; do
-        [ -x "/usr/local/cuda-$v/bin/nvcc" ] && { CUDA="--with-cuda=/usr/local/cuda-$v"; break; }
-    done
-    [ -x /usr/local/cuda/bin/nvcc ] && [ -z "$CUDA" ] && CUDA="--with-cuda=/usr/local/cuda"
-    [ -n "$CUDA" ] || echo "note: no CUDA toolkit found, so this will be a CPU-only release"
-    # The AMD backend, when there is a ROCm install to build it with. An
-    # explicit target list rather than configure's default, because that asks
-    # the machine which AMD GPUs it has and a build host need not have one.
-    # The list is cuda/hip/gfx-targets, which build-hip-dll.ps1 reads too, so
-    # libavian_amd.so and avian_amd.dll cover the same hardware.
-    HIP=""
-    HIPCC=""
-    for p in /opt/rocm /opt/rocm-* ; do
-        [ -x "$p/bin/hipcc" ] && { HIPCC="$p"; break; }
-    done
-    [ -z "$HIPCC" ] && command -v hipcc > /dev/null 2>&1 && HIPCC=/opt/rocm
-    if [ -n "$HIPCC" ] && [ -f "$REPO/cuda/hip/gfx-targets" ]; then
-        ARCH=$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$REPO/cuda/hip/gfx-targets" | paste -sd, -)
-        HIP="--with-hip=$HIPCC --with-hip-arch=$ARCH"
-        echo "note: building the AMD backend for $(echo "$ARCH" | tr , " " | wc -w) targets, which is slow"
-    else
-        echo "note: no ROCm here, so this release carries no AMD backend"
-    fi
-    SV2=""
-    [ -d "$REPO/../avian-sv2" ] && SV2="--with-avian-sv2=$(cd "$REPO/../avian-sv2" && pwd)"
-    # Checked, because the committed configure is deliberately stale and has
-    # never known --with-cuda: a failed autogen leaves it in place, and
-    # configure then warns about "unrecognized options" and builds a release
-    # with no GPU backend in it. One run of this stage did exactly that.
-    ./autogen.sh >/dev/null || { echo "autogen.sh failed"; exit 1; }
-    for opt in with-cuda with-hip with-avian-sv2; do
-        grep -q -- "$opt" configure || {
-            echo "configure does not know --$opt, so autogen left a stale one"
-            exit 1; }
-    done
-    CFLAGS="$CF" ./configure --with-curl $CUDA $SV2 $HIP >/dev/null
-    # configure warns rather than fails on an option it does not know, so ask
-    # config.log what it actually took. The alternative is a release that is
-    # quietly CPU-only.
-    took() { grep -q "^$1='.\+'" config.log; }
-    [ -z "$CUDA" ] || took NVCC  || { echo "CUDA was asked for, configure did not take it"; exit 1; }
-    [ -z "$HIP" ]  || took HIPCC || { echo "HIP was asked for, configure did not take it"; exit 1; }
-    [ -z "$SV2" ]  || took AVIAN_SV2_LIBS || { echo "Stratum v2 was asked for, configure did not take it"; exit 1; }
-    make -j"$(nproc)" >/dev/null
-    D=$OUT/$NAME-linux-x86_64
-    rm -rf "$D"; mkdir -p "$D"
-    cp avian-miner "$D/"
-    for so in libavian_cuda.so libavian_amd.so; do [ -f "$so" ] && cp "$so" "$D/"; done
-    cp "$REPO/README.md" "$REPO/LICENSE" "$REPO/COPYING" "$REPO/doc/licensing.md" "$D/"
-    tar -C "$OUT" -czf "$OUT/$NAME-linux-x86_64.tar.gz" "$NAME-linux-x86_64"
-    rm -rf "$D"
-    echo "  $OUT/$NAME-linux-x86_64.tar.gz"
+    # Built in an Ubuntu 22.04 container, not against this host. A host build
+    # under WSL's 24.04 stamps GLIBC_2.39 into the binary, which excludes every
+    # 22.04 and older machine, HiveOS among them; the container's floor is
+    # 2.34. Proven on HiveOS 2026-10-30, where the CPU half mined and had a
+    # share accepted. For a build against this host, use
+    # scripts/configure-build.sh.
+    #
+    # The container carries no ROCm, so a Linux release has no AMD backend and
+    # an AMD owner builds from source. That is the cost of portability and it
+    # is paid by few: the backends are dlopened, so the binary is identical for
+    # everyone else, and configure now records $ORIGIN in the backend's rpath
+    # so a source build can keep the HIP runtime beside it. See doc/building.md.
+    #
+    # OUT is passed through so both stages land in the directory the finish
+    # stage signs. Everything else the container derives for itself, including
+    # the version, the package name and the same -O3 -march=x86-64-v2 this
+    # stage used to set.
+    OUT="$OUT" "$REPO/scripts/linux/build.sh"
+    T=$OUT/$NAME-linux-x86_64.tar.gz
+    [ -f "$T" ] || { echo "the container produced no $T"; exit 1; }
+    echo "  $T"
 
 elif [ "$STAGE" = windows ]; then
     "$REPO/scripts/windows/win-build.sh"

@@ -4,10 +4,13 @@
 #
 #   scripts/linux/build.sh
 #
-# Run it from WSL or from Linux, wherever docker is. It is deliberately
-# separate from scripts/release.sh: that one builds against whatever the host
-# has, which is right for a local build and produces a tarball needing
-# GLIBC_2.39. Nothing in release.sh changes until this is proven on a rig.
+# Run it from WSL or from Linux, wherever docker is. Nothing else is needed
+# on the host: no CUDA toolkit, no Rust, not even a GPU, since this compiles
+# kernels without running any.
+#
+# scripts/release.sh linux is a thin wrapper around this, passing OUT so the
+# tarball lands where the finish stage signs it. Run that for a release and
+# this directly for a test build.
 #
 # Overridable: SV2 (the avian-sv2 workspace), OUT, IMAGE, AVIAN_CFLAGS,
 # CUDA_TAG, RUST_VERSION.
