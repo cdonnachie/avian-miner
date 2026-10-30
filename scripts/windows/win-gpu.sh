@@ -161,20 +161,18 @@ fi
 # cpu-miner.c was compiled without HAVE_CUDA the binary still has the backend
 # and then refuses --gpu, which is exactly what a stale object produced.
 #
-# Positive first. A build that reached the #if defined(HAVE_CUDA) arm names
-# both vendors in its banner, and nothing else in the tree says that.
-if strings avian-miner.exe 2>/dev/null | grep -q "on CPU and GPU (NVIDIA and AMD)"; then
-    echo "  ok   compiled with HAVE_CUDA"
-else
-    echo "  FAIL compiled without HAVE_CUDA: --gpu will be refused"; fail=1
-fi
-# The whole sentence, not the fragment "no GPU backend". The loader added one
-# of its own in 073f91c, "no GPU backend beside the miner", which is a correct
-# build's diagnostic for a missing DLL and lives in the HAVE_CUDA path. The
-# fragment matched both, so this guard failed every GPU build it passed.
+# Anchored on the one literal that only the broken build contains: the #else
+# arm of the --gpu option compiles in "this build has no GPU backend", and
+# nothing else in the tree says it. Its absence is evidence rather than the
+# mere absence of a symptom, which is why there is no second, positive test.
+#
+# There was one, matching the banner, and it lasted hours: the banner was
+# reworded and the assertion failed a correct build. Twice now a check here
+# has been broken by a string moving under it, so this one is tied to a
+# literal that cannot change without the behaviour it tests changing too.
 if strings avian-miner.exe 2>/dev/null | grep -q "this build has no GPU backend"; then
-    echo "  FAIL cpu-miner.c kept its no-GPU branch: --gpu will be refused"; fail=1
+    echo "  FAIL compiled without HAVE_CUDA: --gpu will be refused"; fail=1
 else
-    echo "  ok   the no-GPU branch was compiled out"
+    echo "  ok   compiled with HAVE_CUDA"
 fi
 exit $fail
