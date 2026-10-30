@@ -164,7 +164,6 @@ endif
 
 if USE_ASM
    disable_flags =
-   avian_miner_SOURCES += asm/neoscrypt_asm.S
 else
    disable_flags = -DNOASM
 endif
@@ -202,11 +201,6 @@ if HAVE_WINDOWS
 
 # copy/paste from generated Makefile
 common_ccflags = $(DEFS) $(ALL_INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS)
-
-# special CFLAGS (if you find a simpler way to do that tell me ;)
-avian_miner-neoscrypt.o: neoscrypt.c
-	@echo "CUSTOM ${@}: ${filter %.o,${^}} ${filter %.c,${^}}"
-	$(CC) $(common_ccflags) -g -O3 $(gprof_cflags) -MT $@ -MD -MP -c -o $@ $<
 
 endif
 
