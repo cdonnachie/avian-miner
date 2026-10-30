@@ -24,8 +24,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Rust, because libavian-sv2 has to be built in here too. A .a compiled
 # against a newer glibc carries its symbol versions into the miner and undoes
 # the whole point of the image. Pinned rather than "stable" so the same commit
-# gives the same binary next month; the workspace asks for 1.75 or newer.
-ARG RUST_VERSION=1.83.0
+# gives the same binary next month, and pinned to what WSL has, so the library
+# in a container release is the one the local release was already built with.
+#
+# Not the workspace's declared rust-version of 1.75: a transitive dependency
+# in Cargo.lock is edition 2024, so anything before 1.85 fails to resolve at
+# all with "the package requires the Cargo feature called edition2024".
+ARG RUST_VERSION=1.98.0
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo
 ENV PATH=/opt/cargo/bin:$PATH
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \

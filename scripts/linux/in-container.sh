@@ -55,7 +55,12 @@ if [ -n "$SV2" ]; then
     echo "=== libavian-sv2 ==="
     # In the clone's own target directory, because that is where configure
     # looks: --with-avian-sv2=PATH reads PATH/target/release/libavian_sv2.a.
-    ( cd "$SV2" && cargo build --release -p avian-sv2 2>&1 | tail -3 )
+    #
+    # Logged rather than piped to tail: a pipeline's status is the last
+    # command's, so `cargo build | tail` returns tail's success and set -e
+    # carries straight on past a failed build.
+    ( cd "$SV2" && cargo build --release -p avian-sv2 ) > /build/cargo.log 2>&1 || {
+        tail -20 /build/cargo.log; exit 1; }
     ls -l "$SV2/target/release/libavian_sv2.a"
 fi
 
