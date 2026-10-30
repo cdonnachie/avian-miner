@@ -743,7 +743,7 @@ Options:\n\
       --sv2-expect-payout=ADDR  check the assembled coinbase pays this address\n\
       --avian-selftest          check -a's proof of work against hashes a real node reported\n\
       --gpu                     mine x16rt on the GPU instead of the CPU, one thread per card\n\
-      --devices=N[,N|N-N]       mine on these GPUs only, numbered as --gpu lists them\n\\
+      --devices=N[,N|N-N]       mine on these GPUs only, numbered as --gpu lists them\n\
       --sv2-hashrate=RATE       how fast this miner is, eg 30M. Measured at startup if\n\
                                 unset, which is the intended way. The pool works out this\n\
                                 worker's share target from it, so a wrong figure changes how\n\
