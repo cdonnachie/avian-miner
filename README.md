@@ -86,8 +86,13 @@ avian-miner -a x16rt --gpu --sv2=POOL:PORT --sv2-user=ADDRESS.worker \
 ```
 
 Every GPU device is numbered in one list, Nvidia first, so `GPU #2` means the
-same thing whether this machine has Nvidia cards, AMD cards or both. There is
-no way to mine on a subset of devices yet.
+same thing whether this machine has Nvidia cards, AMD cards or both.
+`--devices 0,2` or `--devices 0-2` mines on a subset of them, numbered by that
+same list.
+
+Stratum v2 is built on [avian-sv2](https://github.com/cdonnachie/avian-sv2),
+a separate repository. A miner built without it still mines over Stratum v1;
+see [doc/building.md](doc/building.md).
 
 Without `--sv2-authority` the Stratum v2 connection is encrypted but
 unauthenticated: the handshake proves nothing about who is on the other end,
@@ -117,8 +122,9 @@ See **[doc/building.md](doc/building.md)**. A CPU-only build is upstream's
 toolchains for reasons that document explains.
 
 Briefly: nvcc will only use MSVC as its host compiler, while this miner and
-its Rust Stratum v2 library are MinGW, so the kernels live in a separate
-library that the miner loads rather than links.
+[avian-sv2](https://github.com/cdonnachie/avian-sv2), its Rust Stratum v2
+library, are MinGW, so the kernels live in a separate library that the miner
+loads rather than links.
 
 ## Antivirus
 

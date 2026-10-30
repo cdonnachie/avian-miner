@@ -9,7 +9,7 @@ set -eu
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 S=$SCRIPT_DIR
 MINER=${MINER:-$(cd "$SCRIPT_DIR/.." && pwd)}
-SV2=${SV2:-$HOME/avian-gpu/avian-sv2}
+SV2=${SV2:-$(cd "$MINER/.." && pwd)/avian-sv2}
 # The upstream the driver is generated from, now vendored at
 # vendor/suprminer-jdd rather than expected in a sibling directory. It used
 # to default to $HOME/avian-gpu/.suprminer-src, which was absent on any other
