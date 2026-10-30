@@ -265,8 +265,11 @@ GPU_INCLUDES = -I. -I$(top_srcdir) -I$(top_srcdir)/cuda -I$(top_srcdir)/cuda/ups
 # for the same reason HAVE_CUDA's is: two PowerShell scripts and three
 # headers test it, and a rename stopping at one of them would leave the rest
 # testing something different from the sources.
-GPU_FLAGS = -std=c++14 -w -DAVIAN_CUDA_BUILDING_DLL \
+# Split so the two C files below can be compiled as C. Everything else
+# here is C++ either way.
+GPU_CPU_FLAGS = -w -DAVIAN_CUDA_BUILDING_DLL \
             $(GPU_INCLUDES) $(EXTRA_INCLUDES)
+GPU_FLAGS = -std=c++14 $(GPU_CPU_FLAGS)
 
 # One library per vendor, each exporting the same avian_cuda_* ABI, neither
 # linked into the miner: it loads whichever are present at startup. So the
@@ -320,8 +323,13 @@ GPU_BACKENDS += libavian_amd.so
 %.amd.o: %.cu
 	@HIPCC@ @HIPCC_ARCH@ -I$(top_srcdir)/cuda/hip $(GPU_FLAGS) -fPIC -c -o $@ $<
 
+# -x c, which the Nvidia rule above does not need: nvcc compiles a .c file
+# as C, while hipcc is clang++ and compiles it as C++, where sphlib's
+# implicit void* conversions are errors. scripts/windows/build-hip-dll.ps1
+# has always passed it; this rule never did, and nothing noticed because
+# building the AMD backend needs a ROCm install.
 %.amd.o: %.c
-	@HIPCC@ @HIPCC_ARCH@ -I$(top_srcdir)/cuda/hip $(GPU_FLAGS) -fPIC -c -o $@ $<
+	@HIPCC@ @HIPCC_ARCH@ -x c -I$(top_srcdir)/cuda/hip $(GPU_CPU_FLAGS) -fPIC -c -o $@ $<
 
 libavian_amd.so: $(AMD_OBJECTS)
 	@HIPCC@ -shared -o $@ $(AMD_OBJECTS) @HIP_LDFLAGS@ @HIP_LIBS@

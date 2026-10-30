@@ -1,0 +1,41 @@
+# The AMD GPU architectures both backends are built for, one per line.
+#
+# Read by scripts/windows/build-hip-dll.ps1 for avian_amd.dll and by
+# scripts/release.sh for libavian_amd.so, so the two platforms cover the same
+# hardware. Edit here, not in either script.
+#
+# Unlike CUDA there is no PTX to fall back on: a card not listed here will not
+# launch the result at all. So the list errs towards covering consumer
+# hardware rather than towards a quick build. Build time scales with it, at
+# roughly 1.9 minutes and 2.3 MB of library per target.
+
+# RDNA2, RX 6000.
+gfx1030
+# The smaller RDNA2 parts, RX 6700 and RX 6600. AMD's own Windows support for
+# them has been going backwards: the runtime row is a tick on the 5.6 through
+# 7.1.1 pages and a cross on 7.2.0, while the HIP SDK row is a cross
+# throughout. Building for them costs one pass each and makes the failure, if
+# it comes, a clear message from the runtime rather than a kernel that
+# silently will not launch.
+gfx1031
+gfx1032
+# Van Gogh and the Rembrandt and Raphael APUs. Slow wherever they work; the
+# value in having them is a clear "ran correctly" rather than throughput.
+gfx1033
+gfx1034
+gfx1035
+gfx1036
+# RDNA3, RX 7000.
+gfx1100
+gfx1101
+gfx1102
+# Strix and Krackan. Added only once gfx1030 had hashed correctly on real
+# hardware, so that a failure on one of these is that part's failure rather
+# than a question about the whole port.
+gfx1150
+gfx1151
+gfx1152
+gfx1153
+# RDNA4, RX 9000.
+gfx1200
+gfx1201

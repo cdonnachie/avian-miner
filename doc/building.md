@@ -262,7 +262,14 @@ The architecture list is asked of the machine rather than defaulted, because
 there is no safe guess: a CUDA binary carries PTX, so a card newer than the
 build still runs by driver JIT, whereas an AMD binary built for the wrong
 `gfx` target simply fails to launch. Pass `--with-hip-arch=gfx942` to build
-for a card that is not in the build machine.
+for a card that is not in the build machine. It takes a quoted space-separated
+list or a comma-separated one, the latter being what a configure line
+assembled from shell variables can pass.
+
+Releases do not ask the machine, since a build host need not own an AMD card.
+`scripts/release.sh` reads `cuda/hip/gfx-targets`, and so does
+`scripts/windows/build-hip-dll.ps1`, so `libavian_amd.so` and `avian_amd.dll`
+cover the same hardware. Add a target there rather than to either script.
 
 This is a smaller change to the build than it sounds, and the reason is the
 Windows DLL split: the miner's own C never names a GPU runtime symbol, it

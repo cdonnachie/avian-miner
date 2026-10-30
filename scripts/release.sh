@@ -69,10 +69,28 @@ if [ "$STAGE" = linux ]; then
     done
     [ -x /usr/local/cuda/bin/nvcc ] && [ -z "$CUDA" ] && CUDA="--with-cuda=/usr/local/cuda"
     [ -n "$CUDA" ] || echo "note: no CUDA toolkit found, so this will be a CPU-only release"
+    # The AMD backend, when there is a ROCm install to build it with. An
+    # explicit target list rather than configure's default, because that asks
+    # the machine which AMD GPUs it has and a build host need not have one.
+    # The list is cuda/hip/gfx-targets, which build-hip-dll.ps1 reads too, so
+    # libavian_amd.so and avian_amd.dll cover the same hardware.
+    HIP=""
+    HIPCC=""
+    for p in /opt/rocm /opt/rocm-* ; do
+        [ -x "$p/bin/hipcc" ] && { HIPCC="$p"; break; }
+    done
+    [ -z "$HIPCC" ] && command -v hipcc > /dev/null 2>&1 && HIPCC=/opt/rocm
+    if [ -n "$HIPCC" ] && [ -f "$REPO/cuda/hip/gfx-targets" ]; then
+        ARCH=$(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$REPO/cuda/hip/gfx-targets" | paste -sd, -)
+        HIP="--with-hip=$HIPCC --with-hip-arch=$ARCH"
+        echo "note: building the AMD backend for $(echo "$ARCH" | tr , " " | wc -w) targets, which is slow"
+    else
+        echo "note: no ROCm here, so this release carries no AMD backend"
+    fi
     SV2=""
     [ -d "$REPO/../avian-sv2" ] && SV2="--with-avian-sv2=$(cd "$REPO/../avian-sv2" && pwd)"
     ./autogen.sh >/dev/null
-    CFLAGS="$CF" ./configure --with-curl $CUDA $SV2 >/dev/null
+    CFLAGS="$CF" ./configure --with-curl $CUDA $SV2 $HIP >/dev/null
     make -j"$(nproc)" >/dev/null
     D=$OUT/$NAME-linux-x86_64
     rm -rf "$D"; mkdir -p "$D"

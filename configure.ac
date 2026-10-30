@@ -237,9 +237,12 @@ if test "x$with_hip" != "x" && test "x$with_hip" != "xno" ; then
    fi
 
    AC_ARG_WITH([hip-arch],
-      [  --with-hip-arch=LIST    build these GPU architectures, e.g. gfx942 or "gfx942 gfx1100" @<:@default=the GPUs installed here@:>@])
+      [  --with-hip-arch=LIST    build these GPU architectures, e.g. gfx942, "gfx942 gfx1100" or gfx942,gfx1100 @<:@default=the GPUs installed here@:>@])
    if test "x$with_hip_arch" != "x" && test "x$with_hip_arch" != "xno" ; then
-      hip_want="$with_hip_arch"
+      dnl Commas as well as spaces: a space-separated list has to be quoted,
+      dnl which a configure line assembled from shell variables cannot do, and
+      dnl an unquoted one arrives as several unrecognised arguments instead.
+      hip_want=`echo "$with_hip_arch" | tr ',' ' '`
    else
       dnl Asked of the machine rather than defaulted to a list, because unlike
       dnl the CUDA side there is no safe guess: a CUDA binary carries PTX and

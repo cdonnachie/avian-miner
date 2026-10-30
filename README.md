@@ -34,6 +34,13 @@ and reports the right ABI, and the dispatch path is covered by a test. No AMD
 card has ever hashed with it. Treat it as untested until someone reports
 otherwise, and check your shares are accepted before leaving it running.
 
+The two platforms need different things installed. On Windows the Adrenalin
+driver's own `amdhip64_6.dll` is enough. On Linux `libavian_amd.so` needs
+ROCm's HIP runtime, `libamdhip64.so.6` and `libhsa-runtime64.so.1` among
+others, which the display driver alone does not provide. Without them the
+backend is skipped with a line saying so, and the miner runs on whatever else
+it found.
+
 ## Running it
 
 One binary serves either vendor, both, or neither. It loads `avian_cuda.dll`

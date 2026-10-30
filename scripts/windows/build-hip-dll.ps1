@@ -21,32 +21,10 @@
 # scales with the list.
 param(
     [switch]$NoPtx,
-    # RX 6000, RX 7000 and RX 9000. A card outside this list will not launch
-    # at all, there being no PTX to fall back on, so the default errs towards
-    # covering consumer hardware rather than towards a quick build.
-    #
-    # gfx1031 and gfx1032 are the smaller RDNA2 parts, RX 6700 and RX 6600.
-    # AMD's own Windows support for them has been going backwards: the
-    # runtime row is a tick on the 5.6 through 7.1.1 pages and a cross on
-    # 7.2.0, while the HIP SDK row is a cross throughout. Building for them
-    # costs one pass each and makes the failure, if it comes, a clear message
-    # from the runtime rather than a kernel that silently will not launch.
-    #
-    # The integrated and entry-level parts are gfx1033 to gfx1036, Van Gogh
-    # and the Rembrandt and Raphael APUs, and gfx1150 to gfx1153, Strix and
-    # Krackan. They will be slow wherever they work, and the value in having
-    # them is a clear "ran correctly" rather than throughput. They were added
-    # only once gfx1030 had hashed correctly on real hardware, so that a
-    # failure on one of them is that part's failure rather than a question
-    # about the whole port.
-    #
-    # Sixteen targets is roughly half an hour and a 40 MB DLL, at about 1.9
-    # minutes and 2.3 MB each. -Arch takes a shorter list when that matters.
-    [string[]]$Arch = @("gfx1030", "gfx1031", "gfx1032", "gfx1033",
-                        "gfx1034", "gfx1035", "gfx1036",
-                        "gfx1100", "gfx1101", "gfx1102",
-                        "gfx1150", "gfx1151", "gfx1152", "gfx1153",
-                        "gfx1200", "gfx1201"),
+    # The targets come from cuda/hip/gfx-targets, which scripts/release.sh
+    # reads too so the Linux library covers the same hardware. That file
+    # explains the choices. Pass -Arch to build a shorter list.
+    [string[]]$Arch = @(),
     # 6.x, and this is the setting that decides whether a consumer card works
     # at all. The runtime a DLL imports is fixed at link time by exact
     # versioned filename: built against 6.4 it imports amdhip64_6.dll, which
@@ -101,6 +79,15 @@ $extraFiles = @("$W\algo\whirlpool\sph_whirlpool.c", "$W\algo\jh\sph_jh.c") |
 
 Write-Output "=== sources ==="
 Write-Output "  $($cu.Count) .cu files, plus $($extraFiles.Count) C files"
+if (-not $Arch) {
+    $targetFile = Join-Path $PSScriptRoot "..\..\cuda\hip\gfx-targets"
+    if (-not (Test-Path $targetFile)) {
+        Write-Error "no target list at $targetFile; pass -Arch"; exit 1
+    }
+    $Arch = Get-Content $targetFile |
+        ForEach-Object { ($_ -replace '#.*', '').Trim() } |
+        Where-Object { $_ }
+}
 Write-Output "  targets: $($Arch -join ', ')"
 Write-Output "  SDK: $Rocm"
 
