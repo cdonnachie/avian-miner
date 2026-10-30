@@ -377,24 +377,41 @@ every other AMD miner on the rig resolves against through
 `/etc/ld.so.conf.d/00-hive-rocm.conf`, and replacing it to add one miner is a
 poor trade to ask of anyone.
 
-So the backend's `RUNPATH` begins with `$ORIGIN`: put the three libraries in
-the same directory as `libavian_amd.so` and nothing system-wide is touched.
+So the backend's `RUNPATH` begins with `$ORIGIN`: put the runtime in the same
+directory as `libavian_amd.so` and nothing system-wide is touched.
 
 ```sh
-cp /opt/rocm-6.4.0/lib/libamdhip64.so.6    /opt/rocm-6.4.0/lib/libhsa-runtime64.so.1    /opt/rocm-6.4.0/lib/librocprofiler-register.so.0 .
+R=/opt/rocm-6.4.0/lib
+cp $R/libamdhip64.so.6 $R/libhsa-runtime64.so.1    $R/librocprofiler-register.so.0 .
+cp $R/libamd_comgr.so.3.0.60400 ./libamd_comgr.so
 ```
 
-About 30 MB. `$ORIGIN` comes first in the search order on purpose: a
-directory that exists but lacks the soname is simply skipped, so either order
-works where ROCm is absent, but a bundled runtime should win over a system one
-of the wrong generation.
+`$ORIGIN` comes first in the search order on purpose: a directory that exists
+but lacks the soname is simply skipped, so either order works where ROCm is
+absent, but a bundled runtime should win over a system one of the wrong
+generation.
 
-One thing is unmeasured, for want of a card to measure it on. `libamdhip64.so`
-does not list comgr in its `NEEDED` on Linux, unlike the Windows 6.4 runtime
-which imports `amd_comgr_2.dll` statically, so it loads comgr lazily and
-precompiled fatbinaries may never ask for it. If it turns out to be needed,
-add `libamd_comgr.so.3` beside the others, which is 157 MB and more than
-everything else put together.
+The last line is not a typo, and it is the part that is easy to get wrong.
+`libamdhip64.so` has no undefined comgr symbols and does not list comgr in
+its `NEEDED`; it imports `dlopen` and `dlsym` and carries the bare string
+`libamd_comgr.so`. So it loads comgr at run time **under the unversioned
+name**, which upstream is a symlink from the development package. Copying
+`libamd_comgr.so.3` and nothing else leaves a directory that looks complete
+and still fails.
+
+That bare name resolves because `libamdhip64.so`'s own `RUNPATH` is
+`$ORIGIN`, as is `libhsa-runtime64.so`'s: a `dlopen` of a name with no slash
+searches the **calling** object's runpath, so the whole chain finds itself
+once the first library is beside the backend. ROCm is built to be relocatable,
+which is what makes this work at all rather than needing
+`LD_LIBRARY_PATH`.
+
+Budget for comgr rather than hoping. It is 157 MB, more than everything else
+put together, and the runtime's own diagnostic strings include
+`CodeObject::extractCodeObjectFromFatBinaryUsingComgr`, so the fatbinary path
+goes through it and precompiled kernels are no escape. Whether a run can
+avoid that path entirely is untested for want of a card, but the ~30 MB
+bundle is the optimistic case and not the one to plan for.
 
 This is a smaller change to the build than it sounds, and the reason is the
 Windows DLL split: the miner's own C never names a GPU runtime symbol, it
