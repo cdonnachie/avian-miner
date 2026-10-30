@@ -149,8 +149,6 @@ char *rpc_userpass = NULL;
 char *rpc_user, *rpc_pass;
 char *short_url = NULL;
 char *coinbase_address;
-char *opt_data_file = NULL;
-bool opt_verify = false;
 static bool opt_stratum_keepalive = false;
 static struct timeval stratum_keepalive_timer;
 // Stratum typically times out in 5 minutes or 300 seconds

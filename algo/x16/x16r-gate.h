@@ -49,7 +49,7 @@
   #include "algo/echo/echo-hash-4way.h"
 #endif
 
-// X16R, X16S
+// the generic engine x16rt is built on
 #if defined(SIMD512)
   #define X16R_8WAY   1
 #elif defined(__AVX2__) && defined(__AES__)
@@ -66,7 +66,7 @@
   #define X16RV2_2WAY 1
 #endif
 
-// X16RT, VEIL
+// X16RT
 #if defined(SIMD512)
   #define X16RT_8WAY  1
 #elif defined(__AVX2__) && defined(__AES__)
@@ -107,8 +107,6 @@ enum x16r_Algo {
 extern __thread char x16r_hash_order[ X16R_HASH_FUNC_COUNT + 1 ];
 
 extern void (*x16_r_s_getAlgoString) ( const uint8_t*, char* );
-void x16r_getAlgoString( const uint8_t *prevblock, char *output );
-void x16s_getAlgoString( const uint8_t *prevblock, char *output );
 void x16rt_getAlgoString( const uint32_t *timeHash, char *output );
 
 void x16rt_getTimeHash( const uint32_t timeStamp, void* timeHash );
@@ -118,9 +116,6 @@ void x16rt_getTimeHash( const uint32_t timeStamp, void* timeHash );
 // is where the scan loops notice the 128-second epoch has rolled.
 void x16rt_log_hash_order( const char *order, const uint32_t ntime );
 
-bool register_x16r_algo( algo_gate_t* gate );
-bool register_x16rv2_algo( algo_gate_t* gate );
-bool register_x16s_algo( algo_gate_t* gate );
 bool register_x16rt_algo( algo_gate_t* gate );
 
 #if defined(HAVE_CUDA)
@@ -129,10 +124,8 @@ bool register_x16rt_algo( algo_gate_t* gate );
 bool register_x16rt_cuda_algo( algo_gate_t* gate );
 #endif
 
-bool register_hex__algo( algo_gate_t* gate );
-bool register_x21s__algo( algo_gate_t* gate );
 
-// x16r, x16s
+// the generic engine
 #if defined(X16R_8WAY)
 
 union _x16r_8way_context_overlay
@@ -315,34 +308,7 @@ int x16r_hash_generic( void *, const void *, int, const char*, const int );
 int x16r_hash( void *, const void *, int );
 int scanhash_x16r( struct work *, uint32_t, uint64_t *, struct thr_info * );
 
-// x16Rv2
-#if defined(X16RV2_8WAY)
-
-int x16rv2_8way_hash( void *state, const void *input, int thrid );
-int scanhash_x16rv2_8way( struct work *work, uint32_t max_nonce,
-                          uint64_t *hashes_done, struct thr_info *mythr );
-
-#elif defined(X16RV2_4WAY)
-
-int x16rv2_4way_hash( void *state, const void *input, int thrid );
-int scanhash_x16rv2_4way( struct work *work, uint32_t max_nonce,
-                        uint64_t *hashes_done, struct thr_info *mythr );
-
-#elif defined(X16RV2_2WAY)
-
-int x16rv2_2x64_hash( void *state, const void *input, int thrid );
-int scanhash_x16rv2_2x64( struct work *work, uint32_t max_nonce,
-                        uint64_t *hashes_done, struct thr_info *mythr );
-
-#else
-
-int x16rv2_hash( void *state, const void *input, int thr_id );
-int scanhash_x16rv2( struct work *work, uint32_t max_nonce,
-                   uint64_t *hashes_done, struct thr_info *mythr );
-
-#endif
-
-// x16rt, veil
+// x16rt
 #if defined(X16RT_8WAY)
 
 //void x16rt_8way_hash( void *state, const void *input );
@@ -368,41 +334,6 @@ int scanhash_x16rt( struct work *work, uint32_t max_nonce,
                    uint64_t *hashes_done, struct thr_info *mythr );
 
 #endif
-
-// x21s
-#if defined(X21S_8WAY)
-
-int x21s_8way_hash( void *state, const void *input, int thrid );
-int scanhash_x21s_8way( struct work *work, uint32_t max_nonce,
-                        uint64_t *hashes_done, struct thr_info *mythr );
-bool x21s_8way_thread_init();
-
-#elif defined(X21S_4WAY)
-
-int x21s_4way_hash( void *state, const void *input, int thrid );
-int scanhash_x21s_4way( struct work *work, uint32_t max_nonce,
-                        uint64_t *hashes_done, struct thr_info *mythr );
-bool x21s_4way_thread_init();
-
-#elif defined(X21S_2WAY)
-
-int x21s_2x64_hash( void *state, const void *input, int thrid );
-int scanhash_x21s_2x64( struct work *work, uint32_t max_nonce,
-                        uint64_t *hashes_done, struct thr_info *mythr );
-bool x21s_2x64_thread_init();
-
-#else
-
-int x21s_hash( void *state, const void *input, int thr_id );
-int scanhash_x21s( struct work *work, uint32_t max_nonce,
-                  uint64_t *hashes_done, struct thr_info *mythr );
-bool x21s_thread_init();
-
-#endif
-
-//void hex_hash( void *state, const void *input );
-int scanhash_hex( struct work *work, uint32_t max_nonce,
-                  uint64_t *hashes_done, struct thr_info *mythr );
 
 #endif
 

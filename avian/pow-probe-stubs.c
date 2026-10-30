@@ -26,8 +26,6 @@ double opt_target_factor = 1.0;
 bool opt_randomize = false;
 bool opt_sapling = false;
 int pk_buffer_size = 26;
-char *opt_data_file = NULL;
-bool opt_verify = false;
 char *rpc_user = NULL;
 
 void applog(int prio, const char *fmt, ...)

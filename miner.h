@@ -680,8 +680,6 @@ extern pthread_mutex_t stats_lock;
 extern bool opt_sapling;
 extern const int pk_buffer_size_max;
 extern int pk_buffer_size;
-extern char *opt_data_file;
-extern bool opt_verify;
 extern bool opt_bell;    //  keyboard beep
 static char const usage[] = "\
 Usage: cpuminer [OPTIONS]\n\
@@ -693,9 +691,9 @@ Options:\n\
                           minotaur      minotaurx without its yespower node\n\
                           yespower      that node on its own, with -N 2048\n\
                                         -R 8 -K 'et in arcadia ego'\n\
-  -N, --param-n=N       N parameter for scrypt based algos\n\
-  -R, --param-r=N       R parameter for scrypt based algos\n\
-  -K, --param-key=STRING  Key (pers) parameter for algos that use it\n\
+  -N, --param-n=N       yespower N, when running it on its own\n\
+  -R, --param-r=N       yespower r, likewise\n\
+  -K, --param-key=STRING  yespower personalisation string\n\
   -o, --url=URL         URL of mining server\n\
   -O, --userpass=U:P    username:password pair for mining server\n\
   -u, --user=USERNAME   username for mining server\n\
