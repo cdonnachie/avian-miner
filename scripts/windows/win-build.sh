@@ -50,9 +50,14 @@ else
     fi
 fi
 
-echo
-echo "=== portability patches ==="
-python3 "$(dirname "$0")/win-portability.py" "$B"
+# There was a "portability patches" step here calling win-portability.py.
+# That file was never committed: it is referenced from 003834a, the first
+# commit of this build chain, and has never existed in a clone, so the step
+# has printed "No such file or directory" and carried on in every Windows
+# build anyone has ever run. The binaries are correct without it, so the
+# call is gone rather than restored. Nothing is known to be missing; if
+# something turns out to be, it belongs in the tree, not in a script that
+# fails quietly.
 # --sv2-hashrate is not carried in the source; configure-build.sh adds
 # it on Linux and this does the same here. Without it the miner cannot
 # tell the pool its real rate, the pool sizes its share limiter from a
@@ -67,7 +72,17 @@ echo "=== configure (no Stratum v2 yet, to prove the toolchain first) ==="
 # --with-curl: this configure.ac only sets LIBCURL when asked.
 # --with-curl=/mingw64 rather than bare --with-curl: the bare form leaves
 # $with_curl as the literal "yes" and the link line gets -Lyes/lib.
-CFLAGS="-O3 -march=x86-64-v2" ./configure --with-curl=/mingw64 \
+# The baseline runs on anything since about 2009 and uses none of AES,
+# AVX2, SHA or VAES. Overridable, but one tier is the measured answer
+# rather than a default: against -O3 -maes -mavx2 -msha -mvaes on a 9900X,
+# minotaurx gained about 2%, inside the run-to-run noise, while x16rt on
+# the CPU gained 2.1x. Minotaurx is yespower and bound by memory rather
+# than by vector width, and x16rt on a CPU is not worth mining. Upstream
+# ships eight binaries for a hundred algorithms; Avian has one CPU
+# algorithm and it is indifferent.
+AVIAN_CFLAGS=${AVIAN_CFLAGS:-"-O3 -march=x86-64-v2"}
+echo "  CFLAGS: $AVIAN_CFLAGS"
+CFLAGS="$AVIAN_CFLAGS" ./configure --with-curl=/mingw64 \
     > /tmp/win-configure.log 2>&1 || { tail -30 /tmp/win-configure.log; exit 1; }
 grep -iE "^checking (host|build)|windows" /tmp/win-configure.log | head -4
 

@@ -20,6 +20,49 @@ CALL = re.compile(r"\b(aes_gpu_init[A-Za-z0-9_]*|cn_aes_gpu_init[A-Za-z0-9_]*)\s
 DEF = re.compile(r"^\s*(__device__|__forceinline__|void|static)")
 
 
+def strip_comments(src):
+    """Blank out comments, keeping every line and column so reports still
+    cite the right line.
+
+    Without this the audit reads prose about the code as if it were code.
+    fix-aes-barrier.py writes "Was __threadfence_block(), which orders this
+    thread's own accesses" when it installs a barrier, and that comment sits
+    between the call and the __syncthreads() it just added. The scan below
+    takes the first of the two primitives it sees, so it found the word in
+    the comment, recorded a fence, ignored the real barrier four lines later
+    and reported FENCE ONLY for the one site known to be correct.
+
+    A check that fires on the comment describing its own fix is worse than
+    no check, because the one real finding is now indistinguishable from the
+    noise.
+    """
+    QUOTES, NL, BACKSLASH = chr(34) + chr(39), chr(10), chr(92)
+    out = []
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        if c in QUOTES:
+            q, j = c, i + 1
+            while j < n and src[j] != q:
+                j += 2 if src[j] == BACKSLASH else 1
+            out.append(src[i:min(j + 1, n)])
+            i = j + 1
+        elif src.startswith("//", i):
+            j = src.find(NL, i)
+            j = n if j < 0 else j
+            out.append(" " * (j - i))
+            i = j
+        elif src.startswith("/*", i):
+            j = src.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            out.append("".join(ch if ch == NL else " " for ch in src[i:j]))
+            i = j
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
 def audit(root, label):
     print("=== %s ===" % label)
     if not os.path.isdir(root):
@@ -34,7 +77,9 @@ def audit(root, label):
             path = os.path.join(dirpath, fn)
             rel = os.path.relpath(path, root)
             try:
-                lines = open(path, encoding="utf-8", errors="surrogateescape").readlines()
+                lines = strip_comments(
+                    open(path, encoding="utf-8", errors="surrogateescape").read()
+                ).splitlines(keepends=True)
             except OSError:
                 continue
             for i, line in enumerate(lines):
