@@ -99,6 +99,71 @@ it thinks is stale, so a half-rebuilt tree ends up holding objects from two
 configurations. It surfaces as undefined references to things like
 `V512_BSWAP32`, which look like missing code and are not.
 
+### A portable build, for a machine that is not this one
+
+Everything above builds against whatever the host has, which is right for a
+local build and wrong for a release. Built in WSL on Ubuntu 24.04 the binary
+demands `GLIBC_2.39`, and no mining distribution has anything that new: the
+current HiveOS stable image, `Hiveos-0.6-230`, is Ubuntu 22.04 jammy with
+glibc 2.35. The GPU backend has a second version of the same problem, linking
+`libcudart.so.12` while a rig ships drivers and not the CUDA toolkit, so the
+backend `dlopen`s and fails and the miner comes up CPU-only with no visible
+reason.
+
+So there is a container:
+
+```sh
+scripts/linux/build.sh            # from WSL, or from Linux
+CUDA_ARCH=86 scripts/linux/build.sh   # one architecture, while iterating
+```
+
+It builds `scripts/linux/Dockerfile`, which is
+`nvidia/cuda:12.9.1-devel-ubuntu22.04` plus the build dependencies and a
+pinned Rust, then runs `scripts/linux/in-container.sh` inside it. The
+repositories are mounted read-only and cloned into the container before
+anything touches them, so it cannot write into a Windows checkout and only
+committed work is ever built. It refuses to start on a dirty tree for the same
+reason.
+
+Rust is pinned to 1.98.0, matching WSL, rather than to the workspace's
+declared `rust-version` of 1.75: a transitive dependency in `Cargo.lock` is
+edition 2024, so anything before 1.85 stops with "the package requires the
+Cargo feature called `edition2024`" before it compiles a line.
+
+What it produces, measured rather than assumed, which is why the script prints
+it on every run:
+
+```
+-- avian-miner
+   glibc floor: GLIBC_2.34
+   needs: libcurl.so.4 libjansson.so.4 libgcc_s.so.1 libc.so.6
+-- libavian_cuda.so
+   glibc floor: GLIBC_2.34
+   needs: libc.so.6
+```
+
+Three things worth reading off that. The floor is 2.34, not 2.35, so this runs
+on anything from Ubuntu 21.10 or RHEL 9 onwards. The backend needs no CUDA
+library at all, which is `--enable-cudart-static` doing its job, and it leaves
+`libcuda.so` from the driver as the only GPU dependency. And `-lz` and `-lgmp`
+are on the link line but absent from `NEEDED`, because nothing is actually
+pulled from either and `--as-needed` drops them; zlib still has to be
+installed to link, which is how the container first failed.
+
+The remaining runtime question is `libjansson.so.4`, which is not something a
+mining distribution obviously carries. Check the rig before assuming.
+
+AMD is not covered here. The image has no ROCm, and more to the point HiveOS
+ships the ROCm kernel module and OpenCL runtime but not HIP, so a rig has no
+`libamdhip64.so` for `libavian_amd.so` to link against. Because the backends
+are `dlopen`ed, a release with no AMD backend simply has no AMD support, which
+is why this is a separate job rather than a blocker. See [AMD, via
+HIP](#amd-via-hip).
+
+`scripts/release.sh` does not use any of this yet, deliberately. It is the
+signed release path and it stays as it is until a container build has been run
+on a rig.
+
 ## Windows
 
 Six stages: two in MSYS2's MINGW64 shell, two from PowerShell, then two more
