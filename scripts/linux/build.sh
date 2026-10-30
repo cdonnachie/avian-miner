@@ -71,5 +71,5 @@ docker run --rm \
     -v "$MINER:/src/miner:ro" \
     ${SV2:+-v "$SV2:/src/sv2:ro"} \
     -v "$OUT:/out" \
-    ${AVIAN_CFLAGS:+-e AVIAN_CFLAGS="$AVIAN_CFLAGS"} \
+    ${AVIAN_CFLAGS:+-e AVIAN_CFLAGS="$AVIAN_CFLAGS"}     ${CUDA_ARCH:+-e CUDA_ARCH="$CUDA_ARCH"} \
     "$IMAGE" bash /src/miner/scripts/linux/in-container.sh

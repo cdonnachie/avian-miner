@@ -20,6 +20,10 @@ CUDA=${CUDA:-/usr/local/cuda}
 # The same tier the Windows and WSL releases use, and for the same measured
 # reason. See the comment in scripts/windows/win-build.sh.
 CF=${AVIAN_CFLAGS:-"-O3 -march=x86-64-v2"}
+# Empty means every architecture the toolkit can emit, which is what a
+# release wants and about an hour. Set it to one, say 86, when the thing
+# being tested is the host side and the kernels are beside the point.
+ARCH=${CUDA_ARCH:-}
 
 # git refuses to read a repository owned by another uid, which every mount
 # from the host is.
@@ -80,6 +84,7 @@ echo "  CFLAGS: $CF"
 CFLAGS="$CF" ./configure \
     --with-curl=/usr \
     --with-cuda="$CUDA" \
+    ${ARCH:+--with-cuda-arch="$ARCH"} \
     --enable-cudart-static \
     ${SV2:+--with-avian-sv2="$SV2"} \
     > /build/configure.log 2>&1 || { tail -30 /build/configure.log; exit 1; }
@@ -93,7 +98,11 @@ took NVCC || { echo "CUDA was asked for, configure did not take it"; exit 1; }
 echo
 echo "=== make ==="
 make -j"$(nproc)" > /build/make.log 2>&1 || {
-    grep -nE "error|Error [0-9]" /build/make.log | head -25; exit 1; }
+    echo "--- make failed; the summary lines ---"
+    grep -nE "error|Error [0-9]" /build/make.log | head -25
+    echo "--- and the end of the log, where a link failure says why ---"
+    tail -60 /build/make.log
+    exit 1; }
 ls -l avian-miner libavian_cuda.so
 
 echo
