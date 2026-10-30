@@ -40,6 +40,24 @@ also that `gfx942` is not in `cuda/hip/gfx-targets`, so an Instinct needs
 `--with-hip-arch=gfx942` and a build from source. Check your shares are being
 accepted before leaving an untried card running.
 
+**Only the backend knows about your card.** The miner loads `avian_cuda.dll`
+and `avian_amd.dll`, or `libavian_cuda.so` and `libavian_amd.so`, at run time
+rather than linking them, across an ABI of plain data. So building one for your
+own hardware and dropping it in beside the binary is the whole job, with
+nothing else to rebuild:
+
+```powershell
+scripts\windows\build-cuda-dll.ps1 -Arch 86          # one Nvidia target
+scripts\windows\build-hip-dll.ps1  -Arch gfx1100     # one AMD target
+```
+
+A few megabytes and a couple of minutes, against forty megabytes and the
+better part of an hour for every architecture the release carries. The loader
+checks each library's ABI version, so one built against a different version of
+the miner is skipped with a line saying so rather than doing anything worse.
+On Linux the equivalent is `--with-cuda-arch=86` or `--with-hip-arch=gfx1100`
+at configure time; see [doc/building.md](doc/building.md).
+
 The two platforms need different things installed. On Windows the Adrenalin
 driver's own `amdhip64_6.dll` is enough. On Linux `libavian_amd.so` needs
 ROCm's HIP runtime, `libamdhip64.so.6` and `libhsa-runtime64.so.1` among

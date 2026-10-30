@@ -14,7 +14,16 @@
 # portable path is verifiable on the hardware we have: build with it, run the
 # forced-order stage bisect, and 0 differing is evidence that the plain-C
 # forms are hash-identical to the asm. See scripts/make-ptx-portable.py.
-param([switch]$NoPtx)
+param(
+    [switch]$NoPtx,
+    # The targets come from cuda/sm-targets, which configure.ac reads too.
+    # Pass -Arch to build a shorter list: one card's worth is a few megabytes
+    # and a couple of minutes, against eight architectures and forty. The
+    # result drops in beside an existing avian-miner.exe, since the miner
+    # loads the backend rather than linking it and checks its ABI version, so
+    # a mismatched one is skipped with a message instead of breaking anything.
+    [int[]]$Arch = @()
+)
 
 $ErrorActionPreference = "Stop"
 # The repository, derived rather than named, so a clone anywhere
@@ -63,9 +72,13 @@ Write-Output "  $ptxDef"
 # forwards: every card older than Ampere got "no kernel image is available
 # for execution on the device" while the Linux build ran on all of them.
 $smFile = Join-Path $PSScriptRoot "..\..\cuda\sm-targets"
-if (-not (Test-Path $smFile)) { Write-Error "no architecture list at $smFile"; exit 1 }
-$want = Get-Content $smFile |
-    ForEach-Object { ($_ -replace '#.*', '').Trim() } | Where-Object { $_ }
+if (-not $Arch -and -not (Test-Path $smFile)) {
+    Write-Error "no architecture list at $smFile; pass -Arch"; exit 1
+}
+$want = if ($Arch) { $Arch | ForEach-Object { "$_" } }
+        else { Get-Content $smFile |
+                   ForEach-Object { ($_ -replace '#.*', '').Trim() } |
+                   Where-Object { $_ } }
 $avail = & "$CUDA\bin\nvcc.exe" --list-gpu-code 2>$null |
     ForEach-Object { $_.Trim() -replace '^sm_', '' } | Where-Object { $_ }
 $built = @($want | Where-Object { $avail -contains $_ })
@@ -75,7 +88,7 @@ if ($skipped) { Write-Output "  not in this toolkit, skipped: $($skipped -join '
 # PTX for the newest that survived, so a card released after this build still
 # runs by driver JIT rather than failing to launch.
 $newest = $built[-1]
-$arch = (($built | ForEach-Object { "-gencode=arch=compute_$_,code=sm_$_" }) +
+$archArgs = (@($built | ForEach-Object { "-gencode=arch=compute_$_,code=sm_$_" }) +
          "-gencode=arch=compute_$newest,code=compute_$newest") -join " "
 Write-Output "  targets: sm_$($built -join ', sm_'), plus compute_$newest as PTX"
 $bat = @"
@@ -83,7 +96,7 @@ call "$VCVARS" >nul 2>&1
 cd /d "$W"
 "$CUDA\bin\nvcc.exe" -O3 -shared -o "$OUT\avian_cuda.dll" ^
   -DAVIAN_CUDA_BUILDING_DLL $ptxDef ^
-  $arch ^
+  $archArgs ^
   -std=c++14 -w ^
   -I"$W" -I"$W\cuda" -I"$W\cuda\upstream" ^
   -Xcompiler "/MD /wd4819" ^
