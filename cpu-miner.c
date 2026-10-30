@@ -127,6 +127,7 @@ bool opt_gpu = false;
  * than a list of algorithm names, so an algorithm that never grows a
  * backend cannot be forgotten in two places and claim one. */
 bool gpu_backend_active = false;
+char *opt_gpu_devices = NULL;
 /* Hashes per second. The old hardcoded 1000.0 put every miner on the
  * pool's 2/s share floor regardless of what it could actually do. */
 /* A last resort if the measurement at startup fails, and deliberately
@@ -3226,6 +3227,18 @@ void parse_arg(int key, char *arg )
       show_usage_and_exit(1);
 #endif
       break;
+   case 1209:  // devices
+#if defined(HAVE_CUDA)
+      /* Kept as text and handed to the loader after enumeration, because
+       * what the numbers mean is not known until the backends have been
+       * asked how many cards they have. */
+      free( opt_gpu_devices );
+      opt_gpu_devices = strdup( arg );
+#else
+      applog( LOG_ERR, "this build has no GPU backend, so --devices selects nothing" );
+      show_usage_and_exit(1);
+#endif
+      break;
 	case 'b':  // api-bind
       opt_api_enabled = true;
       p = strstr(arg, ":");
@@ -3753,6 +3766,13 @@ int main(int argc, char *argv[])
     * x16rt has a backend to honour it. Without this the miner reported
     * "GPU mining thread started" and hashed on the CPU, so the reading
     * that explains a tenth of the expected rate was never on screen. */
+   if ( opt_gpu_devices && !opt_gpu )
+   {
+      /* Silently ignoring it would mine on every card while the command line
+       * says otherwise, which is the failure --devices exists to prevent. */
+      applog( LOG_ERR, "--devices selects among GPUs and needs --gpu" );
+      exit(1);
+   }
    if ( opt_gpu && !gpu_backend_active )
    {
       applog( LOG_ERR, "--gpu was given, but '%s' has no GPU backend in "

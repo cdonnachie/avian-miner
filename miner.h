@@ -787,6 +787,7 @@ extern bool opt_debug_diff;
  * backend instead of a CPU scanhash. */
 extern bool opt_gpu;
 extern bool gpu_backend_active;
+extern char *opt_gpu_devices;
 /* --sv2-hashrate, in hashes per second. What the miner declares when it
  * opens a channel, which is what the pool derives its share target from.
  * Measured at startup unless the flag was given, which is what the second
@@ -1002,6 +1003,7 @@ Options:\n\
       --sv2-expect-payout=ADDR  check the assembled coinbase pays this address\n\
       --avian-selftest          check -a's proof of work against hashes a real node reported\n\
       --gpu                     mine x16rt on the GPU instead of the CPU, one thread per card\n\
+      --devices=N[,N|N-N]       mine on these GPUs only, numbered as --gpu lists them\n\\
       --sv2-hashrate=RATE       how fast this miner is, eg 30M. Measured at startup if\n\
                                 unset, which is the intended way. The pool works out this\n\
                                 worker's share target from it, so a wrong figure changes how\n\
@@ -1095,6 +1097,7 @@ static struct option const options[] = {
         { "sv2-expect-payout", 1, NULL, 1205 },
         { "avian-selftest", 0, NULL, 1206 },
         { "gpu", 0, NULL, 1207 },
+        { "devices", 1, NULL, 1209 },
         { "sv2-hashrate", 1, NULL, 1208 },
         { 0, 0, 0, 0 }
 };

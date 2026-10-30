@@ -52,6 +52,15 @@ int avian_gpu_device_count( void );
  * device count: no library is a packaging problem, while a library that
  * loaded and found nothing is a driver or a hardware one, and the two have
  * nothing in common but the symptom. */
+/* Narrow the device list to those named in spec ("0", "1,3", "0-2,5"),
+ * numbered as avian_gpu_init numbered them. Returns how many remain, or -1
+ * with a reason logged. Call after avian_gpu_init and before mining. */
+int avian_gpu_select( const char *spec );
+
+/* A device's number before --devices narrowed the list. For log lines, so
+ * they name the card the operator asked for rather than its new position. */
+int avian_gpu_device_index( int device );
+
 int avian_gpu_backend_count( void );
 
 /* How many backend libraries were found on disk, loaded or not. The two

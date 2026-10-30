@@ -58,8 +58,8 @@ struct backend
 };
 
 static struct backend s_backend[2] = {
-   { "Nvidia", AVIAN_GPU_NVIDIA_LIB_NAME, NULL, NULL, NULL, NULL, NULL, NULL, 0 },
-   { "AMD",    AVIAN_GPU_AMD_LIB_NAME,    NULL, NULL, NULL, NULL, NULL, NULL, 0 },
+   { .vendor = "Nvidia", .library = AVIAN_GPU_NVIDIA_LIB_NAME },
+   { .vendor = "AMD",    .library = AVIAN_GPU_AMD_LIB_NAME    },
 };
 
 /* The flat numbering the miner sees. */
@@ -67,6 +67,9 @@ static struct
 {
    struct backend *backend;
    int             local;            /* that backend's own device index */
+   int             shown;            /* its number before --devices narrowed
+                                      * the list, so a log line still names
+                                      * the card the operator asked for */
 } s_device[AVIAN_GPU_MAX_DEVICES];
 
 static int s_devices = 0;
@@ -299,6 +302,7 @@ int avian_gpu_init( avian_cuda_log_fn log )
          }
          s_device[s_devices].backend = b;
          s_device[s_devices].local   = d;
+         s_device[s_devices].shown   = s_devices;
          s_devices++;
       }
    }
@@ -308,6 +312,95 @@ int avian_gpu_init( avian_cuda_log_fn log )
 int avian_gpu_device_count( void )
 {
    return s_devices;
+}
+
+/* Narrow the list to the devices named in spec, a comma separated list of
+ * numbers as avian_gpu_init numbered them, optionally with ranges: "0", "1,3",
+ * "0-2,5". Returns how many are left, or -1 with a reason logged.
+ *
+ * Filtering here rather than in the gate keeps the mapping in the one place
+ * that knows it. Everything above this file indexes devices 0..n-1 and never
+ * learns that a number moved, while a log line can still say "GPU #3" of the
+ * card the operator named, through avian_gpu_device_index.
+ *
+ * The case this exists for is an integrated GPU that enumerates alongside the
+ * cards you meant to use. A package carrying both vendors' backends makes that
+ * more likely, not less. */
+int avian_gpu_select( const char *spec )
+{
+   bool keep[AVIAN_GPU_MAX_DEVICES] = { false };
+   const char *p = spec;
+   int kept = 0;
+
+   if ( !spec || !*spec )
+   {
+      applog( LOG_ERR, "--devices was given nothing to select" );
+      return -1;
+   }
+   while ( *p )
+   {
+      char *end;
+      long lo = strtol( p, &end, 10 );
+      long hi = lo;
+
+      if ( end == p )
+      {
+         applog( LOG_ERR, "--devices wants numbers separated by commas, "
+                          "not '%s'", spec );
+         return -1;
+      }
+      if ( *end == '-' )
+      {
+         p = end + 1;
+         hi = strtol( p, &end, 10 );
+         if ( end == p || hi < lo )
+         {
+            applog( LOG_ERR, "--devices range '%s' does not run forwards",
+                    spec );
+            return -1;
+         }
+      }
+      if ( lo < 0 || hi >= s_devices )
+      {
+         /* Named rather than clamped: asking for a card that is not there
+          * means the command line and the machine disagree, and mining on
+          * whatever happens to be present instead is how a rig quietly runs
+          * at half rate. */
+         applog( LOG_ERR, "--devices asked for %ld but this machine has %d "
+                          "GPU%s, numbered 0 to %d", hi, s_devices,
+                 s_devices == 1 ? "" : "s", s_devices - 1 );
+         return -1;
+      }
+      for ( long i = lo; i <= hi; i++ )
+         keep[i] = true;
+      p = end;
+      if ( *p == ',' )
+         p++;
+      else if ( *p )
+      {
+         applog( LOG_ERR, "--devices wants numbers separated by commas, "
+                          "not '%s'", spec );
+         return -1;
+      }
+   }
+   for ( int i = 0; i < s_devices; i++ )
+      if ( keep[i] )
+         s_device[kept++] = s_device[i];
+   if ( kept == 0 )
+   {
+      applog( LOG_ERR, "--devices selected none of the %d GPUs", s_devices );
+      return -1;
+   }
+   s_devices = kept;
+   return s_devices;
+}
+
+/* The device's number before any narrowing, for logs only. */
+int avian_gpu_device_index( int device )
+{
+   if ( device < 0 || device >= s_devices )
+      return -1;
+   return s_device[device].shown;
 }
 
 int avian_gpu_backend_count( void )

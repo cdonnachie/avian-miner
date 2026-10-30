@@ -58,9 +58,17 @@ bool register_x16rt_cuda_algo( algo_gate_t* gate )
          applog( LOG_ERR, "no CUDA device found, so --gpu cannot be honoured" );
       return false;
    }
+   if ( opt_gpu_devices )
+   {
+      devices = avian_gpu_select( opt_gpu_devices );   /* which has said why */
+      if ( devices <= 0 )
+         return false;
+   }
+   /* Numbered as they were enumerated, not as they now sit in the list, so
+    * --devices=2 says "GPU #2" and matches what a run without it printed. */
    for ( int d = 0; d < devices; d++ )
-      applog( LOG_INFO, "GPU #%d: %s (%s)", d, avian_gpu_device_name( d ),
-              avian_gpu_vendor( d ) );
+      applog( LOG_INFO, "GPU #%d: %s (%s)", avian_gpu_device_index( d ),
+              avian_gpu_device_name( d ), avian_gpu_vendor( d ) );
 
    gate->scanhash = (void*)&scanhash_x16rt_cuda;
    gpu_backend_active = true;
