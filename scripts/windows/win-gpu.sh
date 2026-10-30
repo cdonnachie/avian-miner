@@ -160,9 +160,21 @@ fi
 # Carrying the loader is not the same as being able to reach it. If
 # cpu-miner.c was compiled without HAVE_CUDA the binary still has the backend
 # and then refuses --gpu, which is exactly what a stale object produced.
-if strings avian-miner.exe 2>/dev/null | grep -q "no GPU backend"; then
-    echo "  FAIL compiled without HAVE_CUDA: --gpu will be refused"; fail=1
-else
+#
+# Positive first. A build that reached the #if defined(HAVE_CUDA) arm names
+# both vendors in its banner, and nothing else in the tree says that.
+if strings avian-miner.exe 2>/dev/null | grep -q "on CPU and GPU (NVIDIA and AMD)"; then
     echo "  ok   compiled with HAVE_CUDA"
+else
+    echo "  FAIL compiled without HAVE_CUDA: --gpu will be refused"; fail=1
+fi
+# The whole sentence, not the fragment "no GPU backend". The loader added one
+# of its own in 073f91c, "no GPU backend beside the miner", which is a correct
+# build's diagnostic for a missing DLL and lives in the HAVE_CUDA path. The
+# fragment matched both, so this guard failed every GPU build it passed.
+if strings avian-miner.exe 2>/dev/null | grep -q "this build has no GPU backend"; then
+    echo "  FAIL cpu-miner.c kept its no-GPU branch: --gpu will be refused"; fail=1
+else
+    echo "  ok   the no-GPU branch was compiled out"
 fi
 exit $fail
