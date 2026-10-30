@@ -150,19 +150,22 @@ are on the link line but absent from `NEEDED`, because nothing is actually
 pulled from either and `--as-needed` drops them; zlib still has to be
 installed to link, which is how the container first failed.
 
-The remaining runtime question is `libjansson.so.4`, which is not something a
-mining distribution obviously carries. Check the rig before assuming.
+`libjansson.so.4` was the one entry in doubt, since it is not something a
+mining distribution obviously carries. Checked on HiveOS 0.6-230: it is there,
+in `/usr/lib/x86_64-linux-gnu`, as is `libcurl.so.4`, and `ldd --version`
+reports 2.35 against our 2.34. The CPU half then mined on that image and had
+a share accepted, so the floor is not theoretical.
 
-AMD is not covered here. The image has no ROCm, and more to the point HiveOS
-ships the ROCm kernel module and OpenCL runtime but not HIP, so a rig has no
-`libamdhip64.so` for `libavian_amd.so` to link against. Because the backends
-are `dlopen`ed, a release with no AMD backend simply has no AMD support, which
-is why this is a separate job rather than a blocker. See [AMD, via
-HIP](#amd-via-hip).
+AMD is not covered here, because the image has no ROCm, so a release built
+this way carries no `libavian_amd.so`. That is a real loss and a small one:
+the backends are `dlopen`ed, so the binary is identical for everyone else,
+and an AMD owner builds from source. See [The HIP runtime on
+Linux](#the-hip-runtime-on-linux-and-on-a-mining-rig).
 
-`scripts/release.sh` does not use any of this yet, deliberately. It is the
-signed release path and it stays as it is until a container build has been run
-on a rig.
+`scripts/release.sh linux` is a thin wrapper around `scripts/linux/build.sh`,
+passing `OUT` so the tarball lands where the `finish` stage signs it. The
+host build it replaced is still there as `scripts/configure-build.sh` for
+local work.
 
 ## Windows
 
@@ -333,9 +336,65 @@ list or a comma-separated one, the latter being what a configure line
 assembled from shell variables can pass.
 
 Releases do not ask the machine, since a build host need not own an AMD card.
-`scripts/release.sh` reads `cuda/hip/gfx-targets`, and so does
-`scripts/windows/build-hip-dll.ps1`, so `libavian_amd.so` and `avian_amd.dll`
-cover the same hardware. Add a target there rather than to either script.
+`scripts/windows/build-hip-dll.ps1` reads `cuda/hip/gfx-targets`, so add a
+target there rather than to the script. The Linux release no longer builds an
+AMD backend at all, because it builds in a container with no ROCm in it, so
+`gfx-targets` now governs Windows alone.
+
+### The HIP runtime on Linux, and on a mining rig
+
+`libavian_amd.so` needs ROCm's HIP runtime at run time, not just at build
+time: its `NEEDED` is `libamdhip64.so.6`, which in turn wants
+`libhsa-runtime64.so.1` and `librocprofiler-register.so.0`. A display driver
+does not provide any of them. Without them the backend is skipped with a line
+saying so and the miner runs on whatever else it found, which is the whole
+point of loading the backends rather than linking them.
+
+On an ordinary distribution, install it. For Ubuntu 22.04:
+
+```sh
+wget https://repo.radeon.com/amdgpu-install/6.4/ubuntu/jammy/amdgpu-install_6.4.60400-1_all.deb
+sudo apt install -y ./amdgpu-install_6.4.60400-1_all.deb
+sudo apt update
+sudo apt install -y rocm-hip-runtime
+sudo usermod -a -G render,video "$LOGNAME"
+```
+
+`rocm-hip-runtime` rather than `rocm`: the latter is the whole stack, compiler
+included, and is tens of gigabytes for a runtime we use three libraries of.
+
+A mining distribution is the case where that does not work, and HiveOS
+0.6-230 is the worked example. It ships the ROCm kernel module and the OpenCL
+userspace but no HIP, and its own `amd-ocl-install` cannot supply it: the
+`hive-amdgpu-*` packages are `libamdocl64.so` and the `hive-rocm-*` packages
+are comgr plus ROCr. The newest of them, `hive-rocm-6.0_6.0.3`, carries
+`libamd_comgr.so.2.6.60003` and `libhsa-runtime64.so.1.12.60003` and no
+`libamdhip64.so` of any version. Note the comgr soname is **2** where a
+ROCm 6.4 build wants **3**, so installing it would not help even as a
+dependency. Nor is `amdgpu-install` a good answer there: `/opt/rocm` already
+exists as a real directory holding HiveOS's 5.6.1 OpenCL libraries, which
+every other AMD miner on the rig resolves against through
+`/etc/ld.so.conf.d/00-hive-rocm.conf`, and replacing it to add one miner is a
+poor trade to ask of anyone.
+
+So the backend's `RUNPATH` begins with `$ORIGIN`: put the three libraries in
+the same directory as `libavian_amd.so` and nothing system-wide is touched.
+
+```sh
+cp /opt/rocm-6.4.0/lib/libamdhip64.so.6    /opt/rocm-6.4.0/lib/libhsa-runtime64.so.1    /opt/rocm-6.4.0/lib/librocprofiler-register.so.0 .
+```
+
+About 30 MB. `$ORIGIN` comes first in the search order on purpose: a
+directory that exists but lacks the soname is simply skipped, so either order
+works where ROCm is absent, but a bundled runtime should win over a system one
+of the wrong generation.
+
+One thing is unmeasured, for want of a card to measure it on. `libamdhip64.so`
+does not list comgr in its `NEEDED` on Linux, unlike the Windows 6.4 runtime
+which imports `amd_comgr_2.dll` statically, so it loads comgr lazily and
+precompiled fatbinaries may never ask for it. If it turns out to be needed,
+add `libamd_comgr.so.3` beside the others, which is 157 MB and more than
+everything else put together.
 
 This is a smaller change to the build than it sounds, and the reason is the
 Windows DLL split: the miner's own C never names a GPU runtime symbol, it

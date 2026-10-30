@@ -65,6 +65,14 @@ others, which the display driver alone does not provide. Without them the
 backend is skipped with a line saying so, and the miner runs on whatever else
 it found.
 
+**The Linux release carries no AMD backend.** It is built in a container with
+no ROCm in it, so that the binary runs on a distribution older than the build
+host rather than only on it. An AMD card on Linux therefore means a build from
+source with `--with-hip`, and the backend's `RUNPATH` starts with `$ORIGIN` so
+the HIP runtime can sit beside it on a machine where ROCm cannot be installed.
+[doc/building.md](doc/building.md) covers both routes. Windows is unaffected
+and ships `avian_amd.dll` as before.
+
 ## Running it
 
 One binary serves either vendor, both, or neither. It loads `avian_cuda.dll`
