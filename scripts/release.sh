@@ -121,11 +121,38 @@ else
     # verifiable at all.
     rm -f SHA256SUMS.asc
     # The same gpg git signs commits with. The key lives in Gpg4win, and
-    # neither MSYS2's gpg nor WSL's can see that keyring, so a bare `gpg`
-    # here signs with the wrong one or not at all.
-    GPG=$(git -C "$REPO" config gpg.program || true)
+    # neither MSYS2's gpg nor WSL's can see that keyring.
+    #
+    # Asking git is not enough, because MSYS2 sets HOME to /home/<user> while
+    # Git for Windows uses the profile directory, so the two read different
+    # gitconfigs and only one of them knows about gpg.program. Reading it
+    # from the wrong shell returns nothing, the fallback finds MSYS2's own
+    # gpg, and that creates an empty keyring and fails. So: ask git, then
+    # look where Gpg4win installs, then ask git again against the profile's
+    # own config for the key id.
+    GPG=$(git -C "$REPO" config gpg.program 2>/dev/null || true)
+    if [ -z "$GPG" ]; then
+        for c in "/c/Program Files (x86)/GnuPG/bin/gpg.exe"                  "/c/Program Files/GnuPG/bin/gpg.exe"; do
+            [ -x "$c" ] && { GPG=$c; break; }
+        done
+    fi
     [ -n "$GPG" ] || GPG=gpg
-    KEY=$(git -C "$REPO" config user.signingkey || true)
+    command -v cygpath >/dev/null && GPG=$(cygpath -u "$GPG" 2>/dev/null || echo "$GPG")
+
+    KEY=$(git -C "$REPO" config user.signingkey 2>/dev/null || true)
+    if [ -z "$KEY" ] && [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null; then
+        KEY=$(git config --file "$(cygpath -u "$USERPROFILE")/.gitconfig"               user.signingkey 2>/dev/null || true)
+    fi
+
+    # Checked before signing rather than after, because the failure this
+    # catches is gpg helpfully creating a brand new empty keyring and only
+    # then saying it has no key.
+    if ! "$GPG" --list-secret-keys ${KEY:+"$KEY"} >/dev/null 2>&1; then
+        echo "no secret key${KEY:+ $KEY} in $GPG"
+        echo "the signing key is in Gpg4win; run this where git signs commits"
+        exit 1
+    fi
+    echo "signing with $GPG${KEY:+, key $KEY}"
     "$GPG" --armor --detach-sign ${KEY:+--local-user "$KEY"} SHA256SUMS
     echo
     cat SHA256SUMS
