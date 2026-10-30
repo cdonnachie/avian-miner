@@ -10,6 +10,12 @@
 #
 #   scripts/release.sh linux     # in WSL, or on Linux
 #   scripts/release.sh windows   # in MSYS2 MINGW64
+#
+# The build directories are per stage and named differently: $B for linux,
+# $AVIAN_BUILD_DIR for windows, since that is what the win-* scripts already
+# read. On Windows there is no speed reason to move it, both paths being the
+# same NTFS volume, but there is a good one: keeping the build tree away from
+# wherever a miner is running, because win-package.sh starts with rm -rf.
 #   scripts/release.sh finish    # in MSYS2, once both are present
 #
 # finish is not "either": the signing key is in Gpg4win, and neither MSYS2's
@@ -82,7 +88,14 @@ elif [ "$STAGE" = windows ]; then
     "$REPO/scripts/windows/win-sv2.sh"
     "$REPO/scripts/windows/win-gpu.sh"
     "$REPO/scripts/windows/win-package.sh"
-    REL=${REL:-$(cd "$REPO/.." && pwd)/avian-winbuild/release}
+    # Derived the way win-package.sh derives it, not written out again.
+    # Hardcoding the default meant AVIAN_BUILD_DIR moved the build and not
+    # this, so a release would have copied whatever an earlier run had left
+    # in the default directory: stale, and silently so.
+    BUILD_ROOT=${AVIAN_BUILD_DIR:-$(cd "$REPO/.." && pwd)/avian-winbuild}
+    REL=${REL:-$BUILD_ROOT/release}
+    [ -f "$REL/avian-miner.exe" ] || {
+        echo "no package at $REL; AVIAN_BUILD_DIR and this disagree"; exit 1; }
     D=$OUT/$NAME-windows-x64
     rm -rf "$D"; mkdir -p "$D"
     cp "$REL"/* "$D/"
