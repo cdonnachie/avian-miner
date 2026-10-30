@@ -66,8 +66,7 @@ $smFile = Join-Path $PSScriptRoot "..\..\cuda\sm-targets"
 if (-not (Test-Path $smFile)) { Write-Error "no architecture list at $smFile"; exit 1 }
 $want = Get-Content $smFile |
     ForEach-Object { ($_ -replace '#.*', '').Trim() } | Where-Object { $_ }
-$avail = & "$CUDAin
-vcc.exe" --list-gpu-code 2>$null |
+$avail = & "$CUDA\bin\nvcc.exe" --list-gpu-code 2>$null |
     ForEach-Object { $_.Trim() -replace '^sm_', '' } | Where-Object { $_ }
 $built = @($want | Where-Object { $avail -contains $_ })
 if (-not $built) { Write-Error "this toolkit emits none of: $($want -join ', ')"; exit 1 }
