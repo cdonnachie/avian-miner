@@ -29,12 +29,12 @@ ARCH=${CUDA_ARCH:-}
 # from the host is.
 git config --global --add safe.directory '*'
 
-VERSION=$(sed -n 's/^AC_INIT(\[[^]]*\], *\[\([^]]*\)\]).*/\1/p' "$MINER_SRC/configure.ac")
-[ -n "$VERSION" ] || { echo "cannot read the version from configure.ac"; exit 1; }
-NAME=avian-miner-$VERSION
+AVIAN_VERSION=$(sed -n 's/^AC_INIT(\[[^]]*\], *\[\([^]]*\)\]).*/\1/p' "$MINER_SRC/configure.ac")
+[ -n "$AVIAN_VERSION" ] || { echo "cannot read the version from configure.ac"; exit 1; }
+PKG=avian-miner-$AVIAN_VERSION
 
 echo "=== host ==="
-. /etc/os-release && echo "$PRETTY_NAME"
+( . /etc/os-release && echo "$PRETTY_NAME" )
 ldd --version | head -1
 gcc --version | head -1
 "$CUDA/bin/nvcc" --version | tail -2 | head -1
@@ -120,14 +120,14 @@ done
 
 echo
 echo "=== package ==="
-D=$OUT/$NAME-linux-x86_64
+D=$OUT/$PKG-linux-x86_64
 rm -rf "$D"; mkdir -p "$D"
 cp avian-miner "$D/"
 for so in libavian_cuda.so libavian_amd.so; do [ -f "$so" ] && cp "$so" "$D/"; done
 cp README.md LICENSE COPYING doc/licensing.md "$D/"
-tar -C "$OUT" -czf "$OUT/$NAME-linux-x86_64.tar.gz" "$NAME-linux-x86_64"
+tar -C "$OUT" -czf "$OUT/$PKG-linux-x86_64.tar.gz" "$PKG-linux-x86_64"
 rm -rf "$D"
 # The host runs docker as root, so without this the tarball is root-owned on a
 # directory the user has to clean up by hand.
-chown "$(stat -c %u:%g "$OUT")" "$OUT/$NAME-linux-x86_64.tar.gz" 2>/dev/null || true
-ls -l "$OUT/$NAME-linux-x86_64.tar.gz"
+chown "$(stat -c %u:%g "$OUT")" "$OUT/$PKG-linux-x86_64.tar.gz" 2>/dev/null || true
+ls -l "$OUT/$PKG-linux-x86_64.tar.gz"
