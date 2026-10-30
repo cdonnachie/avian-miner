@@ -132,6 +132,17 @@ AM_CONDITIONAL([HAVE_AVIAN_SV2], [test x$have_avian_sv2 = xtrue])
 AC_SUBST(AVIAN_SV2_CFLAGS)
 AC_SUBST(AVIAN_SV2_LIBS)
 
+dnl Link the CUDA runtime into the backend instead of against
+dnl libcudart.so.12. A mining rig has the driver, not the toolkit, so a
+dnl dynamically linked backend builds here and then fails to dlopen on
+dnl exactly the machines it was built for. nvcc's own default is static, which
+dnl is why the Windows DLL has never needed this: build-cuda-dll.ps1 passes no
+dnl -lcudart at all. Off by default so a local build keeps linking the way it
+dnl always has.
+AC_ARG_ENABLE([cudart-static],
+   [  --enable-cudart-static  link the CUDA runtime into the backend, for a
+                           machine that has the driver but not the toolkit])
+
 dnl The CUDA GPU backend. Off unless asked for, so a build without it is
 dnl unchanged.
 AC_ARG_WITH([cuda],
@@ -207,7 +218,13 @@ if test "x$with_cuda" != "x" && test "x$with_cuda" != "xno" ; then
 
    CUDA_LDFLAGS="-L$cuda_prefix/lib64 -L$cuda_prefix/lib"
    dnl -lstdc++ because the kernels are C++ while this miner links with CC.
-   CUDA_LIBS="-lcudart -lstdc++"
+   if test "x$enable_cudart_static" = xyes ; then
+      CUDA_LIBS="-cudart static -lstdc++"
+   else
+      CUDA_LIBS="-lcudart -lstdc++"
+   fi
+   AC_MSG_CHECKING([how to link the CUDA runtime])
+   AC_MSG_RESULT([$CUDA_LIBS])
    have_nv=true
 fi
 # The same kernels, for AMD hardware. This is a smaller change than it looks:
