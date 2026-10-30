@@ -41,6 +41,18 @@ for r in "$MINER" "$SV2"; do
     fi
 done
 
+# Everything this pulls is public, so the build has no use for the client's
+# credential store, and a config left behind by Docker Desktop actively breaks
+# it: the helper it names, docker-credential-desktop.exe, is not on PATH inside
+# WSL and the pull dies with "error getting credentials". An empty config
+# directory sidesteps that without touching the real one. Set DOCKER_CONFIG
+# yourself if you need a private registry.
+if [ -z "${DOCKER_CONFIG:-}" ]; then
+    DOCKER_CONFIG=$(mktemp -d)
+    export DOCKER_CONFIG
+    trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+fi
+
 echo "=== image $IMAGE ==="
 docker build \
     ${CUDA_TAG:+--build-arg CUDA_TAG="$CUDA_TAG"} \
