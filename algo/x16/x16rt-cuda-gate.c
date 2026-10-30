@@ -43,10 +43,17 @@ bool register_x16rt_cuda_algo( algo_gate_t* gate )
        * exact words package-amd-test.ps1 looks for to decide whether its
        * retry is worth running: that retry swaps the shipped runtime for the
        * driver's, which only makes sense once a library has loaded. */
-      if ( avian_gpu_backend_count() == 0 )
+      if ( avian_gpu_backend_present() == 0 )
          applog( LOG_ERR, "no GPU backend beside the miner, so --gpu cannot be "
                           "honoured: expected %s or %s in this directory",
                  AVIAN_GPU_NVIDIA_LIB_NAME, AVIAN_GPU_AMD_LIB_NAME );
+      else if ( avian_gpu_backend_count() == 0 )
+         /* The libraries are right there, so telling anyone to go and look
+          * for them sends them to the wrong place: what is missing is a
+          * driver. Counting loads rather than files said exactly that. */
+         applog( LOG_ERR, "a GPU backend is beside the miner but none would "
+                          "load, so --gpu cannot be honoured: this machine "
+                          "has no NVIDIA or AMD runtime installed" );
       else
          applog( LOG_ERR, "no CUDA device found, so --gpu cannot be honoured" );
       return false;

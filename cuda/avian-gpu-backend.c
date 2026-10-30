@@ -48,6 +48,7 @@ struct backend
    const char          *vendor;      /* "Nvidia" or "AMD", for logs */
    const char          *library;     /* the file name we tried */
    void                *handle;      /* NULL when absent, which is normal */
+   bool                 found;       /* the file was on disk, loaded or not */
    avian_gpu_scan_fn    scan_batch;
    avian_gpu_count_fn   device_count;
    avian_gpu_name_fn    device_name;
@@ -122,17 +123,31 @@ static bool exe_directory( char *out, size_t len )
  * not. That is the documented AMD failure, where a DLL built against the 7.x
  * HIP runtime cannot find amdhip64_7.dll because a consumer driver installs
  * only the 6.x one. See doc/building.md. */
-static const char *load_error( void )
+/* Why a load failed, and whether that reason is simply that this machine has
+ * no runtime for that vendor. Both come out of one call because on Windows
+ * the code and the message are one GetLastError, and anything in between can
+ * replace it. */
+struct load_failure
+{
+   char why[256];
+   bool runtime_absent;
+};
+
+static void load_failure( struct load_failure *f )
 {
 #ifdef _WIN32
-   static char buf[64];
+   DWORD e = GetLastError();
 
-   snprintf( buf, sizeof(buf), "Windows error %lu", (unsigned long) GetLastError() );
-   return buf;
+   snprintf( f->why, sizeof(f->why), "Windows error %lu", (unsigned long) e );
+   /* ERROR_MOD_NOT_FOUND: the library is there and something it imports is
+    * not. For these two that import is the vendor's own runtime, which
+    * arrives with the vendor's driver. */
+   f->runtime_absent = ( e == ERROR_MOD_NOT_FOUND );
 #else
    const char *e = dlerror();
 
-   return e ? e : "no reason given";
+   snprintf( f->why, sizeof(f->why), "%s", e ? e : "no reason given" );
+   f->runtime_absent = e && strstr( e, "cannot open shared object file" ) != NULL;
 #endif
 }
 
@@ -193,10 +208,11 @@ static void load_backend( struct backend *b, avian_cuda_log_fn log )
 {
    char dir[1024];
    char path[1280];
-   char why[512];
+   struct load_failure f;
    bool beside_us = false;
 
-   why[0] = '\0';
+   f.why[0] = 0;
+   f.runtime_absent = false;
    if ( exe_directory( dir, sizeof(dir) ) )
    {
       snprintf( path, sizeof(path), "%s%c%s", dir, AVIAN_GPU_SEP, b->library );
@@ -205,19 +221,31 @@ static void load_backend( struct backend *b, avian_cuda_log_fn log )
       /* Kept now, because the fallback below overwrites it and the reason a
        * library beside the miner would not load is the one worth having. */
       if ( !b->handle && beside_us )
-         snprintf( why, sizeof(why), "%s", load_error() );
+         load_failure( &f );
    }
    if ( !b->handle )
       b->handle = AVIAN_GPU_DLOPEN( b->library );
+   b->found = beside_us || b->handle != NULL;
    if ( !b->handle )
    {
-      /* Absent is the ordinary case and deserves no line. Present and
-       * refusing to load is a fault, and saying nothing about it is what
+      /* Three cases, and only one of them is a fault.
+       *
+       * Absent is ordinary and deserves no line. So is present but wanting a
+       * runtime this machine has not got: a package ships both backends, so
+       * on any single-vendor machine the other vendor's library is always
+       * there and never loads. Calling that an error would put a red line in
+       * front of very nearly every user, which is how a diagnostic stops
+       * being read at all.
+       *
+       * Anything else is a real fault, and saying nothing about it is what
        * made the first one of these take a debugger to find rather than
        * reading the miner's own output. */
-      if ( beside_us )
+      if ( beside_us && !f.runtime_absent )
          applog( LOG_ERR, "%s backend %s is there and will not load: %s",
-                 b->vendor, path, why );
+                 b->vendor, path, f.why );
+      else if ( beside_us )
+         applog( LOG_DEBUG, "no %s runtime on this machine, so %s was not used",
+                 b->vendor, b->library );
       return;
    }
 
@@ -288,6 +316,16 @@ int avian_gpu_backend_count( void )
 
    for ( size_t i = 0; i < sizeof(s_backend) / sizeof(s_backend[0]); i++ )
       if ( s_backend[i].handle )
+         n++;
+   return n;
+}
+
+int avian_gpu_backend_present( void )
+{
+   int n = 0;
+
+   for ( size_t i = 0; i < sizeof(s_backend) / sizeof(s_backend[0]); i++ )
+      if ( s_backend[i].found )
          n++;
    return n;
 }

@@ -54,6 +54,12 @@ int avian_gpu_device_count( void );
  * nothing in common but the symptom. */
 int avian_gpu_backend_count( void );
 
+/* How many backend libraries were found on disk, loaded or not. The two
+ * differ exactly when a vendor's library ships beside the miner and that
+ * vendor's runtime is not installed, which is the ordinary state of a
+ * single-vendor machine running a package that carries both. */
+int avian_gpu_backend_present( void );
+
 /* The card's own name, or "" for an index out of range. */
 const char *avian_gpu_device_name( int device );
 
