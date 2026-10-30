@@ -24,11 +24,19 @@ command -v docker >/dev/null || { echo "no docker on PATH"; exit 1; }
 # A release has to be rebuildable from a commit, and the container clones
 # rather than copies, so an uncommitted change here would simply not be built
 # and the binary would look like the change never happened.
+#
+# --no-optional-locks because this usually runs from WSL against a checkout on
+# an NTFS volume, where git cannot write .git/index.lock: it fails with "Bad
+# file descriptor" and then reports a clean tree as dirty. Without the lock it
+# cannot refresh the index, which is fine, since nothing here needs to.
+# Untracked files are ignored, since the clone would not carry them either.
 for r in "$MINER" "$SV2"; do
     [ -d "$r/.git" ] || continue
-    if ! git -C "$r" diff --quiet || ! git -C "$r" diff --cached --quiet; then
+    dirty=$(git -C "$r" --no-optional-locks status --porcelain --untracked-files=no) || {
+        echo "cannot read the git state of $r"; exit 1; }
+    if [ -n "$dirty" ]; then
         echo "$r is dirty; the container builds committed work only"
-        git -C "$r" status --short
+        echo "$dirty"
         exit 1
     fi
 done
