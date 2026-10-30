@@ -56,13 +56,35 @@ $list = ($cu | ForEach-Object { "`"$_`"" }) -join " "
 # never gains an empty continuation and the build is the same shape either way.
 $ptxDef = if ($NoPtx) { "-DAVIAN_NO_PTX=1" } else { "-DAVIAN_NO_PTX=0" }
 Write-Output "  $ptxDef"
+
+# The architectures, from cuda/sm-targets, which configure.ac reads too so
+# this DLL and libavian_cuda.so cover the same cards. Until this read them,
+# the DLL was built for sm_86 alone plus compute_89 PTX, and PTX only works
+# forwards: every card older than Ampere got "no kernel image is available
+# for execution on the device" while the Linux build ran on all of them.
+$smFile = Join-Path $PSScriptRoot "..\..\cuda\sm-targets"
+if (-not (Test-Path $smFile)) { Write-Error "no architecture list at $smFile"; exit 1 }
+$want = Get-Content $smFile |
+    ForEach-Object { ($_ -replace '#.*', '').Trim() } | Where-Object { $_ }
+$avail = & "$CUDAin
+vcc.exe" --list-gpu-code 2>$null |
+    ForEach-Object { $_.Trim() -replace '^sm_', '' } | Where-Object { $_ }
+$built = @($want | Where-Object { $avail -contains $_ })
+if (-not $built) { Write-Error "this toolkit emits none of: $($want -join ', ')"; exit 1 }
+$skipped = @($want | Where-Object { $avail -notcontains $_ })
+if ($skipped) { Write-Output "  not in this toolkit, skipped: $($skipped -join ', ')" }
+# PTX for the newest that survived, so a card released after this build still
+# runs by driver JIT rather than failing to launch.
+$newest = $built[-1]
+$arch = (($built | ForEach-Object { "-gencode=arch=compute_$_,code=sm_$_" }) +
+         "-gencode=arch=compute_$newest,code=compute_$newest") -join " "
+Write-Output "  targets: sm_$($built -join ', sm_'), plus compute_$newest as PTX"
 $bat = @"
 call "$VCVARS" >nul 2>&1
 cd /d "$W"
 "$CUDA\bin\nvcc.exe" -O3 -shared -o "$OUT\avian_cuda.dll" ^
   -DAVIAN_CUDA_BUILDING_DLL $ptxDef ^
-  -gencode=arch=compute_86,code=sm_86 ^
-  -gencode=arch=compute_89,code=compute_89 ^
+  $arch ^
   -std=c++14 -w ^
   -I"$W" -I"$W\cuda" -I"$W\cuda\upstream" ^
   -Xcompiler "/MD /wd4819" ^

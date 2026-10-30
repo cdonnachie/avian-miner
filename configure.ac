@@ -174,6 +174,10 @@ if test "x$with_cuda" != "x" && test "x$with_cuda" != "xno" ; then
       [  --with-cuda-arch=LIST   build only these GPU architectures, e.g. 86 or "86 120" @<:@default=all available@:>@])
    if test "x$with_cuda_arch" != "x" && test "x$with_cuda_arch" != "xno" ; then
       cuda_want="$with_cuda_arch"
+   elif test -f "$srcdir/cuda/sm-targets" ; then
+      dnl One list, read by scripts/windows/build-cuda-dll.ps1 as well, so
+      dnl neither platform can quietly cover hardware the other does not.
+      cuda_want=`sed 's/#.*//' "$srcdir/cuda/sm-targets" | tr '\n' ' '`
    else
       cuda_want="52 61 75 80 86 89 100 120"
    fi
@@ -182,10 +186,7 @@ if test "x$with_cuda" != "x" && test "x$with_cuda" != "xno" ; then
    NVCC_ARCH=""
    cuda_built=""
    cuda_newest=""
-   dnl 52 and 61 are Maxwell and Pascal: a 900 or 10 series card. They cost
-   dnl about five minutes of build and seven megabytes, measured, and the
-   dnl X16RT tuning tables upstream are full of 1060s and 1080s, so they stay
-   dnl while any toolkit still offers them.
+   dnl cuda/sm-targets says what each entry is and why it is there.
    for a in $cuda_want ; do
       for h in $cuda_avail ; do
          if test "x$a" = "x$h" ; then

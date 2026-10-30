@@ -25,7 +25,7 @@ endif
 
 endif
 
-EXTRA_DIST = config-template.json
+EXTRA_DIST = config-template.json cuda/sm-targets cuda/hip/gfx-targets
 
 SUFFIXES = .cu
 

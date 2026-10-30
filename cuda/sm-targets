@@ -1,0 +1,29 @@
+# The Nvidia GPU architectures both backends are built for, one per line,
+# oldest first. Numbers only: 86 means compute_86 and sm_86.
+#
+# Read by configure.ac for libavian_cuda.so and by
+# scripts/windows/build-cuda-dll.ps1 for avian_cuda.dll, so the two platforms
+# cover the same hardware. Edit here, not in either. Anything the installed
+# toolkit cannot emit is dropped, and PTX is emitted for the newest one that
+# survives, so a card released after the build still runs by driver JIT.
+#
+# PTX only works forwards. A build whose oldest cubin is sm_86 does not run
+# on anything older, whatever PTX it carries, so the list is the whole of the
+# backward compatibility story.
+
+# Maxwell and Pascal, a 900 or 10 series card. They cost about five minutes
+# of build and seven megabytes, measured, and the X16RT tuning tables
+# upstream are full of 1060s and 1080s, so they stay while any toolkit still
+# offers them.
+52
+61
+# Turing, the 16 and 20 series.
+75
+# Ampere: 80 is the A100, 86 the 30 series.
+80
+86
+# Ada, the 40 series.
+89
+# Blackwell: 100 is the datacentre part, 120 the 50 series.
+100
+120
