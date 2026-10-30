@@ -73,13 +73,21 @@ echo "=== configure (no Stratum v2 yet, to prove the toolchain first) ==="
 # --with-curl=/mingw64 rather than bare --with-curl: the bare form leaves
 # $with_curl as the literal "yes" and the link line gets -Lyes/lib.
 # The baseline runs on anything since about 2009 and uses none of AES,
-# AVX2, SHA or VAES. Overridable, but one tier is the measured answer
-# rather than a default: against -O3 -maes -mavx2 -msha -mvaes on a 9900X,
-# minotaurx gained about 2%, inside the run-to-run noise, while x16rt on
-# the CPU gained 2.1x. Minotaurx is yespower and bound by memory rather
-# than by vector width, and x16rt on a CPU is not worth mining. Upstream
-# ships eight binaries for a hundred algorithms; Avian has one CPU
-# algorithm and it is indifferent.
+# AVX2, SHA or VAES. Overridable, but one tier, and it is the measured
+# answer rather than a default. On a 9900X at 8 threads, in interleaved
+# rounds so both builds see the same wall clock: -march=haswell -maes lost
+# 1.6% on minotaurx over 15 pairs, which is outside the noise, while
+# gaining 68% on x16rt, and -march=native, which gcc resolves to znver5
+# here, gained under 1% on both minotaurx and its yespower core, which is
+# inside it. Minotaurx is yespower, and 98.4% of a nonce is one 2 MB
+# memory-hard hash, so vector width has almost nothing to act on. x16rt on
+# a CPU is not worth mining whatever it benchmarks at. Upstream ships
+# eight binaries for a hundred algorithms; Avian has one CPU algorithm and
+# it is indifferent.
+#
+# x86-64-v3 and a bare -march=haswell do not build: both give AVX2 without
+# AES and algo/shavite/shavite-hash-2way.c calls AES intrinsics on its
+# AVX2 path, which is why the measured alternative above carries -maes.
 AVIAN_CFLAGS=${AVIAN_CFLAGS:-"-O3 -march=x86-64-v2"}
 echo "  CFLAGS: $AVIAN_CFLAGS"
 CFLAGS="$AVIAN_CFLAGS" ./configure --with-curl=/mingw64 \
