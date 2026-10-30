@@ -10,7 +10,15 @@
 #
 #   scripts/release.sh linux     # in WSL, or on Linux
 #   scripts/release.sh windows   # in MSYS2 MINGW64
-#   scripts/release.sh finish    # either, once both are present
+#   scripts/release.sh finish    # in MSYS2, once both are present
+#
+# finish is not "either": the signing key is in Gpg4win, and neither MSYS2's
+# own gpg nor WSL's can see that keyring. It uses whatever git is configured
+# to sign commits with, which is the one gpg that has the key.
+#
+# The three stages share an output directory because $OUT derives from the
+# repository, and /c/development/... under MSYS2 and /mnt/c/development/...
+# under WSL are the same folder.
 #
 # Output goes outside every build tree on purpose. win-package.sh opens with
 # rm -rf on its release directory, so a signed artifact left in a build tree
@@ -83,7 +91,10 @@ elif [ "$STAGE" = windows ]; then
     # binary once it carries a signature.
     powershell.exe -ExecutionPolicy Bypass -File \
         "$(cygpath -w "$REPO/scripts/windows/win-sign.ps1")" -Dir "$(cygpath -w "$D")"
-    ( cd "$OUT" && zip -qr "$NAME-windows-x64.zip" "$NAME-windows-x64" )
+    # Compress-Archive rather than zip: MSYS2 ships no zip, and this stage
+    # already needs PowerShell for the signing above.
+    rm -f "$OUT/$NAME-windows-x64.zip"
+    powershell.exe -NoProfile -Command "Compress-Archive -Path '$(cygpath -w "$D")' -DestinationPath '$(cygpath -w "$OUT/$NAME-windows-x64.zip")'"
     rm -rf "$D"
     echo "  $OUT/$NAME-windows-x64.zip"
 
@@ -96,7 +107,13 @@ else
     # nothing covers the tarball, so this is what makes the Linux half
     # verifiable at all.
     rm -f SHA256SUMS.asc
-    gpg --armor --detach-sign SHA256SUMS
+    # The same gpg git signs commits with. The key lives in Gpg4win, and
+    # neither MSYS2's gpg nor WSL's can see that keyring, so a bare `gpg`
+    # here signs with the wrong one or not at all.
+    GPG=$(git -C "$REPO" config gpg.program || true)
+    [ -n "$GPG" ] || GPG=gpg
+    KEY=$(git -C "$REPO" config user.signingkey || true)
+    "$GPG" --armor --detach-sign ${KEY:+--local-user "$KEY"} SHA256SUMS
     echo
     cat SHA256SUMS
     echo
