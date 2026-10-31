@@ -386,6 +386,37 @@ cp $R/libamdhip64.so.6 $R/libhsa-runtime64.so.1    $R/librocprofiler-register.so
 cp $R/libamd_comgr.so.3.0.60400 ./libamd_comgr.so
 ```
 
+**Take those from a ROCm built for the distribution you are targeting, not
+from the one you happen to have.** AMD builds per release, and the version
+string says which: `6.4.43482.60400-47~22.04` is the jammy build. Measured on
+both, since this is the trap:
+
+| `libamdhip64.so.6` from | glibc floor | GLIBCXX | runs on jammy |
+| --- | --- | --- | --- |
+| noble packages | `GLIBC_2.38` | `3.4.32` | **no** |
+| jammy packages (`~22.04`) | `GLIBC_2.34` | `3.4.30` | yes |
+
+A ROCm install on Ubuntu 24.04 therefore yields a bundle that cannot load on
+HiveOS, and it fails with a version error rather than a missing file, which
+reads like a packaging mistake instead of the wrong distribution. Fetch the
+jammy ones by hand if the build host is newer:
+
+```sh
+B=https://repo.radeon.com/rocm/apt/6.4
+curl -fsSL "$B/dists/jammy/main/binary-amd64/Packages" -o Packages
+awk '/^Package: hip-runtime-amd$/,/^$/' Packages | grep -E '^(Version|Filename):'
+```
+
+The same goes for `libavian_amd.so` itself: built here against WSL's 24.04 it
+carries a `GLIBC_2.38` floor, so a bundle for a rig means building the backend
+on 22.04 too. That is an argument for putting ROCm in
+`scripts/linux/Dockerfile` rather than assembling this by hand.
+
+Five more libraries come from the distribution rather than the bundle, and a
+bare `ubuntu:22.04` has none of them: `libnuma.so.1`, `libelf.so.1`,
+`libdrm.so.2` and `libdrm_amdgpu.so.1`. A mining image has them, since it
+drives AMD cards already, but check rather than assume.
+
 `$ORIGIN` comes first in the search order on purpose: a directory that exists
 but lacks the soname is simply skipped, so either order works where ROCm is
 absent, but a bundled runtime should win over a system one of the wrong
