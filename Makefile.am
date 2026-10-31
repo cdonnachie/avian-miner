@@ -363,6 +363,9 @@ OCL_KERNEL_SOURCES = \
 	cuda/ocl/kernels/cubehash.cl \
 	cuda/ocl/kernels/fugue.cl \
 	cuda/ocl/kernels/whirlpool.cl \
+	cuda/ocl/kernels/hamsi.cl \
+	cuda/ocl/kernels/hamsi_helper.cl \
+	cuda/ocl/kernels/hamsi_helper_big.cl \
 	cuda/ocl/kernels/x16-blake.cl \
 	cuda/ocl/kernels/x16-jh.cl \
 	cuda/ocl/kernels/x16-groestl.cl \
@@ -377,7 +380,8 @@ OCL_KERNEL_SOURCES = \
 	cuda/ocl/kernels/x16-cubehash.cl \
 	cuda/ocl/kernels/x16-fugue.cl \
 	cuda/ocl/kernels/x16-whirlpool.cl \
-	cuda/ocl/kernels/x16-sha512.cl
+	cuda/ocl/kernels/x16-sha512.cl \
+	cuda/ocl/kernels/x16-hamsi.cl
 
 # Generated into the build tree, so a read-only source tree still builds, and
 # BUILT_SOURCES because every object that embeds it needs it to exist before
@@ -418,7 +422,8 @@ avian_ocl_selftest_SOURCES = cuda/ocl/avian-ocl-selftest.c \
                              algo/fugue/sph_fugue.c \
                              algo/whirlpool/sph_whirlpool.c \
                              algo/sha/sph_sha2big.c \
-                             algo/blake/sph_blake.c
+                             algo/blake/sph_blake.c \
+                             algo/hamsi/sph_hamsi.c
 avian_ocl_selftest_CPPFLAGS = -I$(top_srcdir) -I$(top_builddir) @OCL_CFLAGS@
 avian_ocl_selftest_LDFLAGS = @OCL_LDFLAGS@
 avian_ocl_selftest_LDADD = @OCL_LIBS@

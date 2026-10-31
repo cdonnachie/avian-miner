@@ -38,6 +38,7 @@
 #include "algo/simd/sph_simd.h"
 #include "algo/echo/sph_echo.h"
 #include "algo/shabal/sph_shabal.h"
+#include "algo/hamsi/sph_hamsi.h"
 #include "algo/luffa/sph_luffa.h"
 #include "algo/cubehash/sph_cubehash.h"
 #include "algo/fugue/sph_fugue.h"
@@ -85,6 +86,7 @@ CPU_REFERENCE( keccak512 )
 CPU_REFERENCE( simd512 )
 CPU_REFERENCE( echo512 )
 CPU_REFERENCE( shabal512 )
+CPU_REFERENCE( hamsi512 )
 CPU_REFERENCE( luffa512 )
 CPU_REFERENCE( cubehash512 )
 CPU_REFERENCE( fugue512 )
@@ -140,6 +142,7 @@ static const struct
     { "fugue512_64",    cpu_fugue512 },
     { "whirlpool512_64", cpu_whirlpool },
     { "sha512_64",      cpu_sha512 },
+    { "hamsi512_64",    cpu_hamsi512 },
 };
 
 #define CASE_COUNT ( sizeof s_case / sizeof s_case[0] )
