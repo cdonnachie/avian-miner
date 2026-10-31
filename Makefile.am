@@ -381,7 +381,8 @@ OCL_KERNEL_SOURCES = \
 	cuda/ocl/kernels/x16-fugue.cl \
 	cuda/ocl/kernels/x16-whirlpool.cl \
 	cuda/ocl/kernels/x16-sha512.cl \
-	cuda/ocl/kernels/x16-hamsi.cl
+	cuda/ocl/kernels/x16-hamsi.cl \
+	cuda/ocl/kernels/x16-blake80.cl
 
 # Generated into the build tree, so a read-only source tree still builds, and
 # BUILT_SOURCES because every object that embeds it needs it to exist before

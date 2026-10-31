@@ -62,19 +62,22 @@
  */
 int hard_coded_eb = 1;
 
-typedef void (*cpu_hash_fn)( void *out, const void *in );
+typedef void (*cpu_hash_fn)( void *out, const void *in, size_t len );
 
 /* Every sph function has the same three-call shape, so one macro beats
- * sixteen copies of it. 64 bytes in, 64 out, which is what an X16RT round
- * does for every algorithm but the first. */
-#define CPU_REFERENCE( name )                                   \
-    static void cpu_##name( void *out, const void *in )         \
-    {                                                           \
-        sph_##name##_context c;                                 \
-                                                                \
-        sph_##name##_init( &c );                                \
-        sph_##name( &c, in, 64 );                               \
-        sph_##name##_close( &c, out );                          \
+ * sixteen copies of it.
+ *
+ * The length is a parameter because X16RT's first round hashes the 80-byte
+ * header and every round after it hashes 64 bytes, so each algorithm needs
+ * both and the reference is the same function called differently. */
+#define CPU_REFERENCE( name )                                           \
+    static void cpu_##name( void *out, const void *in, size_t len )     \
+    {                                                                   \
+        sph_##name##_context c;                                         \
+                                                                        \
+        sph_##name##_init( &c );                                        \
+        sph_##name( &c, in, len );                                      \
+        sph_##name##_close( &c, out );                                  \
     }
 
 CPU_REFERENCE( blake512 )
@@ -97,12 +100,12 @@ CPU_REFERENCE( sha512 )
  * software one otherwise, but names the context type sph_shavite512_context
  * either way, so the macro's sph_shavite512_context spelling would be wrong
  * in neither case and right by accident. Spelled out so that is visible. */
-static void cpu_shavite512( void *out, const void *in )
+static void cpu_shavite512( void *out, const void *in, size_t len )
 {
     sph_shavite512_context c;
 
     sph_shavite512_init( &c );
-    sph_shavite512( &c, in, 64 );
+    sph_shavite512( &c, in, len );
     sph_shavite512_close( &c, out );
 }
 
@@ -110,12 +113,12 @@ static void cpu_shavite512( void *out, const void *in )
  * spells it without a size. sph_whirlpool is the final ISO revision, which is
  * the one X16R uses; sph_whirlpool0 and sph_whirlpool1 are the superseded
  * drafts and would quietly produce a different hash. */
-static void cpu_whirlpool( void *out, const void *in )
+static void cpu_whirlpool( void *out, const void *in, size_t len )
 {
     sph_whirlpool_context c;
 
     sph_whirlpool_init( &c );
-    sph_whirlpool( &c, in, 64 );
+    sph_whirlpool( &c, in, len );
     sph_whirlpool_close( &c, out );
 }
 
@@ -126,23 +129,28 @@ static const struct
 {
     const char  *entry;
     cpu_hash_fn  cpu;
+    int          in_len;    /* 64 for a round, 80 for a first round */
 } s_case[] = {
-    { "blake512_64",    cpu_blake512 },
-    { "jh512_64",       cpu_jh512 },
-    { "groestl512_64",  cpu_groestl512 },
-    { "shavite512_64",  cpu_shavite512 },
-    { "bmw512_64",      cpu_bmw512 },
-    { "skein512_64",    cpu_skein512 },
-    { "keccak512_64",   cpu_keccak512 },
-    { "simd512_64",     cpu_simd512 },
-    { "echo512_64",     cpu_echo512 },
-    { "shabal512_64",   cpu_shabal512 },
-    { "luffa512_64",    cpu_luffa512 },
-    { "cubehash512_64", cpu_cubehash512 },
-    { "fugue512_64",    cpu_fugue512 },
-    { "whirlpool512_64", cpu_whirlpool },
-    { "sha512_64",      cpu_sha512 },
-    { "hamsi512_64",    cpu_hamsi512 },
+    { "blake512_64",    cpu_blake512, 64 },
+    { "jh512_64",       cpu_jh512, 64 },
+    { "groestl512_64",  cpu_groestl512, 64 },
+    { "shavite512_64",  cpu_shavite512, 64 },
+    { "bmw512_64",      cpu_bmw512, 64 },
+    { "skein512_64",    cpu_skein512, 64 },
+    { "keccak512_64",   cpu_keccak512, 64 },
+    { "simd512_64",     cpu_simd512, 64 },
+    { "echo512_64",     cpu_echo512, 64 },
+    { "shabal512_64",   cpu_shabal512, 64 },
+    { "luffa512_64",    cpu_luffa512, 64 },
+    { "cubehash512_64", cpu_cubehash512, 64 },
+    { "fugue512_64",    cpu_fugue512, 64 },
+    { "whirlpool512_64", cpu_whirlpool, 64 },
+    { "sha512_64",      cpu_sha512, 64 },
+    { "hamsi512_64",    cpu_hamsi512, 64 },
+
+    /* The first rounds: the 80-byte header in, 64 bytes out, with the
+     * nonce taken from the work item rather than the header. */
+    { "blake512_80",    cpu_blake512, 80 },
 };
 
 #define CASE_COUNT ( sizeof s_case / sizeof s_case[0] )
@@ -255,16 +263,21 @@ static void print_build_log( cl_program pr, cl_device_id dev )
     free( log );
 }
 
+/* The nonce every 80-byte case starts from. Arbitrary, but neither zero nor
+ * small, so a kernel that ignores the nonce or truncates it is caught. */
+#define NONCE_BASE 0x9E3779B9u
+
 /* 0 on agreement, 1 on a mismatch, 2 when the kernel would not build. */
 static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
-                    const char *entry, cpu_hash_fn cpu )
+                    const char *entry, cpu_hash_fn cpu, int in_len )
 {
     static unsigned char in[LANES][64], want[LANES][64], got[LANES][64];
+    static unsigned char header[80], hdr_lane[LANES][80];
     const char          *src = kernel_source( entry );
     size_t               len;
     cl_program           pr;
     cl_kernel            k;
-    cl_mem               buf;
+    cl_mem               buf, hbuf = NULL;
     cl_int               err;
     size_t               global = LANES;
     int                  bad = 0;
@@ -274,9 +287,35 @@ static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
         printf( "  %-14s no embedded source for this entry point\n", entry );
         return 2;
     }
-    fill( in );
-    for ( int l = 0; l < LANES; l++ )
-        cpu( want[l], in[l] );
+    if ( in_len == 80 )
+    {
+        /* One header shared by every lane, with the nonce at bytes 76 to 79
+         * differing per lane, which is what the kernel derives from its
+         * global id. The reference patches the same four bytes in the same
+         * place and hashes 80 bytes, so what is compared is the hash and not
+         * anyone's opinion about byte order. */
+        unsigned int seed = 0xC0FFEE;
+
+        for ( int i = 0; i < 80; i++ )
+        {
+            seed = seed * 1103515245u + 12345u;
+            header[i] = (unsigned char) ( seed >> 16 );
+        }
+        for ( int l = 0; l < LANES; l++ )
+        {
+            unsigned int nonce = NONCE_BASE + (unsigned int) l;
+
+            memcpy( hdr_lane[l], header, 80 );
+            memcpy( hdr_lane[l] + 76, &nonce, 4 );
+            cpu( want[l], hdr_lane[l], 80 );
+        }
+    }
+    else
+    {
+        fill( in );
+        for ( int l = 0; l < LANES; l++ )
+            cpu( want[l], in[l], 64 );
+    }
 
     len = strlen( src );
     pr  = clCreateProgramWithSource( cx, 1, &src, &len, &err );
@@ -306,10 +345,33 @@ static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
         return 2;
     }
 
-    buf = clCreateBuffer( cx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-                          sizeof in, in, &err );
-    if ( err == CL_SUCCESS )
-        err = clSetKernelArg( k, 0, sizeof buf, &buf );
+    if ( in_len == 80 )
+    {
+        /* (header, nonce_base, hashes). The header goes up once rather than
+         * per lane, because that is how the backend will hand it over: a
+         * kernel wanting 80 bytes per lane would be the wrong shape for
+         * mining, where only the nonce differs between work items. */
+        cl_uint base = NONCE_BASE;
+
+        hbuf = clCreateBuffer( cx, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                               80, header, &err );
+        buf = ( err == CL_SUCCESS )
+            ? clCreateBuffer( cx, CL_MEM_WRITE_ONLY, sizeof got, NULL, &err )
+            : NULL;
+        if ( err == CL_SUCCESS )
+            err = clSetKernelArg( k, 0, sizeof hbuf, &hbuf );
+        if ( err == CL_SUCCESS )
+            err = clSetKernelArg( k, 1, sizeof base, &base );
+        if ( err == CL_SUCCESS )
+            err = clSetKernelArg( k, 2, sizeof buf, &buf );
+    }
+    else
+    {
+        buf = clCreateBuffer( cx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+                              sizeof in, in, &err );
+        if ( err == CL_SUCCESS )
+            err = clSetKernelArg( k, 0, sizeof buf, &buf );
+    }
     if ( err == CL_SUCCESS )
         err = clEnqueueNDRangeKernel( q, k, 1, NULL, &global, NULL, 0, NULL, NULL );
     if ( err == CL_SUCCESS )
@@ -320,6 +382,7 @@ static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
     if ( err != CL_SUCCESS )
     {
         printf( "  %-14s the device refused the work (%d)\n", entry, err );
+        if ( hbuf != NULL ) clReleaseMemObject( hbuf );
         clReleaseMemObject( buf );
         clReleaseKernel( k );
         clReleaseProgram( pr );
@@ -344,6 +407,7 @@ static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
             bad++;
         }
 
+    if ( hbuf != NULL ) clReleaseMemObject( hbuf );
     clReleaseMemObject( buf );
     clReleaseKernel( k );
     clReleaseProgram( pr );
@@ -419,7 +483,7 @@ static int explore( cl_context cx, cl_command_queue q, cl_device_id dev,
 
     fill( in );
     for ( int l = 0; l < LANES; l++ )
-        cpu( want[l], in[l] );
+        cpu( want[l], in[l], 64 );
 
     printf( "exploring %s\n", entry );
     for ( int pre = 0; pre < CONV_COUNT; pre++ )
@@ -512,7 +576,8 @@ int main( int argc, char **argv )
             if ( explore( cx, q, dev, s_case[i].entry, s_case[i].cpu ) <= 0 )
                 failed++;
         }
-        else if ( run_one( cx, q, dev, s_case[i].entry, s_case[i].cpu ) != 0 )
+        else if ( run_one( cx, q, dev, s_case[i].entry, s_case[i].cpu,
+                              s_case[i].in_len ) != 0 )
             failed++;
     }
 
