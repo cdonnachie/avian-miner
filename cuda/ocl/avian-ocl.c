@@ -809,6 +809,7 @@ AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
 {
     struct ocl_device *dev;
     cl_uint   out[1 + AVIAN_OCL_MAX_CANDIDATES];
+    uint32_t  hdr[20];
     cl_uint   zero = 0;
     cl_ulong  target;
     cl_uint   nonce_base;
@@ -869,9 +870,30 @@ AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
     target = ( (cl_ulong) job->target[7] << 32 ) | (cl_ulong) job->target[6];
 
     /* The header goes up once a batch; only the nonce differs per work item,
-     * and the kernels derive that from their global id. */
+     * and the kernels derive that from their global id.
+     *
+     * Byte-swapped on the way, which is the ABI: job.data is "the header in
+     * byte-swapped words" and the CUDA backend has always built the same
+     * copy before handing it to a kernel. This backend used to upload
+     * job.data as it stood and hash that, so it hashed a different eighty
+     * bytes from the ones the miner re-hashes and submits. Those were real
+     * hashes found at the right rate, of the wrong message: every candidate
+     * cleared the device's target and every one of them failed
+     * fulltest, so the backend could never submit a share. The nonce word
+     * is not swapped here because the first-round kernel overwrites bytes
+     * 76 to 79 anyway; it writes the nonce big-endian, to match. */
+    for ( int i = 0; i < 20; i++ )
+    {
+        unsigned char *p = (unsigned char *) &hdr[i];
+        uint32_t       v = job->data[i];
+
+        p[0] = (unsigned char) ( v >> 24 );
+        p[1] = (unsigned char) ( v >> 16 );
+        p[2] = (unsigned char) ( v >> 8 );
+        p[3] = (unsigned char) v;
+    }
     err = clEnqueueWriteBuffer( dev->q, dev->m_header, CL_FALSE, 0, 80,
-                                job->data, 0, NULL, NULL );
+                                hdr, 0, NULL, NULL );
     if ( err == CL_SUCCESS )
         err = clEnqueueWriteBuffer( dev->q, dev->m_out, CL_FALSE, 0,
                                     sizeof zero, &zero, 0, NULL, NULL );

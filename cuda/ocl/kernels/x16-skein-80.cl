@@ -67,7 +67,7 @@ __kernel void skein512_80(__global const uchar* block, const uint nonce_base,
   bcount = 1;
   m0 = ((__global const ulong *) block)[8];
   m1 = (((__global const ulong *) block)[9] & 0x00000000FFFFFFFFUL)
-       | (((ulong) (nonce_base + gid)) << 32);
+       | (((ulong) SWAP4(nonce_base + gid)) << 32);
   m2 = m3 = m4 = m5 = m6 = m7 = 0;
 
   UBI_BIG(352, 16);

@@ -115,7 +115,7 @@ __kernel void whirlpool512_80(__global const uchar* block, const uint nonce_base
    * where the 64-byte round has 512 as 0x2000000000000. */
   n0 = HD(8);
   n1 = (HD(9) & 0x00000000FFFFFFFFUL)
-       | (((ulong) (nonce_base + gid)) << 32);
+       | (((ulong) SWAP4(nonce_base + gid)) << 32);
   n2 = 0x80;
   n3 = n4 = n5 = n6 = 0;
   n7 = 0x8002000000000000UL;
@@ -151,7 +151,7 @@ __kernel void whirlpool512_80(__global const uchar* block, const uint nonce_base
 
   state[0] ^= n0 ^ HD(8);
   state[1] ^= n1 ^ ((HD(9) & 0x00000000FFFFFFFFUL)
-                    | (((ulong) (nonce_base + gid)) << 32));
+                    | (((ulong) SWAP4(nonce_base + gid)) << 32));
   state[2] ^= n2 ^ 0x80;
   state[3] ^= n3;
   state[4] ^= n4;

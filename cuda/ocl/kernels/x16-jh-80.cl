@@ -46,7 +46,7 @@ __kernel void jh512_80(__global const uchar *block,
      * Words are raw little-endian reads, the domain this round already
      * works in, so the nonce lands in the high half of header word 9.
      */
-    const ulong avian_nonce = (ulong) (nonce_base + gid);
+    const ulong avian_nonce = (ulong) SWAP4(nonce_base + gid);
     sph_u64 m0 = ((__global const ulong *) block)[8];
     sph_u64 m1 = (((__global const ulong *) block)[9] & 0x00000000FFFFFFFFUL)
                  | (avian_nonce << 32);

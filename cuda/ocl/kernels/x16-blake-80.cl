@@ -55,7 +55,7 @@ __kernel void blake512_80(__global const uchar* block, const uint nonce_base,
   M8 = DEC64BE(block + 64);
   M9 = DEC64BE(block + 72);
   M9 &= 0xFFFFFFFF00000000UL;
-  M9 ^= SWAP4(nonce_base + gid);
+  M9 ^= nonce_base + gid;
   MA = 0x8000000000000000UL;
   MB = 0;
   MC = 0;

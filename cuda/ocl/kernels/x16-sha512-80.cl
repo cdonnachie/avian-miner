@@ -42,7 +42,7 @@ __kernel void sha512_80(__global const uchar* block, const uint nonce_base,
    * big-endian, so its low half is those four bytes, and SWAP4 puts the
    * nonce there little-endian, where the miner's header has it. */
   W[9] &= 0xFFFFFFFF00000000UL;
-  W[9] ^= SWAP4(nonce_base + gid);
+  W[9] ^= nonce_base + gid;
 
   W[10] = 0x8000000000000000UL;    /* the terminator, now past ten words */
   for (int i = 11; i < 15; i++)

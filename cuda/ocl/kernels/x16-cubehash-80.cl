@@ -84,7 +84,7 @@ __kernel void cubehash512_80(__global const uchar* block, const uint nonce_base,
       x0 ^= HW(16);
       x1 ^= HW(17);
       x2 ^= HW(18);
-      x3 ^= nonce_base + gid;   /* header bytes 76 to 79 */
+      x3 ^= SWAP4(nonce_base + gid);   /* header bytes 76 to 79 */
       x4 ^= 0x80;
     }
     else if (i == 2)

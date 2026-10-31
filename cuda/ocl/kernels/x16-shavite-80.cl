@@ -74,7 +74,7 @@ __kernel void shavite512_80(__global const uchar* block, const uint nonce_base,
   rk10 = DEC32LE(block + 64);
   rk11 = DEC32LE(block + 68);
   rk12 = DEC32LE(block + 72);
-  rk13 = nonce_base + gid;
+  rk13 = SWAP4(nonce_base + gid);
   rk14 = 0x80;
   rk15 = rk16 = rk17 = rk18 = rk19 = rk1A = 0;
   rk1B = 0x2800000;

@@ -70,7 +70,7 @@ __kernel void shabal512_80(__global const uchar* block, const uint nonce_base,
   M0 = ((__global const uint *) block)[16];
   M1 = ((__global const uint *) block)[17];
   M2 = ((__global const uint *) block)[18];
-  M3 = nonce_base + gid;   /* header bytes 76 to 79 */
+  M3 = SWAP4(nonce_base + gid);   /* header bytes 76 to 79 */
   M4 = 0x80;               /* the terminator, now past four message words */
   M5 = M6 = M7 = M8 = M9 = MA = MB = MC = MD = ME = MF = 0;
 

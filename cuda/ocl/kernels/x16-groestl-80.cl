@@ -51,7 +51,7 @@ __kernel void groestl512_80(__global const uchar *block,
     /* The nonce at header bytes 76 to 79. Groestl reads the message
      * natively, so those four bytes are word 9's high half. */
     m[9] &= 0x00000000FFFFFFFFUL;
-    m[9] |= ((ulong) (nonce_base + gid)) << 32;
+    m[9] |= ((ulong) SWAP4(nonce_base + gid)) << 32;
     for (unsigned int u = 0; u < 16; u ++)
       g[u] = m[u] ^ H[u];
     m[10] = 0x80; g[10] = m[10] ^ H[10];

@@ -338,8 +338,15 @@ static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
         /* One header shared by every lane, with the nonce at bytes 76 to 79
          * differing per lane, which is what the kernel derives from its
          * global id. The reference patches the same four bytes in the same
-         * place and hashes 80 bytes, so what is compared is the hash and not
-         * anyone's opinion about byte order. */
+         * place and hashes 80 bytes.
+         *
+         * Big-endian, and that is the one opinion about byte order this test
+         * does hold. The backend hands a kernel a header whose words are
+         * already byte-swapped, so those four bytes carry the nonce
+         * big-endian; see avian-ocl-common.cl. This used to write them
+         * little-endian, which agreed with the kernels and disagreed with
+         * the miner, and a test that shares the convention it is checking
+         * cannot find a convention bug. */
         unsigned int seed = 0xC0FFEE;
 
         for ( int i = 0; i < 80; i++ )
@@ -352,7 +359,10 @@ static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
             unsigned int nonce = NONCE_BASE + (unsigned int) l;
 
             memcpy( hdr_lane[l], header, 80 );
-            memcpy( hdr_lane[l] + 76, &nonce, 4 );
+            hdr_lane[l][76] = (unsigned char) ( nonce >> 24 );
+            hdr_lane[l][77] = (unsigned char) ( nonce >> 16 );
+            hdr_lane[l][78] = (unsigned char) ( nonce >> 8 );
+            hdr_lane[l][79] = (unsigned char) nonce;
             cpu( want[l], hdr_lane[l], 80 );
         }
     }

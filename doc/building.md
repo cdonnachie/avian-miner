@@ -343,12 +343,66 @@ AMD backend at all, because it builds in a container with no ROCm in it, so
 
 ## OpenCL, the third backend
 
-It mines. All thirty-two kernels are byte-exact against their `sph`
-counterparts and a whole batch's candidates verify on the CPU. Built only when
-asked for, and **not yet in any release**: no AMD card has run it, so there
-are no performance figures and nothing is claimed about them. The kernels do
-compile under AMD's own compiler for seven gfx generations, which is the half
-of that gap reachable without hardware; see below.
+It mines, and on an Nvidia card it is now within a sixth of the hand-tuned
+CUDA backend. All thirty-two kernels are byte-exact against their `sph`
+counterparts and a whole batch's candidates verify on the CPU the way the
+miner verifies them. Built only when asked for, and **not yet in any
+release**: no AMD card has run it. The kernels do compile under AMD's own
+compiler for seven gfx generations, which is the half of that gap reachable
+without hardware; see below.
+
+### What it does, measured
+
+On an RTX 3090 against the CUDA backend on the same card, `--gpu --benchmark
+--time-limit=30` with a warm program cache:
+
+| | x16rt |
+| --- | --- |
+| CUDA, `avian_cuda.dll` | 38.2 MH/s |
+| OpenCL, `avian_ocl.dll` | 31.7 MH/s |
+
+83% of a backend whose kernels carry inline PTX and texture lookups, from a
+portable one. It was 4% until two things were fixed, and both are worth
+knowing because neither is specific to groestl or whirlpool.
+
+**Tables belong in `__local`, not `__constant`.** A constant cache is built
+for uniform access: every lane of a warp reads one address and the hardware
+broadcasts it. A table indexed by a byte of the state is the opposite, the
+lanes diverge and the read serialises, up to thirty-two ways. Nvidia's cache
+is also 8 KB per SM, and groestl's eight tables are 16 KB, so they never fit.
+Groestl was 0.58 s per round against 0.008 s for every other kernel here,
+seventy times slower and 70% of a whole batch; whirlpool was the next 82%
+once groestl was fixed. Echo reads `aes_helper.cl` the same way and is fast,
+because those tables are 4 KB and do fit, which is what pointed at the size
+rather than the pattern alone. Whirlpool's kernels already staged their
+tables into `__local` and then read `__constant` in three of four round
+macros, so the copy was made every launch and ignored. Note what stayed:
+`plain_RC` is indexed by the round counter, every lane reads the same
+address, and `__constant` is right for it.
+
+To find the next one, time each algorithm as a whole chain, which is what
+makes a single slow kernel obvious:
+
+```sh
+for d in 0 1 2 3 4 5 6 7 8 9 a b c d e f ; do
+    order=$(printf "%0.s$d" $(seq 16))
+    /usr/bin/time -f "$d %e" ./avian-ocl-batchtest $order > /dev/null
+done
+```
+
+**The header is byte-swapped, and the tests have to check that.** See
+`cuda/ocl/kernels/avian-ocl-common.cl`. The backend uploaded `job.data`
+unswapped and wrote the nonce little-endian, which was self-consistent, so
+every kernel agreed with a CPU chain over those same bytes and the batch test
+passed. They were not the eighty bytes the miner hashes. The device found
+real candidates at the right rate for the wrong message and the miner
+rejected all of them, which is a backend that mines nothing while reporting a
+hashrate. The lesson is in the test, not the kernel: a test that verifies
+against its own convention cannot find a convention bug, so the batch test
+now builds `edata` exactly as `algo/x16/x16rt-cuda-host.c` does, and runs
+sixteen rotations of one permutation so that every algorithm takes a turn as
+the first round. That is the only round with a kernel of its own, and three
+of the sixteen used to be covered.
 
 ```sh
 ./configure --with-curl --with-opencl                 # system OpenCL SDK

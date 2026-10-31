@@ -35,7 +35,7 @@ __kernel void hamsi512_80(__global const uchar* block, const uint nonce_base,
   uint gid = get_global_id(0);
   hash_t avian_priv;
   hash_t *hash = &avian_priv;
-  const uint avian_nonce = nonce_base + gid;
+  const uint avian_nonce = SWAP4(nonce_base + gid);
 
   #ifdef INPUT_BIG_LOCAL
     __local sph_u32 T512_L[1024];

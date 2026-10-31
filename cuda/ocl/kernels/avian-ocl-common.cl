@@ -53,3 +53,25 @@ typedef union {
                     q[i+12] + SPH_ROTL64(q[i+13], 53) + (SHR(q[i+14],1) ^ q[i+14]) + (SHR(q[i+15],2) ^ q[i+15])
 
 #endif /* AVIAN_OCL_COMMON_CL */
+
+/* Where the nonce goes, and in which orientation.
+ *
+ * Every -80 kernel injects the nonce itself, by whatever mechanism its own
+ * state uses, and they all put it at header bytes 76 to 79. What they share
+ * is the orientation: those four bytes hold the nonce big-endian.
+ *
+ * That follows from the header. job.data is "the header in byte-swapped
+ * words" per cuda/avian-cuda-api.h, and avian-ocl.c swaps each word before
+ * upload, so word 19's bytes are be32enc of the nonce, which is exactly what
+ * algo/x16/x16rt-cuda-host.c writes into edata[19] before re-hashing a
+ * candidate on the CPU.
+ *
+ * This backend used to upload job.data unswapped and write the nonce
+ * little-endian. The two were consistent with each other, so every kernel
+ * agreed with a CPU chain run over the same bytes and avian-ocl-batchtest
+ * was happy, but those were not the eighty bytes the miner hashes. The
+ * device found genuine candidates, at the right rate, for the wrong message,
+ * and the miner rejected all of them: a backend that mined nothing while
+ * reporting a hashrate. avian-ocl-batchtest now verifies the way the miner
+ * verifies, and covers all sixteen first-round kernels rather than three.
+ */

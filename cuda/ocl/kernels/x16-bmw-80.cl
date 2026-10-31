@@ -55,7 +55,7 @@ __kernel void bmw512_80(__global const uchar* block, const uint nonce_base,
    * message natively, so those four bytes are the HIGH half of word 9,
    * not the low half a big-endian reader would put them in. */
   mv[9] &= 0x00000000FFFFFFFFUL;
-  mv[9] |= ((ulong) (nonce_base + gid)) << 32;
+  mv[9] |= ((ulong) SWAP4(nonce_base + gid)) << 32;
   mv[10] = 0x80;
   mv[11] = 0;
   mv[12] = 0;

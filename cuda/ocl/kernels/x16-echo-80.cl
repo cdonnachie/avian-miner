@@ -95,7 +95,7 @@ __kernel void echo512_80(__global const uchar* block, const uint nonce_base,
    * than 64. The nonce is header bytes 76 to 79, the high half of word 9. */
   WC0 = HD(8);
   WC1 = (HD(9) & 0x00000000FFFFFFFFUL)
-        | (((ulong) (nonce_base + gid)) << 32);
+        | (((ulong) SWAP4(nonce_base + gid)) << 32);
   WD0 = 0x80;
   WD1 = 0;
   WE0 = 0;

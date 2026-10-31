@@ -143,6 +143,19 @@ static int cpu_chain( unsigned char out[64], const unsigned char header[80],
     return 1;
 }
 
+/* The miner's be32enc, spelled out rather than linked: this test builds
+ * against sphlib alone and pulling in the miner's util would bring the whole
+ * algo gate with it. */
+static void be32enc_local( uint32_t *out, uint32_t x )
+{
+    unsigned char *p = (unsigned char *) out;
+
+    p[0] = (unsigned char) ( x >> 24 );
+    p[1] = (unsigned char) ( x >> 16 );
+    p[2] = (unsigned char) ( x >> 8 );
+    p[3] = (unsigned char) x;
+}
+
 static uint64_t top64( const unsigned char h[64] )
 {
     uint64_t v;
@@ -171,6 +184,7 @@ static int run_order( struct backend *b, const char *order, int device )
 {
     avian_cuda_job job;
     unsigned char  header[80], want[64];
+    uint32_t       edata[20];
     uint32_t       cand[64];
     uint32_t       used = 0;
     unsigned int   seed = 0x5EED;
@@ -213,9 +227,22 @@ static int run_order( struct backend *b, const char *order, int device )
         uint64_t  t = ( (uint64_t) job.target[7] << 32 ) | job.target[6];
         uint32_t  nonce = cand[i];
 
-        /* The same four bytes the kernel replaces, patched the same way. */
-        memcpy( header + 76, &nonce, 4 );
-        if ( !cpu_chain( want, header, order ) )
+        /* The miner's own convention, not this test's.
+         *
+         * This used to patch the raw nonce into the raw header and hash
+         * that, which checked the device against the way this file happened
+         * to build a header. The device agreed, for years, while the miner
+         * rejected every candidate it was given: the ABI says job.data is
+         * the header in byte-swapped words, so what has to be hashed is
+         * be32enc of each word with be32enc of the nonce at word 19, which
+         * is what algo/x16/x16rt-cuda-host.c builds before calling
+         * x16r_hash. A test that verifies against anything else cannot see
+         * a backend whose header convention is wrong, which is exactly the
+         * bug that got through. */
+        for ( int k = 0; k < 19; k++ )
+            be32enc_local( &edata[k], job.data[k] );
+        be32enc_local( &edata[19], nonce );
+        if ( !cpu_chain( want, (const unsigned char *) edata, order ) )
         {
             printf( "  %s  the order is not hex\n", order );
             return 1;
@@ -243,8 +270,23 @@ int main( int argc, char **argv )
     /* A few orders rather than one: all sixteen algorithms as the first
      * round across the set, since that is the part a 64-byte-only chain
      * would never exercise. */
+    /* Sixteen rotations of one permutation, plus three unrelated ones.
+     *
+     * The rotations put every algorithm first in turn, and the first round
+     * is the only one with a kernel of its own: it takes the 80-byte header
+     * and injects the nonce, where the other fifteen take 64 bytes in
+     * place. So a header or nonce convention wrong in one of those sixteen
+     * kernels shows up here and nowhere else. The old list covered three of
+     * them. */
     static const char *const orders[] = {
-        "0123456789abcdef",
+        "0123456789abcdef", "123456789abcdef0",
+        "23456789abcdef01", "3456789abcdef012",
+        "456789abcdef0123", "56789abcdef01234",
+        "6789abcdef012345", "789abcdef0123456",
+        "89abcdef01234567", "9abcdef012345678",
+        "abcdef0123456789", "bcdef0123456789a",
+        "cdef0123456789ab", "def0123456789abc",
+        "ef0123456789abcd", "f0123456789abcde",
         "fedcba9876543210",
         "048c159d26ae37bf",
         "7e5c3a18f6d4b290",

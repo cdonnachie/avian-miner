@@ -59,7 +59,7 @@ __kernel void luffa512_80(__global const uchar* block, const uint nonce_base,
         M0 = DEC32BE(block + 64);
         M1 = DEC32BE(block + 68);
         M2 = DEC32BE(block + 72);
-        M3 = SWAP4(nonce_base + gid);
+        M3 = nonce_base + gid;
         M4 = 0x80000000;
         M5 = M6 = M7 = 0;
       } else if(i == 2) {

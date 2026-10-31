@@ -71,7 +71,7 @@ __kernel void keccak512_80(__global const uchar* block, const uint nonce_base,
   /* block 2: the last header word, then the padding. The nonce is header
    * bytes 76 to 79, the high half of word 9. */
   a00 ^= (((__global const ulong *) block)[9] & 0x00000000FFFFFFFFUL)
-         | (((ulong) (nonce_base + gid)) << 32);
+         | (((ulong) SWAP4(nonce_base + gid)) << 32);
   a10 ^= 0x01;                      /* at block byte 8, past the word */
   a31 ^= 0x8000000000000000UL;      /* the final bit, at byte 71 */
   KECCAK_F_1600;

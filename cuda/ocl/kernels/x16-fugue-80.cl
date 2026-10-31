@@ -82,7 +82,7 @@ __kernel void fugue512_80(__global const uchar* block, const uint nonce_base,
   FUGUE512_3(DEC32BE(block + 36), DEC32BE(block + 40), DEC32BE(block + 44));
   FUGUE512_3(DEC32BE(block + 48), DEC32BE(block + 52), DEC32BE(block + 56));
   FUGUE512_3(DEC32BE(block + 60), DEC32BE(block + 64), DEC32BE(block + 68));
-  FUGUE512_3(DEC32BE(block + 72), SWAP4(nonce_base + gid), as_uint2(fc_bit_count).y);
+  FUGUE512_3(DEC32BE(block + 72), (nonce_base + gid), as_uint2(fc_bit_count).y);
   FUGUE512_1A(as_uint2(fc_bit_count).x);
 
   /* The round shift the comment below calls "if necessary", which the
