@@ -343,13 +343,11 @@ AMD backend at all, because it builds in a container with no ROCm in it, so
 
 ## OpenCL, the third backend
 
-It mines, and on an Nvidia card it is now within a sixth of the hand-tuned
-CUDA backend. All thirty-two kernels are byte-exact against their `sph`
-counterparts and a whole batch's candidates verify on the CPU the way the
-miner verifies them. Built only when asked for, and **not yet in any
-release**: no AMD card has run it. The kernels do compile under AMD's own
-compiler for seven gfx generations, which is the half of that gap reachable
-without hardware; see below.
+It mines, it is correct on three vendors' OpenCL implementations, and on
+CDNA3 it is **faster than the HIP backend**. All thirty-two kernels are
+byte-exact against their `sph` counterparts and a whole batch's candidates
+verify on the CPU the way the miner verifies them. Built only when asked for,
+and not yet in any release.
 
 ### What it does, measured
 
@@ -360,6 +358,31 @@ On an RTX 3090 against the CUDA backend on the same card, `--gpu --benchmark
 | --- | --- |
 | CUDA, `avian_cuda.dll` | 38.2 MH/s |
 | OpenCL, `avian_ocl.dll` | 31.7 MH/s |
+
+And on an Instinct MI325X (`gfx942`, CDNA3) under ROCm 10.1's OpenCL, against
+the HIP backend's figure on the same card from the section above:
+
+| | x16rt |
+| --- | --- |
+| HIP, `libavian_amd.so` | 83.5 MH/s |
+| OpenCL, `libavian_ocl.so` | 107 MH/s |
+
+Which is the opposite of what this backend was built expecting. It exists
+because a mining distribution ships OpenCL and no HIP, so the premise was a
+portable fallback that would cost some throughput; on CDNA3 it is about a
+quarter faster than the vendor-toolkit backend. Treat the margin as
+indicative rather than settled: the HIP figure came from ninety seconds and
+the OpenCL one from thirty, whose rolling average was still falling when it
+stopped. No consumer AMD card has run it yet, and that is the number that
+decides anything, since nobody mines on an Instinct.
+
+The first AMD run was also the real test of correctness, because AMD's
+compiler is a third implementation after Nvidia's and POCL. All 32 kernels
+matched `sph`, all 19 chain orders verified every candidate, and the
+uncapped candidate counts came back identical to Nvidia's, order by order.
+Three implementations agreeing on which nonces clear a target, over the same
+header, is what makes the header-convention fix below credible rather than
+merely self-consistent.
 
 83% of a backend whose kernels carry inline PTX and texture lookups, from a
 portable one. It was 4% until two things were fixed, and both are worth
