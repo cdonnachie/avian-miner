@@ -369,12 +369,21 @@ the HIP backend's figure on the same card from the section above:
 
 Which is the opposite of what this backend was built expecting. It exists
 because a mining distribution ships OpenCL and no HIP, so the premise was a
-portable fallback that would cost some throughput; on CDNA3 it is about a
-quarter faster than the vendor-toolkit backend. Treat the margin as
-indicative rather than settled: the HIP figure came from ninety seconds and
-the OpenCL one from thirty, whose rolling average was still falling when it
-stopped. No consumer AMD card has run it yet, and that is the number that
-decides anything, since nobody mines on an Instinct.
+portable fallback that would cost some throughput; on CDNA3 it is 28% faster
+than the vendor-toolkit backend.
+
+The OpenCL figure has stopped moving: over 120 seconds the rolling average
+converges on 107.3 and holds it for the last two minutes of samples, so the
+earlier decline from 122 was that average settling from a short first
+interval rather than the card throttling.
+
+Two things the comparison still does not settle. Both figures are for a fixed
+header, and `--benchmark` pins the chain to `FE17C8172501B98C` because ntime
+is zero, so if the HIP measurement used a different order the two are not
+quite the same work: order composition matters more than it looks, since one
+groestl in a chain costs what fourteen cheap rounds do. And nobody mines on
+an Instinct. A consumer card is the number that decides anything, and the HIP
+backend's 25.3 MH/s on an RX 6900 XT is what it has to be set against.
 
 The first AMD run was also the real test of correctness, because AMD's
 compiler is a third implementation after Nvidia's and POCL. All 32 kernels
