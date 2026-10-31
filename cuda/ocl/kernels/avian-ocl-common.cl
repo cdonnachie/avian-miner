@@ -40,9 +40,11 @@ typedef union {
 #if SPH_BIG_ENDIAN
   #define DEC32LE(x) SWAP4(*(const __global sph_u32 *) (x))
   #define DEC64LE(x) SWAP8(*(const __global sph_u64 *) (x))
+  #define DEC32BE(x) (*(const __global sph_u32 *) (x))
 #else
   #define DEC32LE(x) (*(const __global sph_u32 *) (x))
   #define DEC64LE(x) (*(const __global sph_u64 *) (x))
+  #define DEC32BE(x) SWAP4(*(const __global sph_u32 *) (x))
 #endif
 
 #define CONST_EXP2  q[i+0] + SPH_ROTL64(q[i+1], 5)  + q[i+2] + SPH_ROTL64(q[i+3], 11) + \
