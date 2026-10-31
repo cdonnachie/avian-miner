@@ -349,6 +349,7 @@ OCL_KERNEL_SOURCES = \
 	cuda/ocl/kernels/sph-common.cl \
 	cuda/ocl/kernels/avian-ocl-common.cl \
 	cuda/ocl/kernels/aes_helper.cl \
+	cuda/ocl/kernels/blake.cl \
 	cuda/ocl/kernels/jh.cl \
 	cuda/ocl/kernels/groestl.cl \
 	cuda/ocl/kernels/shavite.cl \
@@ -362,6 +363,7 @@ OCL_KERNEL_SOURCES = \
 	cuda/ocl/kernels/cubehash.cl \
 	cuda/ocl/kernels/fugue.cl \
 	cuda/ocl/kernels/whirlpool.cl \
+	cuda/ocl/kernels/x16-blake.cl \
 	cuda/ocl/kernels/x16-jh.cl \
 	cuda/ocl/kernels/x16-groestl.cl \
 	cuda/ocl/kernels/x16-shavite.cl \
@@ -415,7 +417,8 @@ avian_ocl_selftest_SOURCES = cuda/ocl/avian-ocl-selftest.c \
                              algo/cubehash/sph_cubehash.c \
                              algo/fugue/sph_fugue.c \
                              algo/whirlpool/sph_whirlpool.c \
-                             algo/sha/sph_sha2big.c
+                             algo/sha/sph_sha2big.c \
+                             algo/blake/sph_blake.c
 avian_ocl_selftest_CPPFLAGS = -I$(top_srcdir) -I$(top_builddir) @OCL_CFLAGS@
 avian_ocl_selftest_LDFLAGS = @OCL_LDFLAGS@
 avian_ocl_selftest_LDADD = @OCL_LIBS@

@@ -28,6 +28,7 @@
 
 #include "cuda/ocl/avian-ocl-kernels.h"
 
+#include "algo/blake/sph_blake.h"
 #include "algo/jh/sph_jh.h"
 #include "algo/groestl/sph_groestl.h"
 #include "algo/shavite/sph_shavite.h"
@@ -75,6 +76,7 @@ typedef void (*cpu_hash_fn)( void *out, const void *in );
         sph_##name##_close( &c, out );                          \
     }
 
+CPU_REFERENCE( blake512 )
 CPU_REFERENCE( jh512 )
 CPU_REFERENCE( groestl512 )
 CPU_REFERENCE( bmw512 )
@@ -123,6 +125,7 @@ static const struct
     const char  *entry;
     cpu_hash_fn  cpu;
 } s_case[] = {
+    { "blake512_64",    cpu_blake512 },
     { "jh512_64",       cpu_jh512 },
     { "groestl512_64",  cpu_groestl512 },
     { "shavite512_64",  cpu_shavite512 },
