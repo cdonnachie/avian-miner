@@ -147,7 +147,22 @@ int scanhash_x16rt_cuda( struct work *work, uint32_t max_nonce,
             if ( fulltest( vhash, ptarget ) )
             {
                 pdata[19] = candidates[c];
-                submit_solution( work, vhash, mythr );
+                /* Every CPU scanhash in the tree guards its submit with
+                 * !bench and this one did not. The target set above lets
+                 * nearly every hash through, so a benchmark submitted
+                 * several fake shares a second to a pool it does not have:
+                 * a failed HTTP request each time, a retry loop in the
+                 * workio thread that sleeps between attempts, and, because
+                 * solo mining forces fresh work after a block, a
+                 * restart_threads that ended each scan at its first
+                 * candidate rather than at the end of its window.
+                 *
+                 * Measured either way the reported rate is the same within
+                 * noise, so this is about the log and the scan window, not
+                 * throughput. The verify above still runs, because its cost
+                 * belongs in the figure. */
+                if ( !opt_benchmark )
+                    submit_solution( work, vhash, mythr );
             }
             else
             {
