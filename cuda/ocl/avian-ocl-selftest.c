@@ -152,6 +152,8 @@ static const struct
      * nonce taken from the work item rather than the header. */
     { "blake512_80",    cpu_blake512, 80 },
     { "sha512_80",      cpu_sha512, 80 },
+    { "bmw512_80",      cpu_bmw512, 80 },
+    { "groestl512_80",  cpu_groestl512, 80 },
 };
 
 #define CASE_COUNT ( sizeof s_case / sizeof s_case[0] )

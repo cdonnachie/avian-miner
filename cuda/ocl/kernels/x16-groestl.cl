@@ -13,16 +13,14 @@
  */
 
 #include "sph-common.cl"
+#include "avian-ocl-common.cl"
 #include "groestl.cl"
 
-__kernel void groestl512_64(__global ulong *hashes)
+__kernel void groestl512_64(__global hash_t *hashes)
 {
     const uint gid = get_global_id(0);
-    __global ulong *slot = hashes + (ulong) gid * 8;
-    union { uchar h1[64]; uint h4[16]; ulong h8[8]; } hash;
-
-    for (int i = 0; i < 8; i++)
-        hash.h8[i] = slot[i];
+    hash_t avian_priv = hashes[gid];
+    hash_t *hash = &avian_priv;
     {
     sph_u64 H[16];
     for (unsigned int u = 0; u < 15; u ++)
@@ -34,14 +32,14 @@ __kernel void groestl512_64(__global ulong *hashes)
   #endif
 
     sph_u64 g[16], m[16];
-    m[0] = hash.h8[0];
-    m[1] = hash.h8[1];
-    m[2] = hash.h8[2];
-    m[3] = hash.h8[3];
-    m[4] = hash.h8[4];
-    m[5] = hash.h8[5];
-    m[6] = hash.h8[6];
-    m[7] = hash.h8[7];
+    m[0] = hash->h8[0];
+    m[1] = hash->h8[1];
+    m[2] = hash->h8[2];
+    m[3] = hash->h8[3];
+    m[4] = hash->h8[4];
+    m[5] = hash->h8[5];
+    m[6] = hash->h8[6];
+    m[7] = hash->h8[7];
     for (unsigned int u = 0; u < 16; u ++)
       g[u] = m[u] ^ H[u];
     m[8] = 0x80; g[8] = m[8] ^ H[8];
@@ -63,8 +61,7 @@ __kernel void groestl512_64(__global ulong *hashes)
     for (unsigned int u = 0; u < 16; u ++)
       H[u] ^= xH[u];
     for (unsigned int u = 0; u < 8; u ++)
-      hash.h8[u] = H[u + 8];
+      hash->h8[u] = H[u + 8];
     }
-    for (int i = 0; i < 8; i++)
-        slot[i] = hash.h8[i];
+    hashes[gid] = avian_priv;
 }

@@ -13,13 +13,14 @@
  */
 
 #include "sph-common.cl"
+#include "avian-ocl-common.cl"
 #include "shavite.cl"
 
-__kernel void shavite512_64(__global ulong *hashes)
+__kernel void shavite512_64(__global hash_t *hashes)
 {
     const uint gid = get_global_id(0);
-    __global ulong *slot = hashes + (ulong) gid * 8;
-    union { uchar h1[64]; uint h4[16]; ulong h8[8]; } hash;
+    hash_t avian_priv = hashes[gid];
+    hash_t *hash = &avian_priv;
 
     /* Filled cooperatively across the work group and fenced, which is what
      * the chain files do; a stage lifted out of one would otherwise lose the
@@ -34,8 +35,6 @@ __kernel void shavite512_64(__global ulong *hashes)
     }
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    for (int i = 0; i < 8; i++)
-        hash.h8[i] = slot[i];
     {
     // IV
     sph_u32 h0 = SPH_C32(0x72FCCDD8), h1 = SPH_C32(0x79CA4727), h2 = SPH_C32(0x128A077B), h3 = SPH_C32(0x40D55AEC);
@@ -51,22 +50,22 @@ __kernel void shavite512_64(__global ulong *hashes)
 
     sph_u32 sc_count0 = (64 << 3), sc_count1 = 0, sc_count2 = 0, sc_count3 = 0;
 
-    rk00 = hash.h4[0];
-    rk01 = hash.h4[1];
-    rk02 = hash.h4[2];
-    rk03 = hash.h4[3];
-    rk04 = hash.h4[4];
-    rk05 = hash.h4[5];
-    rk06 = hash.h4[6];
-    rk07 = hash.h4[7];
-    rk08 = hash.h4[8];
-    rk09 = hash.h4[9];
-    rk0A = hash.h4[10];
-    rk0B = hash.h4[11];
-    rk0C = hash.h4[12];
-    rk0D = hash.h4[13];
-    rk0E = hash.h4[14];
-    rk0F = hash.h4[15];
+    rk00 = hash->h4[0];
+    rk01 = hash->h4[1];
+    rk02 = hash->h4[2];
+    rk03 = hash->h4[3];
+    rk04 = hash->h4[4];
+    rk05 = hash->h4[5];
+    rk06 = hash->h4[6];
+    rk07 = hash->h4[7];
+    rk08 = hash->h4[8];
+    rk09 = hash->h4[9];
+    rk0A = hash->h4[10];
+    rk0B = hash->h4[11];
+    rk0C = hash->h4[12];
+    rk0D = hash->h4[13];
+    rk0E = hash->h4[14];
+    rk0F = hash->h4[15];
     rk10 = 0x80;
     rk11 = rk12 = rk13 = rk14 = rk15 = rk16 = rk17 = rk18 = rk19 = rk1A = 0;
     rk1B = 0x2000000;
@@ -75,23 +74,22 @@ __kernel void shavite512_64(__global ulong *hashes)
 
     c512(buf);
 
-    hash.h4[0] = h0;
-    hash.h4[1] = h1;
-    hash.h4[2] = h2;
-    hash.h4[3] = h3;
-    hash.h4[4] = h4;
-    hash.h4[5] = h5;
-    hash.h4[6] = h6;
-    hash.h4[7] = h7;
-    hash.h4[8] = h8;
-    hash.h4[9] = h9;
-    hash.h4[10] = hA;
-    hash.h4[11] = hB;
-    hash.h4[12] = hC;
-    hash.h4[13] = hD;
-    hash.h4[14] = hE;
-    hash.h4[15] = hF;
+    hash->h4[0] = h0;
+    hash->h4[1] = h1;
+    hash->h4[2] = h2;
+    hash->h4[3] = h3;
+    hash->h4[4] = h4;
+    hash->h4[5] = h5;
+    hash->h4[6] = h6;
+    hash->h4[7] = h7;
+    hash->h4[8] = h8;
+    hash->h4[9] = h9;
+    hash->h4[10] = hA;
+    hash->h4[11] = hB;
+    hash->h4[12] = hC;
+    hash->h4[13] = hD;
+    hash->h4[14] = hE;
+    hash->h4[15] = hF;
     }
-    for (int i = 0; i < 8; i++)
-        slot[i] = hash.h8[i];
+    hashes[gid] = avian_priv;
 }
