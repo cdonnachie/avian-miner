@@ -10,6 +10,10 @@
  * In place on a per-work-item 64-byte slot, which is the convention the CUDA
  * kernels already use (x17_sha512_gpu_hash_64 and its siblings), so the host
  * driver is the same shape for either backend.
+ *
+ * avian-ocl-entry: jh512_64
+ * Read by cuda/ocl/mkkernels.sh, which cannot derive the entry point from the
+ * file name and must not guess it.
  */
 
 #include "sph-common.cl"

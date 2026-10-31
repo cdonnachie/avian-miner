@@ -342,11 +342,38 @@ if HAVE_GPU_OCL
 OCL_OBJECTS = cuda/ocl/avian-ocl.ocl.o
 GPU_BACKENDS += libavian_ocl.so
 
-%.ocl.o: %.c
-	$(CC) $(CFLAGS) @OCL_CFLAGS@ -I$(top_srcdir) -fPIC -c -o $@ $<
+# Listed rather than globbed: automake does not handle $(wildcard) in a
+# dependency, and a kernel that is not listed here would not trigger a
+# regenerate, so the header would go stale against its own sources.
+OCL_KERNEL_SOURCES = \
+	cuda/ocl/kernels/sph-common.cl \
+	cuda/ocl/kernels/jh.cl \
+	cuda/ocl/kernels/x16-jh.cl
+
+# Generated into the build tree, so a read-only source tree still builds, and
+# BUILT_SOURCES because every object that embeds it needs it to exist before
+# the first compile rather than after.
+OCL_KERNELS_H = cuda/ocl/avian-ocl-kernels.h
+BUILT_SOURCES = $(OCL_KERNELS_H)
+
+$(OCL_KERNELS_H): $(OCL_KERNEL_SOURCES) $(top_srcdir)/cuda/ocl/mkkernels.sh
+	$(MKDIR_P) cuda/ocl
+	$(SHELL) $(top_srcdir)/cuda/ocl/mkkernels.sh $@
+
+%.ocl.o: %.c $(OCL_KERNELS_H)
+	$(CC) $(CFLAGS) @OCL_CFLAGS@ -I$(top_srcdir) -I$(top_builddir) -fPIC -c -o $@ $<
 
 libavian_ocl.so: $(OCL_OBJECTS)
 	$(CC) -shared -o $@ $(OCL_OBJECTS) @OCL_LDFLAGS@ @OCL_LIBS@
+
+# Not in bin_PROGRAMS: this compares one round function against one sph
+# function and is a development and CI tool, not something to install.
+check_PROGRAMS = avian-ocl-selftest
+avian_ocl_selftest_SOURCES = cuda/ocl/avian-ocl-selftest.c algo/jh/sph_jh.c
+avian_ocl_selftest_CPPFLAGS = -I$(top_srcdir) -I$(top_builddir) @OCL_CFLAGS@
+avian_ocl_selftest_LDFLAGS = @OCL_LDFLAGS@
+avian_ocl_selftest_LDADD = @OCL_LIBS@
+cuda/ocl/avian_ocl_selftest-avian-ocl-selftest.$(OBJEXT): $(OCL_KERNELS_H)
 endif
 
 # Built by `make`, not only by `make libavian_cuda.so`, and left beside the
@@ -359,5 +386,7 @@ avian_miner_SOURCES += algo/x16/x16rt-cuda-gate.c \
 # += rather than =, which silently dropped example-cfg.json and nomacro.pl
 # from a `make dist` of any GPU build.
 EXTRA_DIST += $(CUDA_SOURCES) cuda/avian-cuda-api.h cuda/avian-gpu-backend.h
-CLEANFILES = $(NV_OBJECTS) $(AMD_OBJECTS) $(GPU_BACKENDS)
+EXTRA_DIST += cuda/ocl/mkkernels.sh $(OCL_KERNEL_SOURCES)
+CLEANFILES = $(NV_OBJECTS) $(AMD_OBJECTS) $(GPU_BACKENDS) \
+             $(OCL_OBJECTS) $(OCL_KERNELS_H)
 endif
