@@ -346,7 +346,9 @@ AMD backend at all, because it builds in a container with no ROCm in it, so
 It mines. All thirty-two kernels are byte-exact against their `sph`
 counterparts and a whole batch's candidates verify on the CPU. Built only when
 asked for, and **not yet in any release**: no AMD card has run it, so there
-are no performance figures and nothing is claimed about them.
+are no performance figures and nothing is claimed about them. The kernels do
+compile under AMD's own compiler for seven gfx generations, which is the half
+of that gap reachable without hardware; see below.
 
 ```sh
 ./configure --with-curl --with-opencl                 # system OpenCL SDK
@@ -363,6 +365,34 @@ thing that checks the sixteen kernels working together. Sixteen kernels each
 correct in isolation is not a working scan: a fugue kernel that read its
 `__local` mixtab before the work group had filled it passed the first test and
 failed every candidate in the second.
+
+### Checking AMD without an AMD card
+
+```sh
+cuda/ocl/amd-compile-check.sh                 # all seven targets, about 3 min
+cuda/ocl/amd-compile-check.sh cuda/ocl/avian-ocl-kernels.h gfx1030
+```
+
+ROCm ships the same clang its OpenCL runtime drives, and that compiler will
+build for any gfx target whether or not one is plugged in. So the failures
+that are a compiler's opinion rather than a card's behaviour are reachable
+here: Polaris through RDNA 4, `gfx803` to `gfx1201`, all seven clean. It exits
+0 and says so where ROCm is not installed, so it is safe to run anywhere.
+
+This is worth having because of what one program means. The backend hands
+`clCreateProgramWithSource` all thirty-three sources at once and that call
+concatenates them, so the whole backend is a single translation unit and a
+name defined twice is a program-wide hazard. The script assembles the program
+the same way for that reason, and compiles with `-Werror`, because the failure
+it is looking for is a warning: `sha512.cl` and `simd.cl` both defined `MAJ`,
+to the same value by different means, and whichever the generator emitted
+second silently changed what every line after it meant. The macros in
+`sha512.cl` are prefixed now, since `simd.cl` is vendored upstream and stays
+byte-for-byte.
+
+What it proves is that the kernels compile, on those targets, today. It says
+nothing about whether they hash correctly or at a useful rate on any of them.
+Only the two tests above, on real hardware, answer that.
 
 Why a third backend when the HIP one already covers AMD: a mining
 distribution ships an OpenCL stack and maintains it across image updates, and

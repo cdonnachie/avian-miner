@@ -471,7 +471,8 @@ avian_miner_SOURCES += algo/x16/x16rt-cuda-gate.c \
 # += rather than =, which silently dropped example-cfg.json and nomacro.pl
 # from a `make dist` of any GPU build.
 EXTRA_DIST += $(CUDA_SOURCES) cuda/avian-cuda-api.h cuda/avian-gpu-backend.h
-EXTRA_DIST += cuda/ocl/mkkernels.sh $(OCL_KERNEL_SOURCES)
+EXTRA_DIST += cuda/ocl/mkkernels.sh cuda/ocl/amd-compile-check.sh
+EXTRA_DIST += $(OCL_KERNEL_SOURCES)
 CLEANFILES = $(NV_OBJECTS) $(AMD_OBJECTS) $(GPU_BACKENDS) \
              $(OCL_OBJECTS) $(OCL_KERNELS_H)
 endif
