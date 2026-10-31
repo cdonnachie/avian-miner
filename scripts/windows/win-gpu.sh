@@ -152,7 +152,17 @@ echo "  previous: $OLD"
 # and without one.
 EXTRA=""
 [ "$WITH_OPENCL" = 1 ] && EXTRA="--with-opencl"
-eval "$OLD $EXTRA CPPFLAGS=\"\${CPPFLAGS:-} -DHAVE_CUDA\"" > /tmp/win-gpu-cfg.log 2>&1 \
+# CFLAGS has to be named again, and that is not tidiness. config.log records
+# the arguments configure was given and not the variables it was handed in
+# the environment, so the line recovered above has lost the CFLAGS win-build.sh
+# and win-sv2.sh were careful to set. This stage runs last, so what it drops
+# is what ships: every Windows GPU build before this went out at the -g -O2
+# autoconf falls back to, with no -march at all, and the measured tier in
+# win-build.sh's comment never reached a GPU release. Same default as there,
+# same variable to override it.
+AVIAN_CFLAGS=${AVIAN_CFLAGS:-"-O3 -march=x86-64-v2"}
+echo "  CFLAGS: $AVIAN_CFLAGS"
+eval "$OLD $EXTRA CFLAGS=\"$AVIAN_CFLAGS\" CPPFLAGS=\"\${CPPFLAGS:-} -DHAVE_CUDA\"" > /tmp/win-gpu-cfg.log 2>&1 \
     || { echo "  configure failed"; tail -20 /tmp/win-gpu-cfg.log; exit 1; }
 echo "  configured"
 
