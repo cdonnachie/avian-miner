@@ -364,6 +364,7 @@ OCL_KERNEL_SOURCES = \
 	cuda/ocl/kernels/cubehash.cl \
 	cuda/ocl/kernels/fugue.cl \
 	cuda/ocl/kernels/whirlpool.cl \
+	cuda/ocl/kernels/sha512.cl \
 	cuda/ocl/kernels/hamsi.cl \
 	cuda/ocl/kernels/hamsi_helper.cl \
 	cuda/ocl/kernels/hamsi_helper_big.cl \

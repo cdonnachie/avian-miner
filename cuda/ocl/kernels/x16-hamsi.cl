@@ -86,4 +86,5 @@ __kernel void hamsi512_64(__global hash_t* hashes)
 
     for (int i = 0; i < 16; i++) hash->h4[i] = SWAP4(hash->h4[i]);
   hashes[gid] = avian_priv;
+  #undef buf
 }

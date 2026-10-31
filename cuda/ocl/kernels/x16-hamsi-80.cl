@@ -93,4 +93,5 @@ __kernel void hamsi512_80(__global const uchar* block, const uint nonce_base,
 
     for (int i = 0; i < 16; i++) hash->h4[i] = SWAP4(hash->h4[i]);
   hashes[gid] = avian_priv;
+  #undef buf
 }

@@ -38,8 +38,18 @@ escape() {
 # AES_BIG_ENDIAN and then include aes_helper.cl themselves, so aes_helper has
 # to arrive through them, after that define, not before it.
 #
-# Include guards are kept, so a file reached twice is harmless: the second
-# copy compiles to nothing.
+# Each inlined file is wrapped in a guard named after it, which the file
+# itself does not have to carry. That matters because the backend hands all of
+# these strings to clCreateProgramWithSource at once and OpenCL concatenates
+# them into a single translation unit, so blake.cl arriving through both
+# x16-blake.cl and x16-blake-80.cl would otherwise redefine BLAKE_IV512. Doing
+# it here rather than in the sources keeps the vendored MIT files byte-for-byte
+# upstream, and keeps it in one place.
+#
+# The guard is on the file name, so a file meant to be included twice with
+# different macros would quietly get only its first expansion. Nothing does
+# that today: echo.cl and shavite.cl both set AES_BIG_ENDIAN to 0, and hamsi's
+# two helpers are two separate files.
 inline_pass() {
     awk -v dir="$K" '
         /^[ \t]*#include "/ {
@@ -47,14 +57,19 @@ inline_pass() {
             sub(/^[ \t]*#include "/, "", f)
             sub(/".*$/, "", f)
             path = dir "/" f
+            guard = "AVIAN_OCL_INC_" toupper(f)
+            gsub(/[^A-Za-z0-9_]/, "_", guard)
             if ((getline line < path) <= 0) {
                 print "mkkernels.sh: cannot read " path > "/dev/stderr"
                 exit 1
             }
+            print "#ifndef " guard
+            print "#define " guard " 1"
             print line
             while ((getline line < path) > 0)
                 print line
             close(path)
+            print "#endif /* " guard " */"
             next
         }
         { print }
