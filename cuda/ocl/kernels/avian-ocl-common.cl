@@ -29,6 +29,22 @@ typedef union {
 #define SHL(x, n) ((x) << (n))
 #define SHR(x, n) ((x) >> (n))
 
+/* DEC32LE and DEC64LE read a little-endian word out of the 80-byte header.
+ *
+ * sph-common.cl comes from darkcoin.cl, whose chain starts with blake and so
+ * only ever needed the big-endian readers. The chain files for coins starting
+ * with something else define these alongside them, and the first rounds taken
+ * from those files use them. Copied from fresh.cl and whirlcoin.cl, which are
+ * MIT; see sph-common.cl for the notice.
+ */
+#if SPH_BIG_ENDIAN
+  #define DEC32LE(x) SWAP4(*(const __global sph_u32 *) (x))
+  #define DEC64LE(x) SWAP8(*(const __global sph_u64 *) (x))
+#else
+  #define DEC32LE(x) (*(const __global sph_u32 *) (x))
+  #define DEC64LE(x) (*(const __global sph_u64 *) (x))
+#endif
+
 #define CONST_EXP2  q[i+0] + SPH_ROTL64(q[i+1], 5)  + q[i+2] + SPH_ROTL64(q[i+3], 11) + \
                     q[i+4] + SPH_ROTL64(q[i+5], 27) + q[i+6] + SPH_ROTL64(q[i+7], 32) + \
                     q[i+8] + SPH_ROTL64(q[i+9], 37) + q[i+10] + SPH_ROTL64(q[i+11], 43) + \
