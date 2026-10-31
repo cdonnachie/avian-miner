@@ -341,6 +341,86 @@ target there rather than to the script. The Linux release no longer builds an
 AMD backend at all, because it builds in a container with no ROCm in it, so
 `gfx-targets` now governs Windows alone.
 
+## OpenCL, the third backend
+
+**Incomplete. It enumerates devices and cannot hash yet**, so
+`avian_cuda_device_count` deliberately returns 0 and the miner routes no work
+to it. Built only when asked for, and absent from every release.
+
+```sh
+./configure --with-curl --with-opencl                 # system OpenCL SDK
+./configure --with-curl --with-opencl=/usr/local/cuda # a CUDA toolkit has CL/cl.h
+make libavian_ocl.so
+```
+
+Why a third backend when the HIP one already covers AMD: a mining
+distribution ships an OpenCL stack and maintains it across image updates, and
+does not ship HIP. The dependency comparison is the whole argument.
+
+| backend | size | needs at run time |
+| --- | --- | --- |
+| `libavian_cuda.so` | 42 MB, eight architectures | nothing but libc |
+| `libavian_amd.so` | 3 MB, one architecture | `libamdhip64.so.6` and a 25 MB chain |
+| `libavian_ocl.so` | 22 KB | `libOpenCL.so.1`, which a rig already has |
+
+It also reaches Intel, which neither of the others does, and because OpenCL
+compiles kernels at run time there is no architecture list and no fatbinary:
+a card that does not exist yet still works, and `cuda/hip/gfx-targets` and
+`cuda/sm-targets` have no equivalent here.
+
+Two things the build needs to know. A CUDA toolkit carries `CL/cl.h` and
+`libOpenCL`, so passing it as the prefix avoids installing an OpenCL SDK,
+which is how the release container would get them. And configure tries
+`-l:libOpenCL.so.1` as well as `-lOpenCL`, because a machine can carry the
+ICD loader without the development symlink: that is the ordinary state of a
+mining rig, and of WSL with only a vendor ICD registered.
+
+It is last in the loader's table on purpose. OpenCL can drive either vendor's
+card, so where a vendor backend is present both would enumerate the same
+device; taking the vendor one first means the faster path wins by default and
+OpenCL serves the machines where the vendor runtime is missing.
+
+`AVIAN_OCL_ALLOW_CPU=1` makes it offer OpenCL CPU devices as well. For
+development only: this miner's own CPU path is hand-vectorised and faster, so
+the only reason to want a CPU device is to exercise the backend on a machine
+with no OpenCL GPU. POCL provides one, which is how this was developed.
+
+### The kernels, and where they come from
+
+The round functions are the sgminer lineage's, which are MIT rather than GPL:
+each `.cl` carries its own notice from `Projet RNRT SAPHIR` (sphlib), `phm`
+and `djm34`. MIT material can be conveyed under GPLv3, so they keep their
+notices and nothing else changes.
+
+They need one adjustment, and it was measured rather than assumed. sgminer's
+chain holds its inter-stage hash in byte-swapped 64-bit words, so `jh.cl` and
+its siblings apply `DEC64E`, which is `SWAP8` on a little-endian device, to
+every load and store. Our CPU `sph_jh.c` does not: it has
+`dec64e_aligned = sph_dec64le_aligned`. Both byte-swap the IV through `C64e`,
+so the IVs already agree and only the message differs. Checked against
+`sph_jh512` on a fixed 64-byte input, all four combinations:
+
+```
+in=as-is   out=as-is   differ
+in=as-is   out=swap64  differ
+in=swap64  out=as-is   differ
+in=swap64  out=swap64  MATCH
+```
+
+Feeding swapped input is the same as removing the `SWAP8` from the load, so
+**dropping `DEC64E` from each kernel's load and store makes it a byte-exact
+drop-in for its `sph` counterpart.** That is what makes one kernel per
+algorithm workable: each is verifiable on its own against the CPU through
+`avian_cuda_set_diagnostics`, rather than only the whole chain being
+checkable at the end.
+
+Two things are not in that lineage and have to be written. SHA-512, because
+those repositories predate x16r, though it is the easiest of the sixteen and
+`cuda/upstream/x17/cuda_x17_sha512.cu` is already the right 64-byte in-place
+shape. And the 80-byte first-round variants for all sixteen, because X16RT
+hashes the 80-byte header in round one and 64 bytes after, while those
+kernels assume a fixed chain with one entry point.
+
 ### The HIP runtime on Linux, and on a mining rig
 
 `libavian_amd.so` needs ROCm's HIP runtime at run time, not just at build
