@@ -50,7 +50,7 @@ __kernel void sha512_80(__global const uchar* block, const uint nonce_base,
   W[15] = 640;                     /* 80 bytes */
 
   for (int i = 16; i < 80; i++)
-    W[i] = W[i - 16] + SSG0(W[i - 15]) + W[i - 7] + SSG1(W[i - 2]);
+    W[i] = W[i - 16] + SHA512_SSG0(W[i - 15]) + W[i - 7] + SHA512_SSG1(W[i - 2]);
 
   s[0] = a = 0x6A09E667F3BCC908UL;
   s[1] = b = 0xBB67AE8584CAA73BUL;
@@ -63,8 +63,8 @@ __kernel void sha512_80(__global const uchar* block, const uint nonce_base,
 
   for (int i = 0; i < 80; i++)
   {
-    ulong t1 = h + BSG1(e) + CH(e, f, g) + SHA512_K[i] + W[i];
-    ulong t2 = BSG0(a) + MAJ(a, b, c);
+    ulong t1 = h + SHA512_BSG1(e) + SHA512_CH(e, f, g) + SHA512_K[i] + W[i];
+    ulong t2 = SHA512_BSG0(a) + SHA512_MAJ(a, b, c);
 
     h = g; g = f; f = e; e = d + t1;
     d = c; c = b; b = a; a = t1 + t2;

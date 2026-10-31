@@ -7,21 +7,27 @@
  *
  * Not a kernel, so no avian-ocl-entry marker. The two wrappers hold only
  * their own padding and the round loop, which is where they differ.
+ *
+ * Every macro here is prefixed, because a program is one translation unit and
+ * these names are not unique: simd.cl defines MAJ too, as the boolean form
+ * rather than bitselect. Same value, four instructions instead of one, and
+ * whichever source the generator happens to emit second wins for everything
+ * after it. Prefixing is this file's job, since simd.cl is vendored upstream.
  */
 
 /* rotate() is a left rotate, so a right rotate by n is a left rotate by
  * 64 - n. The count has to be the same width as the value. */
-#define ROR64(x, n)   rotate((ulong)(x), (ulong)(64 - (n)))
+#define SHA512_ROR64(x, n)   rotate((ulong)(x), (ulong)(64 - (n)))
 
-#define BSG0(x)  (ROR64(x, 28) ^ ROR64(x, 34) ^ ROR64(x, 39))
-#define BSG1(x)  (ROR64(x, 14) ^ ROR64(x, 18) ^ ROR64(x, 41))
-#define SSG0(x)  (ROR64(x,  1) ^ ROR64(x,  8) ^ ((x) >> 7))
-#define SSG1(x)  (ROR64(x, 19) ^ ROR64(x, 61) ^ ((x) >> 6))
+#define SHA512_BSG0(x)  (SHA512_ROR64(x, 28) ^ SHA512_ROR64(x, 34) ^ SHA512_ROR64(x, 39))
+#define SHA512_BSG1(x)  (SHA512_ROR64(x, 14) ^ SHA512_ROR64(x, 18) ^ SHA512_ROR64(x, 41))
+#define SHA512_SSG0(x)  (SHA512_ROR64(x,  1) ^ SHA512_ROR64(x,  8) ^ ((x) >> 7))
+#define SHA512_SSG1(x)  (SHA512_ROR64(x, 19) ^ SHA512_ROR64(x, 61) ^ ((x) >> 6))
 
 /* bitselect(a, b, c) is "c ? b : a" per bit, which is one instruction on AMD
  * (v_bfi_b32) and the right way to write these two on a GPU. */
-#define CH(x, y, z)   bitselect(z, y, x)
-#define MAJ(x, y, z)  bitselect(x, y, (x) ^ (z))
+#define SHA512_CH(x, y, z)   bitselect(z, y, x)
+#define SHA512_MAJ(x, y, z)  bitselect(x, y, (x) ^ (z))
 
 __constant static const ulong SHA512_K[80] = {
     0x428A2F98D728AE22UL, 0x7137449123EF65CDUL, 0xB5C0FBCFEC4D3B2FUL, 0xE9B5DBA58189DBBCUL,
