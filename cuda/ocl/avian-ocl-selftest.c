@@ -162,6 +162,7 @@ static const struct
     { "cubehash512_80", cpu_cubehash512, 80 },
     { "shabal512_80",   cpu_shabal512, 80 },
     { "keccak512_80",   cpu_keccak512, 80 },
+    { "skein512_80",    cpu_skein512, 80 },
 };
 
 #define CASE_COUNT ( sizeof s_case / sizeof s_case[0] )
