@@ -347,8 +347,13 @@ GPU_BACKENDS += libavian_ocl.so
 # regenerate, so the header would go stale against its own sources.
 OCL_KERNEL_SOURCES = \
 	cuda/ocl/kernels/sph-common.cl \
+	cuda/ocl/kernels/aes_helper.cl \
 	cuda/ocl/kernels/jh.cl \
-	cuda/ocl/kernels/x16-jh.cl
+	cuda/ocl/kernels/groestl.cl \
+	cuda/ocl/kernels/shavite.cl \
+	cuda/ocl/kernels/x16-jh.cl \
+	cuda/ocl/kernels/x16-groestl.cl \
+	cuda/ocl/kernels/x16-shavite.cl
 
 # Generated into the build tree, so a read-only source tree still builds, and
 # BUILT_SOURCES because every object that embeds it needs it to exist before
@@ -369,7 +374,15 @@ libavian_ocl.so: $(OCL_OBJECTS)
 # Not in bin_PROGRAMS: this compares one round function against one sph
 # function and is a development and CI tool, not something to install.
 check_PROGRAMS = avian-ocl-selftest
-avian_ocl_selftest_SOURCES = cuda/ocl/avian-ocl-selftest.c algo/jh/sph_jh.c
+# Both shavite variants, as avian_miner_SOURCES does: sph_shavite.h redirects
+# sph_shavite512_* to the AES-NI implementation when __AES__ and __SSSE3__ are
+# defined and to the software one otherwise, so linking only one of them
+# builds on this machine and fails on the next.
+avian_ocl_selftest_SOURCES = cuda/ocl/avian-ocl-selftest.c \
+                             algo/jh/sph_jh.c \
+                             algo/groestl/sph_groestl.c \
+                             algo/shavite/sph_shavite.c \
+                             algo/shavite/sph-shavite-aesni.c
 avian_ocl_selftest_CPPFLAGS = -I$(top_srcdir) -I$(top_builddir) @OCL_CFLAGS@
 avian_ocl_selftest_LDFLAGS = @OCL_LDFLAGS@
 avian_ocl_selftest_LDADD = @OCL_LIBS@

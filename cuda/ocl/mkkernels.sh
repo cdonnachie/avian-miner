@@ -22,6 +22,9 @@ set -eu
 K=$(cd "$(dirname "$0")" && pwd)/kernels
 out=${1:?usage: mkkernels.sh OUTPUT.h}
 
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
 # sed rather than awk for the escaping. A backslash in an awk gsub
 # replacement is a well-known trap, and these sources are full of macro
 # continuations, so there are plenty of them to get wrong.
@@ -29,25 +32,56 @@ escape() {
     sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/^/"/' -e 's/$/\\n"/'
 }
 
-inline() {
+# One substitution pass: every #include at the start of a line is replaced by
+# that file's text. Nested includes are left for the next pass rather than
+# refused, because they are normal here: echo.cl and shavite.cl each set
+# AES_BIG_ENDIAN and then include aes_helper.cl themselves, so aes_helper has
+# to arrive through them, after that define, not before it.
+#
+# Include guards are kept, so a file reached twice is harmless: the second
+# copy compiles to nothing.
+inline_pass() {
     awk -v dir="$K" '
         /^#include "/ {
             f = $0
             sub(/^#include "/, "", f)
             sub(/".*$/, "", f)
             path = dir "/" f
-            while ((getline line < path) > 0) {
-                if (line ~ /^#include "/) {
-                    print "mkkernels.sh: " f " includes a file; depth is one by design" > "/dev/stderr"
-                    exit 1
-                }
-                print line
+            if ((getline line < path) <= 0) {
+                print "mkkernels.sh: cannot read " path > "/dev/stderr"
+                exit 1
             }
+            print line
+            while ((getline line < path) > 0)
+                print line
             close(path)
             next
         }
         { print }
     ' "$1"
+}
+
+# Passes until no #include remains. Capped, so a cycle is a reported error
+# rather than a disk filling up.
+#
+# Written to files instead of piped, because a pipeline reports only its last
+# command's status: `inline | escape` returned escape's success and a failing
+# inliner silently truncated a kernel, which cost an afternoon. Nothing here
+# is allowed to fail quietly.
+flatten() {
+    src=$1
+    dst=$2
+    cp "$src" "$dst"
+    i=0
+    while grep -q '^#include "' "$dst" ; do
+        i=$((i + 1))
+        if [ "$i" -gt 8 ] ; then
+            echo "mkkernels.sh: $src still has includes after 8 passes; a cycle?" >&2
+            exit 1
+        fi
+        inline_pass "$dst" > "$dst.next" || exit 1
+        mv -f "$dst.next" "$dst"
+    done
 }
 
 {
@@ -74,7 +108,15 @@ HEAD
         fi
         printf '/* %s.cl, entry point %s */\n' "$base" "$entry"
         printf 'static const char k_%s[] =\n' "$sym"
-        inline "$f" | escape
+        flatten "$f" "$tmp/$base.flat"
+        # Checked rather than assumed: a kernel whose entry point did not
+        # survive flattening builds and then has no kernel in it, which the
+        # device reports as CL_INVALID_KERNEL_NAME far from the cause.
+        if ! grep -q "__kernel[ 	]*void[ 	]*$entry" "$tmp/$base.flat" ; then
+            echo "mkkernels.sh: $base.cl lost __kernel $entry while flattening" >&2
+            exit 1
+        fi
+        escape < "$tmp/$base.flat"
         printf ';\n\n'
         entries="$entries    { \"$entry\", k_$sym },
 "

@@ -29,6 +29,8 @@
 #include "cuda/ocl/avian-ocl-kernels.h"
 
 #include "algo/jh/sph_jh.h"
+#include "algo/groestl/sph_groestl.h"
+#include "algo/shavite/sph_shavite.h"
 
 /* Enough lanes that a bug depending on the work item index shows up, and few
  * enough that a CPU OpenCL device finishes quickly. */
@@ -45,6 +47,27 @@ static void cpu_jh512( void *out, const void *in )
     sph_jh512_close( &c, out );
 }
 
+static void cpu_groestl512( void *out, const void *in )
+{
+    sph_groestl512_context c;
+
+    sph_groestl512_init( &c );
+    sph_groestl512( &c, in, 64 );
+    sph_groestl512_close( &c, out );
+}
+
+/* Whichever sph_shavite.h selected: the AES-NI implementation where the host
+ * has those instructions, the software one otherwise. Both are linked, and
+ * either is a valid reference because they must agree with each other. */
+static void cpu_shavite512( void *out, const void *in )
+{
+    sph_shavite512_context c;
+
+    sph_shavite512_init( &c );
+    sph_shavite512( &c, in, 64 );
+    sph_shavite512_close( &c, out );
+}
+
 /* One row per kernel, naming the sph function it must agree with. The entry
  * point is the key into avian_ocl_kernels, so a kernel added to the .cl
  * directory without a row here is reported rather than silently untested. */
@@ -53,7 +76,9 @@ static const struct
     const char  *entry;
     cpu_hash_fn  cpu;
 } s_case[] = {
-    { "jh512_64", cpu_jh512 },
+    { "jh512_64",      cpu_jh512 },
+    { "groestl512_64", cpu_groestl512 },
+    { "shavite512_64", cpu_shavite512 },
 };
 
 #define CASE_COUNT ( sizeof s_case / sizeof s_case[0] )
@@ -103,6 +128,23 @@ static cl_device_id first_gpu( char *name, size_t name_len )
     return NULL;
 }
 
+static void print_build_log( cl_program pr, cl_device_id dev )
+{
+    size_t n = 0;
+    char  *log;
+
+    clGetProgramBuildInfo( pr, dev, CL_PROGRAM_BUILD_LOG, 0, NULL, &n );
+    if ( n <= 1 )
+        return;
+    log = malloc( n + 1 );
+    if ( log == NULL )
+        return;
+    clGetProgramBuildInfo( pr, dev, CL_PROGRAM_BUILD_LOG, n, log, NULL );
+    log[n] = '\0';
+    printf( "%s\n", log );
+    free( log );
+}
+
 /* 0 on agreement, 1 on a mismatch, 2 when the kernel would not build. */
 static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
                     const char *entry, cpu_hash_fn cpu )
@@ -135,18 +177,8 @@ static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
     }
     if ( clBuildProgram( pr, 1, &dev, "", NULL, NULL ) != CL_SUCCESS )
     {
-        size_t n = 0;
-        char  *log;
-
-        clGetProgramBuildInfo( pr, dev, CL_PROGRAM_BUILD_LOG, 0, NULL, &n );
-        log = malloc( n + 1 );
-        if ( log != NULL )
-        {
-            clGetProgramBuildInfo( pr, dev, CL_PROGRAM_BUILD_LOG, n, log, NULL );
-            log[n] = '\0';
-            printf( "  %-14s will not build:\n%s\n", entry, log );
-            free( log );
-        }
+        printf( "  %-14s will not build:\n", entry );
+        print_build_log( pr, dev );
         clReleaseProgram( pr );
         return 2;
     }
@@ -154,7 +186,12 @@ static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
     k = clCreateKernel( pr, entry, &err );
     if ( err != CL_SUCCESS )
     {
-        printf( "  %-14s no such kernel in its own source (%d)\n", entry, err );
+        /* The log matters here too, and this is where it was missing. A build
+         * can return success while the entry point is absent, and then only
+         * the warnings say why: a macro that renamed the function, or a
+         * preprocessor branch that compiled it out. */
+        printf( "  %-14s built, but has no such kernel in it (%d)\n", entry, err );
+        print_build_log( pr, dev );
         clReleaseProgram( pr );
         return 2;
     }
