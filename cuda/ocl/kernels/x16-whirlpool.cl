@@ -47,6 +47,15 @@ __kernel void whirlpool512_64(__global hash_t* hashes)
   }
 
   barrier(CLK_LOCAL_MEM_FENCE);
+  /* Every table read below goes through LT, not plain_T. The staging
+   * above was here already and three of the four round macros still
+   * read __constant, so 16 KB was copied into local memory each launch
+   * and then mostly ignored. A constant cache broadcasts one address to
+   * a whole warp; these indices are bytes of the state, so the lanes
+   * diverge and the read serialises. That made whirlpool about 82%% of
+   * an X16RT batch once groestl was fixed the same way. plain_RC stays
+   * in __constant deliberately: it is indexed by the round counter, so
+   * every lane does read the same address. */
 
 
   // whirlpool
@@ -79,9 +88,9 @@ __kernel void whirlpool512_64(__global hash_t* hashes)
   {
     sph_u64 tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
 
-    ROUND_KSCHED(plain_T, h, tmp, plain_RC[r]);
+    ROUND_KSCHED(LT, h, tmp, plain_RC[r]);
     TRANSFER(h, tmp);
-    ROUND_WENC(plain_T, n, h, tmp);
+    ROUND_WENC(LT, n, h, tmp);
     TRANSFER(n, tmp);
   }
 
@@ -123,7 +132,7 @@ __kernel void whirlpool512_64(__global hash_t* hashes)
 
     ROUND_KSCHED(LT, h, tmp, plain_RC[r]);
     TRANSFER(h, tmp);
-    ROUND_WENC(plain_T, n, h, tmp);
+    ROUND_WENC(LT, n, h, tmp);
     TRANSFER(n, tmp);
   }
 
