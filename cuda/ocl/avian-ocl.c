@@ -78,6 +78,7 @@ struct ocl_device
     cl_device_id     id;
     cl_platform_id   platform;
     char             name[256];
+    char             vendor[16];     /* "nvidia", "amd", "intel" or "" */
 
     /* Built on first use rather than at enumeration, so listing devices stays
      * cheap and a machine that never mines never pays for a compile. */
@@ -130,6 +131,39 @@ static void ocl_log( int level, const char *fmt, ... )
 #define OCL_LOG_ERR     3
 #define OCL_LOG_WARNING 4
 #define OCL_LOG_INFO    6
+
+/* Which vendor's silicon this is, as ABI 3 spells it.
+ *
+ * Matched on CL_DEVICE_VENDOR rather than the device name, because the name
+ * is whatever the driver feels like: ROCm calls an MI325X
+ * "gfx942:sramecc+:xnack-" while HIP calls the same card "AMD Instinct
+ * MI325X". The vendor string is the stable one. Substrings and case-folded,
+ * since it is a free-text field: "Advanced Micro Devices, Inc.", "NVIDIA
+ * Corporation", "Intel(R) Corporation".
+ *
+ * An unrecognised vendor comes back empty rather than guessed, and the
+ * loader treats empty as "cannot be matched to another backend's device",
+ * which keeps the card usable and merely gives up on deduplicating it. */
+static void ocl_vendor_of( cl_device_id id, char *out, size_t n )
+{
+    char v[256] = { 0 };
+
+    out[0] = '\0';
+    if ( clGetDeviceInfo( id, CL_DEVICE_VENDOR, sizeof v - 1, v, NULL )
+         != CL_SUCCESS )
+        return;
+    for ( char *p = v; *p != '\0'; p++ )
+        if ( *p >= 'A' && *p <= 'Z' )
+            *p = (char) ( *p - 'A' + 'a' );
+
+    if ( strstr( v, "nvidia" ) != NULL )
+        snprintf( out, n, "nvidia" );
+    else if ( strstr( v, "advanced micro" ) != NULL || strstr( v, "amd" ) != NULL
+              || strstr( v, "ati " ) != NULL )
+        snprintf( out, n, "amd" );
+    else if ( strstr( v, "intel" ) != NULL )
+        snprintf( out, n, "intel" );
+}
 
 static void enumerate( void )
 {
@@ -187,6 +221,7 @@ static void enumerate( void )
             dev->name[0]    = '\0';
             clGetDeviceInfo( ids[d], CL_DEVICE_NAME, sizeof dev->name,
                              dev->name, NULL );
+            ocl_vendor_of( ids[d], dev->vendor, sizeof dev->vendor );
             ocl_log( OCL_LOG_INFO, "OpenCL: %s on %s", dev->name, pname );
             s_devices++;
         }
@@ -773,6 +808,14 @@ AVIAN_CUDA_API const char *avian_cuda_device_name( int dev_id )
     if ( dev_id < 0 || dev_id >= s_devices )
         return "";
     return s_device[dev_id].name;
+}
+
+AVIAN_CUDA_API const char *avian_cuda_device_vendor( int dev_id )
+{
+    enumerate();
+    if ( dev_id < 0 || dev_id >= s_devices )
+        return "";
+    return s_device[dev_id].vendor;
 }
 
 AVIAN_CUDA_API void avian_cuda_set_logger( avian_cuda_log_fn fn )

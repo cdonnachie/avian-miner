@@ -452,6 +452,47 @@ correct in isolation is not a working scan: a fugue kernel that read its
 `__local` mixtab before the work group had filled it passed the first test and
 failed every candidate in the second.
 
+### Choosing a backend
+
+```sh
+avian-miner -a x16rt --gpu                           # each card to its vendor's backend
+avian-miner -a x16rt --gpu --gpu-backend=ocl         # everything through OpenCL
+avian-miner -a x16rt --gpu --gpu-backend=cuda,ocl    # Nvidia on CUDA, AMD on OpenCL
+```
+
+A priority applied **per vendor**, not a single choice, which is what lets a
+mixed rig run one backend per vendor. The third line above is the case: CUDA
+is first so it takes the Nvidia cards, HIP is absent from the list so it
+claims nothing, and the AMD cards fall through to OpenCL. The default is
+`cuda,amd,ocl`, so a card goes to its own vendor's backend when that loaded
+and to OpenCL when it did not, which is what OpenCL is for. A backend left
+out of the list is not loaded at all.
+
+**Each card now appears once.** Devices used to be numbered across the
+backends and left there, so a machine with a CUDA driver and an OpenCL one
+listed a single card as `GPU #0` and `GPU #1`; with no `--devices` the miner
+then started a thread on each and drove that card through two backends at
+once. A vendor now goes to the first backend in the order that reports a
+device of it, and later backends say so at debug level:
+
+```
+OpenCL: NVIDIA GeForce RTX 3090 is already driven by the Nvidia backend
+GPU #0: NVIDIA GeForce RTX 3090 (Nvidia)
+```
+
+This needed ABI 3 and `avian_cuda_device_vendor`, because only a backend
+knows what its cards are and the loader only knew which library found them.
+Names cannot stand in: ROCm calls an MI325X `gfx942:sramecc+:xnack-` where
+HIP calls the same card `AMD Instinct MI325X`, so the match is on
+`CL_DEVICE_VENDOR`. The matching is per vendor rather than per card, which is
+the pragmatic half: telling two backends' views of one physical card apart
+needs a PCI bus id through the ABI as well, and no rig has two cards of one
+vendor wanting different backends.
+
+**ABI 3 means every backend must be rebuilt together.** A library built
+against ABI 2 is skipped with a line naming both versions, so it fails safe,
+but a new miner beside an old `avian_cuda.dll` has no Nvidia support.
+
 ### Windows
 
 `make` builds this backend on Windows too, which neither of the others can,

@@ -21,6 +21,7 @@
  * zero.
  */
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "cuda/avian-cuda-api.h"
@@ -52,6 +53,19 @@
  * The logger is handed to each backend as it loads, so a failure inside one
  * is reported through the miner's log rather than lost. */
 int avian_gpu_init( avian_cuda_log_fn log );
+
+/* Which backends to use and in what order, as a comma separated list of
+ * "cuda", "amd" and "ocl". Call before avian_gpu_init; returns false with a
+ * reason logged on anything it cannot parse.
+ *
+ * A priority applied per vendor, not a single choice, which is what lets a
+ * mixed rig use one backend per vendor: "cuda,ocl" drives the Nvidia cards
+ * with CUDA and the AMD ones with OpenCL, because HIP is not in the list to
+ * claim them. A backend left out is not loaded at all.
+ *
+ * The default is cuda,amd,ocl: a card goes to its vendor's native backend
+ * when that loaded, and to OpenCL when it did not. */
+bool avian_gpu_set_backend_order( const char *spec );
 
 /* Devices across all backends. Zero before avian_gpu_init. */
 int avian_gpu_device_count( void );

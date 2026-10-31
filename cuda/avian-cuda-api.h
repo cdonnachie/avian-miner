@@ -44,7 +44,7 @@
  *      device_map, which only works when there is one backend
  *   2  job.device names the device, so two backends can each number from
  *      zero, and avian_cuda_abi_version exists to say so */
-#define AVIAN_CUDA_ABI_VERSION 2
+#define AVIAN_CUDA_ABI_VERSION 3
 
 #ifdef __cplusplus
 extern "C" {
@@ -89,6 +89,20 @@ AVIAN_CUDA_API int avian_cuda_abi_version(void);
 
 AVIAN_CUDA_API int avian_cuda_device_count(void);
 AVIAN_CUDA_API const char *avian_cuda_device_name(int dev_id);
+
+/* What the card is, not what found it: "nvidia", "amd", "intel", or "" when
+ * the backend cannot tell. Lower case and stable, because it is matched
+ * rather than printed.
+ *
+ * Added in ABI 3, and the reason is that only this library knows. The CUDA
+ * and HIP backends answer with a constant, since each drives one vendor. The
+ * OpenCL one drives any of them, so without this the loader cannot tell that
+ * its "gfx942" and the HIP backend's "AMD Instinct MI325X" are one card, and
+ * a machine with both offers the same silicon twice under two numbers. That
+ * is what --gpu-backend needs to resolve, and name strings cannot do it: the
+ * two backends do not describe a card the same way.
+ */
+AVIAN_CUDA_API const char *avian_cuda_device_vendor(int dev_id);
 
 /* Logging. The kernels have plenty to say but no business owning the
  * miner's log, so the miner hands one in. Unset means silence. */

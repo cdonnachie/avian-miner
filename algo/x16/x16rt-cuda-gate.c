@@ -32,9 +32,16 @@ bool register_x16rt_cuda_algo( algo_gate_t* gate )
 {
    int devices;
 
+   /* Before the init, unlike --devices below, because this decides which
+    * libraries are loaded rather than which of the found cards to keep. */
+   if ( !avian_gpu_set_backend_order( opt_gpu_backends ) )
+      return false;                            /* which has said why */
+
    /* Loads whichever vendors are present and numbers their devices as one
     * list, so the rest of the miner, and every "GPU #n" below, means one
-    * thing whether this machine has Nvidia cards, AMD cards or both. */
+    * thing whether this machine has Nvidia cards, AMD cards or both. A card
+    * appears once: if two backends can drive it, the first in the order owns
+    * it. */
    devices = avian_gpu_init( x16rt_cuda_log );
    if ( devices <= 0 )
    {

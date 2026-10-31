@@ -39,6 +39,7 @@
 typedef int         (*avian_gpu_scan_fn)( const avian_cuda_job *, uint32_t *, int, uint32_t * );
 typedef int         (*avian_gpu_count_fn)( void );
 typedef const char *(*avian_gpu_name_fn)( int );
+typedef const char *(*avian_gpu_vendor_fn)( int );
 typedef void        (*avian_gpu_logger_fn)( avian_cuda_log_fn );
 typedef void        (*avian_gpu_diag_fn)( avian_cuda_hash_n_fn, avian_cuda_prehash_fn );
 typedef int         (*avian_gpu_abi_fn)( void );
@@ -46,12 +47,14 @@ typedef int         (*avian_gpu_abi_fn)( void );
 struct backend
 {
    const char          *vendor;      /* "Nvidia", "AMD" or "OpenCL", for logs */
+   const char          *key;         /* what --gpu-backend calls it */
    const char          *library;     /* the file name we tried */
    void                *handle;      /* NULL when absent, which is normal */
    bool                 found;       /* the file was on disk, loaded or not */
    avian_gpu_scan_fn    scan_batch;
    avian_gpu_count_fn   device_count;
    avian_gpu_name_fn    device_name;
+   avian_gpu_vendor_fn  device_vendor;
    avian_gpu_logger_fn  set_logger;
    avian_gpu_diag_fn    set_diagnostics;
    int                  devices;
@@ -64,10 +67,24 @@ struct backend
  * Every loop over this array derives its length, so a fourth row needs
  * nothing else. */
 static struct backend s_backend[3] = {
-   { .vendor = "Nvidia", .library = AVIAN_GPU_NVIDIA_LIB_NAME },
-   { .vendor = "AMD",    .library = AVIAN_GPU_AMD_LIB_NAME    },
-   { .vendor = "OpenCL", .library = AVIAN_GPU_OPENCL_LIB_NAME },
+   { .vendor = "Nvidia", .key = "cuda", .library = AVIAN_GPU_NVIDIA_LIB_NAME },
+   { .vendor = "AMD",    .key = "amd",  .library = AVIAN_GPU_AMD_LIB_NAME    },
+   { .vendor = "OpenCL", .key = "ocl",  .library = AVIAN_GPU_OPENCL_LIB_NAME },
 };
+
+/* Which backends to try and in what order, as indices into s_backend.
+ *
+ * The default is that array's own order, so a card goes to its vendor's
+ * native backend when that loaded and to OpenCL when it did not, which is
+ * what OpenCL is for. --gpu-backend replaces the list, and because it is a
+ * priority applied per vendor rather than a single choice, a mixed rig can
+ * have both: "cuda,ocl" gives the Nvidia cards CUDA and leaves the AMD ones
+ * to OpenCL, because HIP is not in the list to claim them.
+ *
+ * A backend left out of the list is not loaded at all rather than loaded and
+ * ignored, which also keeps its absence out of the log. */
+static int  s_order[3] = { 0, 1, 2 };
+static int  s_order_len = 3;
 
 /* The flat numbering the miner sees. */
 static struct
@@ -178,11 +195,12 @@ static bool bind_entry_points( struct backend *b )
    b->scan_batch      = (avian_gpu_scan_fn)   AVIAN_GPU_DLSYM( b->handle, "avian_cuda_scan_batch" );
    b->device_count    = (avian_gpu_count_fn)  AVIAN_GPU_DLSYM( b->handle, "avian_cuda_device_count" );
    b->device_name     = (avian_gpu_name_fn)   AVIAN_GPU_DLSYM( b->handle, "avian_cuda_device_name" );
+   b->device_vendor   = (avian_gpu_vendor_fn) AVIAN_GPU_DLSYM( b->handle, "avian_cuda_device_vendor" );
    b->set_logger      = (avian_gpu_logger_fn) AVIAN_GPU_DLSYM( b->handle, "avian_cuda_set_logger" );
    b->set_diagnostics = (avian_gpu_diag_fn)   AVIAN_GPU_DLSYM( b->handle, "avian_cuda_set_diagnostics" );
 
    return b->scan_batch && b->device_count && b->device_name
-       && b->set_logger && b->set_diagnostics;
+       && b->device_vendor && b->set_logger && b->set_diagnostics;
 }
 
 /* A backend built against a different revision of cuda/avian-cuda-api.h is
@@ -269,17 +287,24 @@ static void load_backend( struct backend *b, avian_cuda_log_fn log )
 
    /* Two separate refusals, each saying so. Folded into one test, a library
     * missing any entry point but scan_batch was dropped without a word,
-    * which is the same silence this file has already been caught in once. */
-   if ( !bind_entry_points( b ) )
+    * which is the same silence this file has already been caught in once.
+    *
+    * The version first, because it subsumes the other and says more. Every
+    * ABI bump that adds an entry point makes an older library fail both
+    * tests, and "built against ABI 2, this miner wants 3" tells someone to
+    * update their DLL where "missing an entry point" reads like a corrupt
+    * file. ABI 3 added avian_cuda_device_vendor and would have done exactly
+    * that in the wrong order. */
+   if ( !abi_matches( b ) )     /* which has said why */
    {
-      applog( LOG_WARNING, "%s backend %s is missing an entry point; ignoring it",
-              b->vendor, b->library );
       AVIAN_GPU_DLCLOSE( b->handle );
       b->handle = NULL;
       return;
    }
-   if ( !abi_matches( b ) )     /* which has said why */
+   if ( !bind_entry_points( b ) )
    {
+      applog( LOG_WARNING, "%s backend %s is missing an entry point; ignoring it",
+              b->vendor, b->library );
       AVIAN_GPU_DLCLOSE( b->handle );
       b->handle = NULL;
       return;
@@ -295,25 +320,116 @@ static void load_backend( struct backend *b, avian_cuda_log_fn log )
       b->devices = 0;
 }
 
+bool avian_gpu_set_backend_order( const char *spec )
+{
+   int  order[3];
+   int  len = 0;
+   char buf[64];
+
+   if ( spec == NULL || *spec == '\0' )
+      return true;
+   if ( strlen( spec ) >= sizeof(buf) )
+   {
+      applog( LOG_ERR, "--gpu-backend is too long" );
+      return false;
+   }
+   strcpy( buf, spec );
+
+   for ( char *tok = strtok( buf, "," ); tok != NULL; tok = strtok( NULL, "," ) )
+   {
+      size_t i;
+
+      while ( *tok == ' ' )
+         tok++;
+      for ( i = 0; i < sizeof(s_backend) / sizeof(s_backend[0]); i++ )
+         if ( strcmp( tok, s_backend[i].key ) == 0 )
+            break;
+      if ( i == sizeof(s_backend) / sizeof(s_backend[0]) )
+      {
+         applog( LOG_ERR, "--gpu-backend: '%s' is not a backend; expected "
+                          "cuda, amd or ocl", tok );
+         return false;
+      }
+      /* Named twice is a typo worth refusing rather than silently taking the
+       * first, since the whole point of the option is an order. */
+      for ( int j = 0; j < len; j++ )
+         if ( order[j] == (int) i )
+         {
+            applog( LOG_ERR, "--gpu-backend: '%s' is listed twice", tok );
+            return false;
+         }
+      order[len++] = (int) i;
+   }
+   if ( len == 0 )
+   {
+      applog( LOG_ERR, "--gpu-backend is empty" );
+      return false;
+   }
+
+   memcpy( s_order, order, sizeof order );
+   s_order_len = len;
+   return true;
+}
+
 int avian_gpu_init( avian_cuda_log_fn log )
 {
+   /* Which backend ended up owning each vendor's cards. A vendor goes to the
+    * first backend in the order that reports a device of it, and every later
+    * backend's devices of that vendor are passed over.
+    *
+    * This is what stops a machine with a CUDA driver and an OpenCL one from
+    * offering the same card twice. The old code numbered devices across the
+    * backends and left it there, so such a machine listed one GPU as two,
+    * and with no --devices the miner started a thread on each and drove one
+    * card through two backends at once.
+    *
+    * By vendor rather than by card, which is the pragmatic half of the
+    * problem: matching two backends' views of one physical card needs a PCI
+    * bus id across the ABI, and no rig this is aimed at has two cards of a
+    * vendor that want different backends. A device whose vendor comes back
+    * empty is never matched and so always kept. */
+   struct { const char *vendor; struct backend *owner; } claim[AVIAN_GPU_MAX_DEVICES];
+   int claims = 0;
+
    if ( s_initialised )
       return s_devices;
    s_initialised = true;
 
-   for ( size_t i = 0; i < sizeof(s_backend) / sizeof(s_backend[0]); i++ )
+   for ( int o = 0; o < s_order_len; o++ )
    {
-      struct backend *b = &s_backend[i];
+      struct backend *b = &s_backend[s_order[o]];
 
       load_backend( b, log );
       for ( int d = 0; d < b->devices; d++ )
       {
+         const char *v = b->device_vendor( d );
+         int         taken = -1;
+
+         for ( int c = 0; c < claims; c++ )
+            if ( claim[c].owner != b && v != NULL && *v != '\0'
+                 && strcmp( claim[c].vendor, v ) == 0 )
+            {
+               taken = c;
+               break;
+            }
+         if ( taken >= 0 )
+         {
+            applog( LOG_DEBUG, "%s: %s is already driven by the %s backend",
+                    b->vendor, b->device_name( d ),
+                    claim[taken].owner->vendor );
+            continue;
+         }
          if ( s_devices >= AVIAN_GPU_MAX_DEVICES )
          {
             applog( LOG_WARNING, "more than %d GPUs; the rest are ignored",
                     AVIAN_GPU_MAX_DEVICES );
-            b->devices = d;
             break;
+         }
+         if ( v != NULL && *v != '\0' && claims < AVIAN_GPU_MAX_DEVICES )
+         {
+            claim[claims].vendor = v;
+            claim[claims].owner  = b;
+            claims++;
          }
          s_device[s_devices].backend = b;
          s_device[s_devices].local   = d;

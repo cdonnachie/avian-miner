@@ -90,6 +90,20 @@ extern "C" AVIAN_CUDA_API int avian_cuda_device_count(void)
     return cuda_num_devices;
 }
 
+extern "C" AVIAN_CUDA_API const char *avian_cuda_device_vendor(int dev_id)
+{
+    (void) dev_id;
+    /* At compile time, because this file is compiled twice: once by nvcc and
+     * once by hipcc. Only the hipcc build has cuda/hip on its include path,
+     * so its <cuda_runtime.h> is the rename shim there, whose own guard this
+     * is and whose header says an Nvidia build never sees it. */
+#ifdef AVIAN_CUDASHIM_H
+    return "amd";
+#else
+    return "nvidia";
+#endif
+}
+
 extern "C" AVIAN_CUDA_API const char *avian_cuda_device_name(int dev_id)
 {
     /* From the inventory, so the name matches the device the kernels will

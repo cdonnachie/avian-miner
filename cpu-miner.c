@@ -128,6 +128,7 @@ bool opt_gpu = false;
  * backend cannot be forgotten in two places and claim one. */
 bool gpu_backend_active = false;
 char *opt_gpu_devices = NULL;
+char *opt_gpu_backends = NULL;
 /* Hashes per second. The old hardcoded 1000.0 put every miner on the
  * pool's 2/s share floor regardless of what it could actually do. */
 /* A last resort if the measurement at startup fails, and deliberately
@@ -3234,6 +3235,18 @@ void parse_arg(int key, char *arg )
       opt_gpu_devices = strdup( arg );
 #else
       applog( LOG_ERR, "this build has no GPU backend, so --devices selects nothing" );
+      show_usage_and_exit(1);
+#endif
+      break;
+   case 1210:  // gpu-backend
+#if defined(HAVE_CUDA)
+      /* Text again, and for a stronger reason than --devices: the list
+       * decides which libraries get loaded at all, so it has to be in hand
+       * before enumeration rather than applied after it. */
+      free( opt_gpu_backends );
+      opt_gpu_backends = strdup( arg );
+#else
+      applog( LOG_ERR, "this build has no GPU backend, so --gpu-backend selects nothing" );
       show_usage_and_exit(1);
 #endif
       break;

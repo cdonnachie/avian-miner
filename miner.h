@@ -617,6 +617,7 @@ extern bool opt_debug_diff;
 extern bool opt_gpu;
 extern bool gpu_backend_active;
 extern char *opt_gpu_devices;
+extern char *opt_gpu_backends;
 /* --sv2-hashrate, in hashes per second. What the miner declares when it
  * opens a channel, which is what the pool derives its share target from.
  * Measured at startup unless the flag was given, which is what the second
@@ -744,6 +745,11 @@ Options:\n\
       --avian-selftest          check -a's proof of work against hashes a real node reported\n\
       --gpu                     mine x16rt on the GPU instead of the CPU, one thread per card\n\
       --devices=N[,N|N-N]       mine on these GPUs only, numbered as --gpu lists them\n\
+      --gpu-backend=LIST        GPU backends to use, best first, from cuda,amd,ocl\n\
+                                default cuda,amd,ocl: each card to its own vendor's\n\
+                                backend, or OpenCL where that one did not load. A\n\
+                                priority per vendor, so cuda,ocl drives Nvidia cards\n\
+                                with CUDA and AMD ones with OpenCL\n\
       --sv2-hashrate=RATE       how fast this miner is, eg 30M. Measured at startup if\n\
                                 unset, which is the intended way. The pool works out this\n\
                                 worker's share target from it, so a wrong figure changes how\n\
@@ -834,6 +840,7 @@ static struct option const options[] = {
         { "avian-selftest", 0, NULL, 1206 },
         { "gpu", 0, NULL, 1207 },
         { "devices", 1, NULL, 1209 },
+        { "gpu-backend", 1, NULL, 1210 },
         { "sv2-hashrate", 1, NULL, 1208 },
         { 0, 0, 0, 0 }
 };
