@@ -23,9 +23,19 @@
 #define CL_TARGET_OPENCL_VERSION 120
 
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <direct.h>
+#define OCL_MKDIR( p )  _mkdir( p )
+#else
+#include <sys/stat.h>
+#include <sys/types.h>
+#define OCL_MKDIR( p )  mkdir( p, 0700 )
+#endif
 
 #include <CL/cl.h>
 
@@ -41,6 +51,11 @@
  *
  * A power of two so the rounding below leaves it alone. */
 #define AVIAN_OCL_THROUGHPUT ( 1u << 20 )
+
+/* Passed to clBuildProgram, and recorded in the cache key because a change
+ * here changes the compiled output. Empty today: these kernels are upstream's
+ * and no flag has been shown to help one yet. */
+#define AVIAN_OCL_BUILD_OPTIONS ""
 
 /* Candidates per batch. The miner re-hashes each one, so this only has to
  * exceed the genuine solutions plus whatever false positives a 64-bit compare
@@ -195,6 +210,332 @@ static void log_build_failure( struct ocl_device *dev )
     free( log );
 }
 
+/* The compiled program, kept between runs.
+ *
+ * OpenCL compiles at run time, which is what lets this backend work on a card
+ * that did not exist when it was built, and the bill for that is a compile
+ * every start: measured at about five seconds for the thirty-three sources on
+ * one device, and a rig pays it per card before any of them mine.
+ *
+ * So the built program is saved and reloaded. The saving is best effort
+ * throughout: every failure here falls through to compiling from source,
+ * because a cache that can break mining is worse than no cache.
+ *
+ * What makes a cached binary valid is the question that matters, since a
+ * stale one that still loads would hash wrongly. The file therefore carries
+ * the full identity it was built for, in full, and that is compared byte for
+ * byte rather than by hash: the platform and device names, the driver and
+ * OpenCL versions, the build options, the ABI version, and a hash of all the
+ * kernel source. Only a driver that changed its compiler without changing
+ * any of its version strings could get past that, and nothing can detect
+ * that. The backstop is the one already in the ABI: the miner re-hashes every
+ * candidate, so a wrong program costs throughput and logs, never a bad share.
+ */
+
+#define AVIAN_OCL_CACHE_MAGIC "AVNOCL1"   /* bump when this layout changes */
+
+/* Paths use forward slashes on both platforms. Win32 accepts them throughout,
+ * including _mkdir, and it keeps a backslash out of every string here.
+ *
+ * A failed mkdir is ignored rather than inspected. What errno holds after
+ * mkdir of a directory that already exists is not worth relying on across
+ * the two platforms, and "C:" as a first component fails on Windows for
+ * reasons that are not EEXIST. The only test that matters is whether the file
+ * can then be opened, and both callers already treat that failing as an
+ * ordinary miss.
+ */
+static void ocl_mkdir_p( char *path )
+{
+    for ( char *p = path + 1; ; p++ )
+    {
+        int end = ( *p == '\0' );
+
+        if ( *p == '/' || end )
+        {
+            *p = '\0';
+            (void) OCL_MKDIR( path );
+            if ( end )
+                return;
+            *p = '/';
+        }
+    }
+}
+
+/* Where to keep it, or 0 if nowhere sensible.
+ *
+ * AVIAN_OCL_CACHE names a directory, and set to nothing or to "none" turns
+ * the cache off, which is how to compare a cold compile against a warm one.
+ */
+static int cache_dir( char *out, size_t n )
+{
+    const char *base = getenv( "AVIAN_OCL_CACHE" );
+
+    if ( base != NULL )
+    {
+        if ( base[0] == '\0' || strcmp( base, "none" ) == 0 )
+            return 0;
+        if ( (size_t) snprintf( out, n, "%s", base ) >= n )
+            return 0;
+        ocl_mkdir_p( out );
+        return 1;
+    }
+
+#ifdef _WIN32
+    base = getenv( "LOCALAPPDATA" );
+    if ( base == NULL || base[0] == '\0' )
+        return 0;
+    if ( (size_t) snprintf( out, n, "%s/avian-miner/ocl", base ) >= n )
+        return 0;
+#else
+    base = getenv( "XDG_CACHE_HOME" );
+    if ( base != NULL && base[0] != '\0' )
+    {
+        if ( (size_t) snprintf( out, n, "%s/avian-miner/ocl", base ) >= n )
+            return 0;
+    }
+    else
+    {
+        base = getenv( "HOME" );
+        if ( base == NULL || base[0] == '\0' )
+            return 0;
+        if ( (size_t) snprintf( out, n, "%s/.cache/avian-miner/ocl", base ) >= n )
+            return 0;
+    }
+#endif
+    ocl_mkdir_p( out );
+    return 1;
+}
+
+/* FNV-1a over all the kernel source, so a changed kernel invalidates the
+ * cache without anyone having to remember to bump a version. Not a
+ * cryptographic hash and does not need to be: it is detecting an edit, not
+ * resisting one, and the identity string next to it is compared in full. */
+static uint64_t source_hash( void )
+{
+    static uint64_t cached = 0;
+    uint64_t        h;
+
+    if ( cached != 0 )
+        return cached;
+
+    h = 1469598103934665603ULL;
+    for ( size_t i = 0; i < AVIAN_OCL_KERNEL_COUNT; i++ )
+    {
+        const char *p = avian_ocl_kernels[i].entry;
+
+        for ( ; *p != '\0'; p++ )
+            h = ( h ^ (unsigned char) *p ) * 1099511628211ULL;
+        for ( p = avian_ocl_kernels[i].source; *p != '\0'; p++ )
+            h = ( h ^ (unsigned char) *p ) * 1099511628211ULL;
+    }
+    cached = h ? h : 1;
+    return cached;
+}
+
+/* Everything about this device and this build that could change the compiled
+ * output, NUL separated so two fields cannot run together and look like one.
+ * Returns the length written, or 0 if it did not fit. */
+static size_t device_identity( struct ocl_device *dev, char *out, size_t n )
+{
+    static const cl_platform_info pinfo[] = { CL_PLATFORM_NAME, CL_PLATFORM_VERSION };
+    static const cl_device_info   dinfo[] = { CL_DEVICE_NAME, CL_DRIVER_VERSION,
+                                              CL_DEVICE_VERSION, CL_DEVICE_OPENCL_C_VERSION };
+    size_t used = 0;
+
+    for ( size_t i = 0; i < sizeof pinfo / sizeof pinfo[0]; i++ )
+    {
+        size_t got = 0;
+
+        if ( clGetPlatformInfo( dev->platform, pinfo[i], n - used - 1,
+                                out + used, &got ) != CL_SUCCESS || got == 0 )
+            return 0;
+        used += got;                    /* got includes the NUL */
+        if ( used >= n )
+            return 0;
+    }
+    for ( size_t i = 0; i < sizeof dinfo / sizeof dinfo[0]; i++ )
+    {
+        size_t got = 0;
+
+        if ( clGetDeviceInfo( dev->id, dinfo[i], n - used - 1,
+                              out + used, &got ) != CL_SUCCESS || got == 0 )
+            return 0;
+        used += got;
+        if ( used >= n )
+            return 0;
+    }
+
+    {
+        int wrote = snprintf( out + used, n - used, "abi=%d;opts=%s",
+                              AVIAN_CUDA_ABI_VERSION, AVIAN_OCL_BUILD_OPTIONS );
+
+        if ( wrote < 0 || (size_t) wrote >= n - used )
+            return 0;
+        used += (size_t) wrote + 1;
+    }
+    return used;
+}
+
+static int cache_path( struct ocl_device *dev, const char *id, size_t idlen,
+                       char *out, size_t n )
+{
+    char     dir[768];
+    uint64_t h = 1469598103934665603ULL;
+
+    if ( !cache_dir( dir, sizeof dir ) )
+        return 0;
+
+    /* The file name is a hash of the identity, so it is short and contains
+     * nothing a filesystem minds, and the identity itself is compared in full
+     * inside the file.
+     *
+     * Only the device and the build options go into the name, never the
+     * source hash, so a device has exactly one file and a changed kernel
+     * overwrites it. With the source hash in the name instead, every kernel
+     * edit or upgrade would leave another two megabytes behind for ever and
+     * something would have to sweep up. The source hash is stored in the file
+     * and checked there. */
+    for ( size_t i = 0; i < idlen; i++ )
+        h = ( h ^ (unsigned char) id[i] ) * 1099511628211ULL;
+
+    (void) dev;
+    return (size_t) snprintf( out, n, "%s/%016llx.bin", dir,
+                              (unsigned long long) h ) < n;
+}
+
+/* A program from the cache, or NULL. Says nothing on an ordinary miss. */
+static cl_program cache_load( struct ocl_device *dev, const char *id,
+                              size_t idlen )
+{
+    char        path[1024];
+    FILE       *f;
+    char        magic[sizeof AVIAN_OCL_CACHE_MAGIC];
+    uint32_t    stored_idlen = 0, binlen = 0;
+    uint64_t    stored_src = 0;
+    char       *stored_id = NULL;
+    unsigned char *bin = NULL;
+    size_t      binsz;
+    cl_int      err = CL_SUCCESS, status = CL_SUCCESS;
+    cl_program  prog = NULL;
+
+    if ( !cache_path( dev, id, idlen, path, sizeof path ) )
+        return NULL;
+    f = fopen( path, "rb" );
+    if ( f == NULL )
+        return NULL;
+
+    if ( fread( magic, 1, sizeof magic, f ) != sizeof magic
+         || memcmp( magic, AVIAN_OCL_CACHE_MAGIC, sizeof magic ) != 0
+         || fread( &stored_idlen, sizeof stored_idlen, 1, f ) != 1
+         || stored_idlen != idlen )
+        goto done;
+
+    stored_id = malloc( stored_idlen );
+    if ( stored_id == NULL
+         || fread( stored_id, 1, stored_idlen, f ) != stored_idlen
+         || memcmp( stored_id, id, idlen ) != 0
+         || fread( &stored_src, sizeof stored_src, 1, f ) != 1
+         || stored_src != source_hash()
+         || fread( &binlen, sizeof binlen, 1, f ) != 1
+         || binlen == 0 || binlen > ( 512u << 20 ) )
+        goto done;
+
+    bin = malloc( binlen );
+    if ( bin == NULL || fread( bin, 1, binlen, f ) != binlen )
+        goto done;
+
+    binsz = binlen;
+    prog = clCreateProgramWithBinary( dev->cx, 1, &dev->id, &binsz,
+                                      (const unsigned char **) &bin,
+                                      &status, &err );
+    if ( err != CL_SUCCESS || status != CL_SUCCESS )
+    {
+        if ( prog != NULL )
+            clReleaseProgram( prog );
+        prog = NULL;
+        goto done;
+    }
+    /* Still required after loading a binary, and fast: this is the step that
+     * rejects a binary the driver no longer accepts. */
+    if ( clBuildProgram( prog, 1, &dev->id, AVIAN_OCL_BUILD_OPTIONS,
+                         NULL, NULL ) != CL_SUCCESS )
+    {
+        clReleaseProgram( prog );
+        prog = NULL;
+    }
+
+done:
+    free( stored_id );
+    free( bin );
+    fclose( f );
+    return prog;
+}
+
+/* Best effort, and quiet about it: a rig with a read-only home still mines,
+ * it just compiles every start. */
+static void cache_store( struct ocl_device *dev, const char *id, size_t idlen )
+{
+    char            path[1024], tmp[1100];
+    FILE           *f;
+    size_t          binsz = 0;
+    unsigned char  *bin;
+    uint64_t        src = source_hash();
+    uint32_t        idlen32 = (uint32_t) idlen, binlen32;
+    int             ok;
+
+    if ( !cache_path( dev, id, idlen, path, sizeof path ) )
+        return;
+    if ( clGetProgramInfo( dev->prog, CL_PROGRAM_BINARY_SIZES,
+                           sizeof binsz, &binsz, NULL ) != CL_SUCCESS
+         || binsz == 0 )
+        return;                 /* some implementations have no binary to give */
+
+    bin = malloc( binsz );
+    if ( bin == NULL )
+        return;
+    if ( clGetProgramInfo( dev->prog, CL_PROGRAM_BINARIES, sizeof bin, &bin,
+                           NULL ) != CL_SUCCESS )
+    {
+        free( bin );
+        return;
+    }
+
+    /* Through a temporary and renamed, so two miners starting together cannot
+     * leave a half written file for the next run to load. */
+    if ( (size_t) snprintf( tmp, sizeof tmp, "%s.tmp", path ) >= sizeof tmp )
+    {
+        free( bin );
+        return;
+    }
+    f = fopen( tmp, "wb" );
+    if ( f == NULL )
+    {
+        free( bin );
+        return;
+    }
+    binlen32 = (uint32_t) binsz;
+    ok = fwrite( AVIAN_OCL_CACHE_MAGIC, 1, sizeof AVIAN_OCL_CACHE_MAGIC, f )
+             == sizeof AVIAN_OCL_CACHE_MAGIC
+         && fwrite( &idlen32, sizeof idlen32, 1, f ) == 1
+         && fwrite( id, 1, idlen, f ) == idlen
+         && fwrite( &src, sizeof src, 1, f ) == 1
+         && fwrite( &binlen32, sizeof binlen32, 1, f ) == 1
+         && fwrite( bin, 1, binsz, f ) == binsz;
+    if ( fclose( f ) != 0 )
+        ok = 0;
+    free( bin );
+
+    if ( !ok )
+    {
+        remove( tmp );
+        return;
+    }
+    /* rename over an existing file fails on Windows, so clear the way. */
+    remove( path );
+    if ( rename( tmp, path ) != 0 )
+        remove( tmp );
+}
+
 /* Every kernel in one program.
  *
  * The sources are handed to clCreateProgramWithSource as that many strings,
@@ -207,7 +548,26 @@ static int build_program( struct ocl_device *dev )
 {
     const char *src[AVIAN_OCL_KERNEL_COUNT];
     size_t      len[AVIAN_OCL_KERNEL_COUNT];
+    char        id[2048];
+    size_t      idlen;
     cl_int      err;
+
+    idlen = device_identity( dev, id, sizeof id );
+    if ( idlen != 0 )
+    {
+        dev->prog = cache_load( dev, id, idlen );
+        if ( dev->prog != NULL )
+        {
+            ocl_log( OCL_LOG_INFO, "OpenCL: %s: kernels from the cache",
+                     dev->name );
+            return 1;
+        }
+    }
+
+    /* Said here rather than before the call, so it is only said when there is
+     * really a compile to wait for. */
+    ocl_log( OCL_LOG_INFO, "OpenCL: %s: compiling the kernels, which takes a "
+                           "moment on first use", dev->name );
 
     for ( size_t i = 0; i < AVIAN_OCL_KERNEL_COUNT; i++ )
     {
@@ -223,12 +583,15 @@ static int build_program( struct ocl_device *dev )
                  dev->name, err );
         return 0;
     }
-    if ( clBuildProgram( dev->prog, 1, &dev->id, "", NULL, NULL ) != CL_SUCCESS )
+    if ( clBuildProgram( dev->prog, 1, &dev->id, AVIAN_OCL_BUILD_OPTIONS,
+                         NULL, NULL ) != CL_SUCCESS )
     {
         ocl_log( OCL_LOG_ERR, "OpenCL: %s: the kernels would not build", dev->name );
         log_build_failure( dev );
         return 0;
     }
+    if ( idlen != 0 )
+        cache_store( dev, id, idlen );
     return 1;
 }
 
@@ -345,8 +708,6 @@ static int prepare_device( struct ocl_device *dev )
         goto fail;
     }
 
-    ocl_log( OCL_LOG_INFO, "OpenCL: %s: compiling the kernels, which takes a "
-                           "moment on first use", dev->name );
     if ( !build_program( dev ) )
         goto fail;
 

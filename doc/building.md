@@ -343,15 +343,26 @@ AMD backend at all, because it builds in a container with no ROCm in it, so
 
 ## OpenCL, the third backend
 
-**Incomplete. It enumerates devices and cannot hash yet**, so
-`avian_cuda_device_count` deliberately returns 0 and the miner routes no work
-to it. Built only when asked for, and absent from every release.
+It mines. All thirty-two kernels are byte-exact against their `sph`
+counterparts and a whole batch's candidates verify on the CPU. Built only when
+asked for, and **not yet in any release**: no AMD card has run it, so there
+are no performance figures and nothing is claimed about them.
 
 ```sh
 ./configure --with-curl --with-opencl                 # system OpenCL SDK
 ./configure --with-curl --with-opencl=/usr/local/cuda # a CUDA toolkit has CL/cl.h
 make libavian_ocl.so
+make check && ./avian-ocl-selftest && ./avian-ocl-batchtest
 ```
+
+The two tests answer different questions and both matter.
+`avian-ocl-selftest` compares each kernel against its `sph` function, 256
+lanes in one work group. `avian-ocl-batchtest` runs a real batch through
+`libavian_ocl.so` and re-hashes every candidate on the CPU, which is the only
+thing that checks the sixteen kernels working together. Sixteen kernels each
+correct in isolation is not a working scan: a fugue kernel that read its
+`__local` mixtab before the work group had filled it passed the first test and
+failed every candidate in the second.
 
 Why a third backend when the HIP one already covers AMD: a mining
 distribution ships an OpenCL stack and maintains it across image updates, and
@@ -361,7 +372,16 @@ does not ship HIP. The dependency comparison is the whole argument.
 | --- | --- | --- |
 | `libavian_cuda.so` | 42 MB, eight architectures | nothing but libc |
 | `libavian_amd.so` | 3 MB, one architecture | `libamdhip64.so.6` and a 25 MB chain |
-| `libavian_ocl.so` | 22 KB | `libOpenCL.so.1`, which a rig already has |
+| `libavian_ocl.so` | 10 MB, no architectures | `libOpenCL.so.1`, which a rig already has |
+
+The 10 MB is kernel source text, not code: the library is 22 KB of C around
+the thirty-three embedded sources. Each one carries its own dependencies
+inlined, so the shared round functions appear twice, and hamsi's expansion
+tables are 2.3 MB of that on their own. Emitting each shared file once would
+bring it to about 2.9 MB, but it would also mean a kernel source is no longer
+independently compilable, and the selftest's ability to build one kernel and
+name the file that failed is worth more than the difference. It compresses to
+well under that in a release tarball.
 
 It also reaches Intel, which neither of the others does, and because OpenCL
 compiles kernels at run time there is no architecture list and no fatbinary:
@@ -420,6 +440,49 @@ those repositories predate x16r, though it is the easiest of the sixteen and
 shape. And the 80-byte first-round variants for all sixteen, because X16RT
 hashes the 80-byte header in round one and 64 bytes after, while those
 kernels assume a fixed chain with one entry point.
+
+### The compiled program, kept between runs
+
+Compiling at run time is what lets a card that did not exist at build time
+work, and the bill for it is a compile every start, paid per card before any
+of them mine. So the built program is saved under
+`${XDG_CACHE_HOME:-~/.cache}/avian-miner/ocl` on Linux and
+`%LOCALAPPDATA%\avian-miner\ocl` on Windows, as one file per device, and
+reloaded next time. `AVIAN_OCL_CACHE` names a different directory, and set to
+`none` turns it off.
+
+Measured on POCL over CUDA, which is the only OpenCL device available here, by
+timing a run up to the point the program is ready:
+
+| POCL's own cache | ours | time |
+| --- | --- | --- |
+| cold | cold | 21.7 s |
+| cold | warm | 12.9 s |
+| warm | cold | 6.3 s |
+| warm | warm | 6.0 s |
+
+Read that honestly. Where the implementation already caches compiled programs
+itself, and POCL, NVIDIA (`~/.nv`) and ROCm 6.4 (`AMD_COMGR_CACHE_DIR`,
+`~/.cache/AMD`) all do, this layer saves nothing measurable. Where it does
+not, it halves a cold start rather than eliminating it, because
+`clCreateProgramWithBinary` still does real work. It is kept because the
+downside is bounded to one 2.3 MB file per device and the upside is real on an
+older ROCm, which is what a mining rig runs.
+
+Every failure falls through to compiling from source, because a cache that can
+break mining is worse than no cache. Checked rather than assumed: a corrupt
+file, a truncated file, an unwritable directory and an edited kernel each
+compile and mine correctly, and the last overwrites the stale entry rather
+than leaving it behind.
+
+What makes a cached binary valid is the part worth getting right, since a
+stale one that still loaded would hash wrongly. The file carries the platform
+and device names, the driver and OpenCL versions, the build options, the ABI
+version and a hash of all the kernel source, and those are compared in full
+rather than by hash. Only a driver that changed its compiler without changing
+any version string could get past that, and nothing can detect that. The
+backstop is the one already in the ABI: the miner re-hashes every candidate,
+so a wrong program costs throughput and log lines, never a bad share.
 
 ### The HIP runtime on Linux, and on a mining rig
 
