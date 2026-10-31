@@ -1,0 +1,274 @@
+/* Does the assembled chain actually scan?
+ *
+ *   ./avian-ocl-batchtest            # a few orders
+ *   ./avian-ocl-batchtest 0123456789abcdef   # one specific order
+ *
+ * avian-ocl-selftest checks each kernel against its sph counterpart. This
+ * checks the rest: that libavian_ocl.so loads, that the sixteen kernels run
+ * in the order a job asks for, that the nonce reaches the first round, and
+ * that the candidates coming back are real.
+ *
+ * It verifies them the way the miner does, which is the point. The ABI makes
+ * the caller re-hash every candidate on the CPU before submitting, so this
+ * runs the same X16RT chain here with sph and checks the device's answer
+ * against it. A wrong chain order, a dropped round, a nonce that never
+ * reached the kernel: all of them show up as candidates that do not verify.
+ *
+ * The backend is loaded with dlopen rather than linked, so what is tested is
+ * the shared object the miner will load.
+ */
+
+#include <dlfcn.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "cuda/avian-cuda-api.h"
+
+#include "algo/blake/sph_blake.h"
+#include "algo/bmw/sph_bmw.h"
+#include "algo/groestl/sph_groestl.h"
+#include "algo/jh/sph_jh.h"
+#include "algo/keccak/sph_keccak.h"
+#include "algo/skein/sph_skein.h"
+#include "algo/luffa/sph_luffa.h"
+#include "algo/cubehash/sph_cubehash.h"
+#include "algo/shavite/sph_shavite.h"
+#include "algo/simd/sph_simd.h"
+#include "algo/echo/sph_echo.h"
+#include "algo/hamsi/sph_hamsi.h"
+#include "algo/fugue/sph_fugue.h"
+#include "algo/shabal/sph_shabal.h"
+#include "algo/whirlpool/sph_whirlpool.h"
+#include "algo/sha/sph_sha2.h"
+
+/* sph_keccak.c reads this for its padding byte, and the definition lives in
+ * keccak-gate.c which a test binary should not link. 1 is classic Keccak,
+ * which is what X16RT uses; see avian-ocl-selftest.c. */
+int hard_coded_eb = 1;
+
+#define CPU_ROUND( name )                                               \
+    static void cpu_##name( void *out, const void *in, size_t len )     \
+    {                                                                   \
+        sph_##name##_context c;                                         \
+                                                                        \
+        sph_##name##_init( &c );                                        \
+        sph_##name( &c, in, len );                                      \
+        sph_##name##_close( &c, out );                                  \
+    }
+
+CPU_ROUND( blake512 )
+CPU_ROUND( bmw512 )
+CPU_ROUND( groestl512 )
+CPU_ROUND( jh512 )
+CPU_ROUND( keccak512 )
+CPU_ROUND( skein512 )
+CPU_ROUND( luffa512 )
+CPU_ROUND( cubehash512 )
+CPU_ROUND( shavite512 )
+CPU_ROUND( simd512 )
+CPU_ROUND( echo512 )
+CPU_ROUND( hamsi512 )
+CPU_ROUND( fugue512 )
+CPU_ROUND( shabal512 )
+CPU_ROUND( sha512 )
+
+static void cpu_whirlpool512( void *out, const void *in, size_t len )
+{
+    sph_whirlpool_context c;
+
+    sph_whirlpool_init( &c );
+    sph_whirlpool( &c, in, len );
+    sph_whirlpool_close( &c, out );
+}
+
+typedef void (*round_fn)( void *out, const void *in, size_t len );
+
+/* Indexed as x16r_Algo numbers them, which is what an order string indexes. */
+static const round_fn s_round[16] = {
+    cpu_blake512, cpu_bmw512, cpu_groestl512, cpu_jh512,
+    cpu_keccak512, cpu_skein512, cpu_luffa512, cpu_cubehash512,
+    cpu_shavite512, cpu_simd512, cpu_echo512, cpu_hamsi512,
+    cpu_fugue512, cpu_shabal512, cpu_whirlpool512, cpu_sha512
+};
+
+static int algo_from_hex( char c )
+{
+    if ( c >= '0' && c <= '9' ) return c - '0';
+    if ( c >= 'a' && c <= 'f' ) return c - 'a' + 10;
+    if ( c >= 'A' && c <= 'F' ) return c - 'A' + 10;
+    return -1;
+}
+
+/* The whole chain on the CPU: eighty bytes into the first round, sixty-four
+ * through the other fifteen. */
+static int cpu_chain( unsigned char out[64], const unsigned char header[80],
+                      const char *order )
+{
+    unsigned char buf[64];
+
+    for ( int i = 0; i < 16; i++ )
+    {
+        int a = algo_from_hex( order[i] );
+
+        if ( a < 0 )
+            return 0;
+        if ( i == 0 )
+            s_round[a]( buf, header, 80 );
+        else
+            s_round[a]( buf, buf, 64 );
+    }
+    memcpy( out, buf, 64 );
+    return 1;
+}
+
+static uint64_t top64( const unsigned char h[64] )
+{
+    uint64_t v;
+
+    /* The hash is little-endian, so its most significant eight bytes are
+     * 24 to 31, which is the word the device compares. */
+    memcpy( &v, h + 24, 8 );
+    return v;
+}
+
+struct backend
+{
+    int         (*abi)( void );
+    int         (*count)( void );
+    const char *(*name)( int );
+    void        (*setlog)( avian_cuda_log_fn );
+    int         (*scan)( const avian_cuda_job *, uint32_t *, int, uint32_t * );
+};
+
+static void logger( int level, const char *msg )
+{
+    printf( "  [%d] %s\n", level, msg );
+}
+
+static int run_order( struct backend *b, const char *order, int device )
+{
+    avian_cuda_job job;
+    unsigned char  header[80], want[64];
+    uint32_t       cand[64];
+    uint32_t       used = 0;
+    unsigned int   seed = 0x5EED;
+    int            n, bad = 0;
+
+    memset( &job, 0, sizeof job );
+    for ( int i = 0; i < 80; i++ )
+    {
+        seed = seed * 1103515245u + 12345u;
+        header[i] = (unsigned char) ( seed >> 16 );
+    }
+    memcpy( job.data, header, 80 );
+
+    /* An easy target so a 2^20 batch finds a handful: about one nonce in
+     * 65536 clears it, which is enough to check and few enough to print.
+     * target[7] is the most significant word, as cpuminer stores it. */
+    job.target[7] = 0x0000FFFFu;
+    job.target[6] = 0xFFFFFFFFu;
+
+    memcpy( job.order, order, 16 );
+    job.order[16]  = '\0';
+    job.start_nonce = 0x10000000u;
+    job.max_nonce   = 0xFFFFFFFFu;
+    job.device      = device;
+
+    n = b->scan( &job, cand, (int) ( sizeof cand / sizeof cand[0] ), &used );
+    if ( n < 0 )
+    {
+        printf( "  %s  the batch failed\n", order );
+        return 1;
+    }
+    if ( used == 0 )
+    {
+        printf( "  %s  reported no nonces tried\n", order );
+        return 1;
+    }
+
+    for ( int i = 0; i < n; i++ )
+    {
+        uint64_t  t = ( (uint64_t) job.target[7] << 32 ) | job.target[6];
+        uint32_t  nonce = cand[i];
+
+        /* The same four bytes the kernel replaces, patched the same way. */
+        memcpy( header + 76, &nonce, 4 );
+        if ( !cpu_chain( want, header, order ) )
+        {
+            printf( "  %s  the order is not hex\n", order );
+            return 1;
+        }
+        if ( top64( want ) > t )
+        {
+            printf( "  %s  nonce %08x does not verify: cpu top64 %016llx > "
+                    "target %016llx\n", order, nonce,
+                    (unsigned long long) top64( want ),
+                    (unsigned long long) t );
+            bad++;
+        }
+    }
+
+    printf( "  %s  %u nonces, %d candidates, %d not verifying\n",
+            order, used, n, bad );
+    return bad != 0;
+}
+
+int main( int argc, char **argv )
+{
+    void           *h;
+    struct backend  b;
+    int             failed = 0;
+    /* A few orders rather than one: all sixteen algorithms as the first
+     * round across the set, since that is the part a 64-byte-only chain
+     * would never exercise. */
+    static const char *const orders[] = {
+        "0123456789abcdef",
+        "fedcba9876543210",
+        "048c159d26ae37bf",
+        "7e5c3a18f6d4b290",
+    };
+
+    h = dlopen( "./libavian_ocl.so", RTLD_NOW );
+    if ( h == NULL )
+    {
+        printf( "dlopen: %s\n", dlerror() );
+        return 1;
+    }
+    b.abi    = dlsym( h, "avian_cuda_abi_version" );
+    b.count  = dlsym( h, "avian_cuda_device_count" );
+    b.name   = dlsym( h, "avian_cuda_device_name" );
+    b.setlog = dlsym( h, "avian_cuda_set_logger" );
+    b.scan   = dlsym( h, "avian_cuda_scan_batch" );
+    if ( !b.abi || !b.count || !b.name || !b.setlog || !b.scan )
+    {
+        printf( "an entry point is missing\n" );
+        return 1;
+    }
+    if ( b.abi() != AVIAN_CUDA_ABI_VERSION )
+    {
+        printf( "abi %d, expected %d\n", b.abi(), AVIAN_CUDA_ABI_VERSION );
+        return 1;
+    }
+
+    b.setlog( logger );
+    if ( b.count() < 1 )
+    {
+        /* Not a failure: a machine with no OpenCL GPU cannot run this, and
+         * saying so beats exiting non-zero and looking like a broken chain. */
+        printf( "no OpenCL device, so nothing was scanned\n" );
+        return 0;
+    }
+    printf( "device: %s\n", b.name( 0 ) );
+
+    if ( argc > 1 )
+        return run_order( &b, argv[1], 0 );
+
+    for ( size_t i = 0; i < sizeof orders / sizeof orders[0]; i++ )
+        failed += run_order( &b, orders[i], 0 );
+
+    printf( "%zu orders, %d with a problem\n",
+            sizeof orders / sizeof orders[0], failed );
+    return failed != 0;
+}

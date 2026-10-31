@@ -425,28 +425,40 @@ check_PROGRAMS = avian-ocl-selftest
 # sph_shavite512_* to the AES-NI implementation when __AES__ and __SSSE3__ are
 # defined and to the software one otherwise, so linking only one of them
 # builds on this machine and fails on the next.
-avian_ocl_selftest_SOURCES = cuda/ocl/avian-ocl-selftest.c \
-                             algo/jh/sph_jh.c \
-                             algo/groestl/sph_groestl.c \
-                             algo/shavite/sph_shavite.c \
-                             algo/shavite/sph-shavite-aesni.c \
-                             algo/bmw/sph_bmw.c \
-                             algo/skein/sph_skein.c \
-                             algo/keccak/sph_keccak.c \
-                             algo/simd/sph_simd.c \
-                             algo/echo/sph_echo.c \
-                             algo/shabal/sph_shabal.c \
-                             algo/luffa/sph_luffa.c \
-                             algo/cubehash/sph_cubehash.c \
-                             algo/fugue/sph_fugue.c \
-                             algo/whirlpool/sph_whirlpool.c \
-                             algo/sha/sph_sha2big.c \
-                             algo/blake/sph_blake.c \
-                             algo/hamsi/sph_hamsi.c
+OCL_SPH_SOURCES = \
+	algo/jh/sph_jh.c \
+	algo/groestl/sph_groestl.c \
+	algo/shavite/sph_shavite.c \
+	algo/shavite/sph-shavite-aesni.c \
+	algo/bmw/sph_bmw.c \
+	algo/skein/sph_skein.c \
+	algo/keccak/sph_keccak.c \
+	algo/simd/sph_simd.c \
+	algo/echo/sph_echo.c \
+	algo/shabal/sph_shabal.c \
+	algo/luffa/sph_luffa.c \
+	algo/cubehash/sph_cubehash.c \
+	algo/fugue/sph_fugue.c \
+	algo/whirlpool/sph_whirlpool.c \
+	algo/sha/sph_sha2big.c \
+	algo/blake/sph_blake.c \
+	algo/hamsi/sph_hamsi.c
+avian_ocl_selftest_SOURCES = cuda/ocl/avian-ocl-selftest.c $(OCL_SPH_SOURCES)
 avian_ocl_selftest_CPPFLAGS = -I$(top_srcdir) -I$(top_builddir) @OCL_CFLAGS@
 avian_ocl_selftest_LDFLAGS = @OCL_LDFLAGS@
 avian_ocl_selftest_LDADD = @OCL_LIBS@
 cuda/ocl/avian_ocl_selftest-avian-ocl-selftest.$(OBJEXT): $(OCL_KERNELS_H)
+
+# The other half of the testing: the selftest checks one kernel against one
+# sph function, this runs a whole batch through libavian_ocl.so and re-hashes
+# the candidates on the CPU. It dlopens the backend rather than linking it,
+# hence -ldl and no OpenCL flags of its own.
+check_PROGRAMS += avian-ocl-batchtest
+avian_ocl_batchtest_SOURCES = cuda/ocl/avian-ocl-batchtest.c $(OCL_SPH_SOURCES)
+avian_ocl_batchtest_CPPFLAGS = -I$(top_srcdir) -I$(top_builddir)
+avian_ocl_batchtest_LDADD = -ldl
+# It loads ./libavian_ocl.so, so that has to exist before `make check` runs.
+check-local: libavian_ocl.so
 endif
 
 # Built by `make`, not only by `make libavian_cuda.so`, and left beside the
