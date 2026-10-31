@@ -24,6 +24,18 @@ CF=${AVIAN_CFLAGS:-"-O3 -march=x86-64-v2"}
 # release wants and about an hour. Set it to one, say 86, when the thing
 # being tested is the host side and the kernels are beside the point.
 ARCH=${CUDA_ARCH:-}
+# The OpenCL backend, off unless asked for. It costs nothing to build, since
+# this image is a CUDA one and configure takes CL/cl.h and the loader straight
+# out of the toolkit, and it is the backend a mining distribution can actually
+# use: HiveOS ships an OpenCL stack and maintains it, and ships no HIP.
+#
+# Off by default for one reason, and it is not size. Devices are numbered
+# across the backends in load order, Nvidia then AMD then OpenCL, so on a
+# machine with a working CUDA driver the same card is found twice and
+# "GPU #1" is the same silicon as "GPU #0". Until there is a way to name a
+# backend rather than an index, a release carrying both would hand every
+# existing Nvidia user a second phantom device.
+OCL=${AVIAN_OCL:-}
 
 # git refuses to read a repository owned by another uid, which every mount
 # from the host is.
@@ -75,7 +87,7 @@ cd /build/miner
 # The committed configure is deliberately stale and has never known
 # --with-cuda, so a failed autogen leaves one that warns about "unrecognized
 # options" and quietly builds a CPU-only release. Checked rather than hoped.
-for opt in with-cuda enable-cudart-static with-avian-sv2; do
+for opt in with-cuda enable-cudart-static with-avian-sv2 with-opencl; do
     grep -q -- "$opt" configure || {
         echo "configure does not know --$opt, so autogen left a stale one"
         exit 1; }
@@ -87,13 +99,16 @@ CFLAGS="$CF" ./configure \
     ${ARCH:+--with-cuda-arch="$ARCH"} \
     --enable-cudart-static \
     ${SV2:+--with-avian-sv2="$SV2"} \
+    ${OCL:+--with-opencl="$CUDA"} \
     > /build/configure.log 2>&1 || { tail -30 /build/configure.log; exit 1; }
 grep -E "^checking how to link the CUDA runtime" /build/configure.log || true
+grep -E "^checking how to link the OpenCL loader" /build/configure.log || true
 # configure warns rather than fails on an option it does not know, so ask
 # config.log what it actually took.
 took() { grep -q "^$1='.\+'" config.log; }
 took NVCC || { echo "CUDA was asked for, configure did not take it"; exit 1; }
 [ -z "$SV2" ] || took AVIAN_SV2_LIBS || { echo "Stratum v2 was asked for, configure did not take it"; exit 1; }
+[ -z "$OCL" ] || took OCL_LIBS || { echo "OpenCL was asked for, configure did not take it"; exit 1; }
 
 echo
 echo "=== make ==="
@@ -103,14 +118,14 @@ make -j"$(nproc)" > /build/make.log 2>&1 || {
     echo "--- and the end of the log, where a link failure says why ---"
     tail -60 /build/make.log
     exit 1; }
-ls -l avian-miner libavian_cuda.so
+ls -l avian-miner libavian_cuda.so ${OCL:+libavian_ocl.so}
 
 echo
 echo "=== what the rig will need ==="
 # The whole point of the image, so it is reported rather than assumed. The
 # highest GLIBC_* version referenced is the floor: a machine with anything
 # older cannot run this at all.
-for f in avian-miner libavian_cuda.so; do
+for f in avian-miner libavian_cuda.so ${OCL:+libavian_ocl.so}; do
     echo "-- $f"
     echo -n "   glibc floor: "
     objdump -T "$f" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
@@ -123,7 +138,7 @@ echo "=== package ==="
 D=$OUT/$PKG-linux-x86_64
 rm -rf "$D"; mkdir -p "$D"
 cp avian-miner "$D/"
-for so in libavian_cuda.so libavian_amd.so; do [ -f "$so" ] && cp "$so" "$D/"; done
+for so in libavian_cuda.so libavian_amd.so libavian_ocl.so; do [ -f "$so" ] && cp "$so" "$D/"; done
 cp README.md LICENSE COPYING doc/licensing.md "$D/"
 tar -C "$OUT" -czf "$OUT/$PKG-linux-x86_64.tar.gz" "$PKG-linux-x86_64"
 rm -rf "$D"

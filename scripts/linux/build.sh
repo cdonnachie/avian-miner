@@ -13,6 +13,7 @@
 # this directly for a test build.
 #
 # Overridable: SV2 (the avian-sv2 workspace), OUT, IMAGE, AVIAN_CFLAGS,
+# AVIAN_OCL=1 to add the OpenCL backend,
 # CUDA_TAG, RUST_VERSION.
 set -eu
 
@@ -75,4 +76,5 @@ docker run --rm \
     ${SV2:+-v "$SV2:/src/sv2:ro"} \
     -v "$OUT:/out" \
     ${AVIAN_CFLAGS:+-e AVIAN_CFLAGS="$AVIAN_CFLAGS"}     ${CUDA_ARCH:+-e CUDA_ARCH="$CUDA_ARCH"} \
+    ${AVIAN_OCL:+-e AVIAN_OCL="$AVIAN_OCL"} \
     "$IMAGE" bash /src/miner/scripts/linux/in-container.sh
