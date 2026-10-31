@@ -45,15 +45,26 @@ bool register_x16rt_cuda_algo( algo_gate_t* gate )
        * driver's, which only makes sense once a library has loaded. */
       if ( avian_gpu_backend_present() == 0 )
          applog( LOG_ERR, "no GPU backend beside the miner, so --gpu cannot be "
-                          "honoured: expected %s or %s in this directory",
-                 AVIAN_GPU_NVIDIA_LIB_NAME, AVIAN_GPU_AMD_LIB_NAME );
+                          "honoured: expected %s, %s or %s in this directory",
+                 AVIAN_GPU_NVIDIA_LIB_NAME, AVIAN_GPU_AMD_LIB_NAME,
+                 AVIAN_GPU_OPENCL_LIB_NAME );
       else if ( avian_gpu_backend_count() == 0 )
          /* The libraries are right there, so telling anyone to go and look
           * for them sends them to the wrong place: what is missing is a
           * driver. Counting loads rather than files said exactly that. */
+         /* Naming what each one wants, rather than asserting what this
+          * machine has not got. It used to say "no NVIDIA or AMD runtime
+          * installed", which on an MI325X with ROCm on it is simply untrue:
+          * the AMD stack was there and the OpenCL loader was not. The lines
+          * above this one say which library was missing and why. */
          applog( LOG_ERR, "a GPU backend is beside the miner but none would "
-                          "load, so --gpu cannot be honoured: this machine "
-                          "has no NVIDIA or AMD runtime installed" );
+                          "load, so --gpu cannot be honoured. Each needs its "
+                          "own runtime: a CUDA driver for %s, HIP for %s, and "
+                          "an OpenCL loader (libOpenCL) for %s, which ROCm "
+                          "does not install unless its OpenCL userspace is "
+                          "asked for",
+                 AVIAN_GPU_NVIDIA_LIB_NAME, AVIAN_GPU_AMD_LIB_NAME,
+                 AVIAN_GPU_OPENCL_LIB_NAME );
       else
          applog( LOG_ERR, "no CUDA device found, so --gpu cannot be honoured" );
       return false;

@@ -30,8 +30,11 @@ set -eu
 hdr=${1:-cuda/ocl/avian-ocl-kernels.h}
 if [ $# -gt 0 ]; then shift; fi
 
-# Polaris through RDNA 4: the generations a miner is plausibly holding.
-targets=${*:-"gfx803 gfx900 gfx906 gfx1010 gfx1030 gfx1100 gfx1201"}
+# Polaris through RDNA 4: the generations a miner is plausibly holding, plus
+# gfx942, which is CDNA3 and not something anyone mines on, but is the one AMD
+# card this project can actually rent by the hour and so the one these kernels
+# get run on.
+targets=${*:-"gfx803 gfx900 gfx906 gfx1010 gfx1030 gfx1100 gfx1201 gfx942"}
 
 rocm=${ROCM_PATH:-/opt/rocm}
 clang=$rocm/llvm/bin/clang

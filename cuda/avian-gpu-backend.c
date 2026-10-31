@@ -254,8 +254,16 @@ static void load_backend( struct backend *b, avian_cuda_log_fn log )
          applog( LOG_ERR, "%s backend %s is there and will not load: %s",
                  b->vendor, path, f.why );
       else if ( beside_us )
-         applog( LOG_DEBUG, "no %s runtime on this machine, so %s was not used",
-                 b->vendor, b->library );
+         /* With the reason, because "no runtime" is not something anyone can
+          * act on and the reason is. A ROCm compute install carries
+          * libamdocl64.so, which is AMD's OpenCL driver, and no
+          * libOpenCL.so.1, which is the loader that finds it, because HIP
+          * needs no loader. That reads as "no OpenCL runtime" here while the
+          * machine plainly has a working AMD stack, and it cost a round trip
+          * with a rented MI325X to work out that what was missing was one
+          * package. dlerror already names the file. */
+         applog( LOG_DEBUG, "no %s runtime on this machine, so %s was not used: %s",
+                 b->vendor, b->library, f.why );
       return;
    }
 
