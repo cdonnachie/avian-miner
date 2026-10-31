@@ -366,6 +366,53 @@ correct in isolation is not a working scan: a fugue kernel that read its
 `__local` mixtab before the work group had filled it passed the first test and
 failed every candidate in the second.
 
+### Windows
+
+`make` builds this backend on Windows too, which neither of the others can,
+and the reason is the one the backend exists for: no vendor compiler. CUDA and
+HIP need nvcc or hipcc with MSVC as the host compiler while the miner is
+MinGW, so those two are built by a PowerShell stage into a DLL the miner then
+loads. OpenCL compiles its kernels at run time, so `avian_ocl.dll` is plain C
+and comes out of the same `make` as the miner.
+
+In an MSYS2 MINGW64 shell:
+
+```sh
+scripts/windows/win-build.sh                        # the CPU miner first
+AVIAN_WITH_OPENCL=1 scripts/windows/win-gpu.sh      # adds avian_ocl.dll
+scripts/windows/win-package.sh
+```
+
+The second stage installs `mingw-w64-x86_64-opencl-headers` and
+`-opencl-icd` itself. That second package also installs a `libOpenCL.dll`
+which is deliberately **not** shipped: the import library names `OpenCL.dll`,
+so what is built here resolves to the ICD loader in `System32`, and that is
+the one the AMD and the Nvidia driver install. `win-package.sh` skips it by
+name, because the application directory precedes `System32` in the search
+order and a copy beside the miner would shadow the driver's own.
+
+So the package needs nothing installed on the machine that runs it.
+`avian_ocl.dll` imports `KERNEL32`, `msvcrt` and `OpenCL.dll`, and no MinGW
+runtime at all.
+
+The OpenCL stage also runs `make check`, which the other two do not, so
+`avian-ocl-selftest.exe` and `avian-ocl-batchtest.exe` ship beside the miner.
+On a card nobody has run this on they are what to run first: neither needs
+the GPU to be idle, and the selftest names the kernel that failed rather than
+leaving a wrong hash to turn up as a rejected share.
+
+**Ship only `avian_ocl.dll` in a package meant to test it.** `win-package.sh`
+collects every backend it finds, which is right for a release and wrong here:
+devices are numbered across the backends in load order, Nvidia then AMD then
+OpenCL, so an `avian_amd.dll` in the same directory claims an AMD card first
+and the card then appears twice. A tester asked for an OpenCL figure would
+measure HIP and no line of output would say so.
+
+Verified on the build machine against Nvidia's own OpenCL, which is a
+different implementation from the POCL the Linux work uses: all 32 kernels
+match `sph`, four chain orders scan with every candidate verifying, and the
+two runs agree on candidate counts.
+
 ### Checking AMD without an AMD card
 
 ```sh

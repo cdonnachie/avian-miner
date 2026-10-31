@@ -367,6 +367,24 @@ if test "x$with_opencl" != "x" && test "x$with_opencl" != "xno" ; then
       AC_MSG_ERROR([found CL/cl.h but no OpenCL loader to link against])
    fi
    AC_MSG_RESULT([$OCL_LIBS])
+
+   dnl What differs by platform, settled here rather than in Makefile.am so
+   dnl the rules there read the same on both. The library name because two
+   dnl files in a directory cannot share one, so the suffix has to follow the
+   dnl platform; it must stay in step with AVIAN_GPU_OPENCL_LIB_NAME in
+   dnl cuda/avian-gpu-backend.h, which is the name the miner looks for. No
+   dnl -fPIC on MinGW, where the code is position independent already and gcc
+   dnl warns at being told to make it so. No -ldl either: LoadLibrary is in
+   dnl the kernel32 every binary already links.
+   if test x$have_win32 = xtrue ; then
+      OCL_LIB="avian_ocl.dll"
+      OCL_PICFLAG=""
+      OCL_DL_LIBS=""
+   else
+      OCL_LIB="libavian_ocl.so"
+      OCL_PICFLAG="-fPIC"
+      OCL_DL_LIBS="-ldl"
+   fi
    have_ocl=true
 fi
 
@@ -409,6 +427,9 @@ AC_SUBST(HIP_LIBS)
 AC_SUBST(OCL_CFLAGS)
 AC_SUBST(OCL_LDFLAGS)
 AC_SUBST(OCL_LIBS)
+AC_SUBST(OCL_LIB)
+AC_SUBST(OCL_PICFLAG)
+AC_SUBST(OCL_DL_LIBS)
 
 # libcurl install path (for mingw : --with-curl=/usr/local)
 AC_ARG_WITH([curl],

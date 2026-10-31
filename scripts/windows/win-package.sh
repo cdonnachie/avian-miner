@@ -17,16 +17,46 @@ REL=${REL:-$BUILD_ROOT/release}
 rm -rf "$REL"; mkdir -p "$REL"
 cp "$B/avian-miner.exe" "$REL/" || exit 1
 
+# The OpenCL backend before the walk rather than after it, unlike the other
+# two: make builds this one with the same MinGW compiler as the miner, so it
+# has MinGW runtime imports of its own that have to be walked as well. The
+# vendor backends come out of MSVC and carry their runtime differently, which
+# is why they are handled further down.
+OCL_DLL=${OCL_DLL:-$B/avian_ocl.dll}
+if [ -f "$OCL_DLL" ]; then
+    cp "$OCL_DLL" "$REL/"
+    echo "  + avian_ocl.dll (OpenCL GPU backend)"
+    # The two tests beside it, when the OpenCL stage built them. They are what
+    # a tester on an untried card runs first: neither needs the GPU to be
+    # idle, and between them they say whether the chain is right before
+    # anybody looks at a hashrate.
+    for t in avian-ocl-selftest.exe avian-ocl-batchtest.exe; do
+        [ -f "$B/$t" ] && cp "$B/$t" "$REL/" && echo "  + $t"
+    done
+else
+    echo "  (no OpenCL backend: $OCL_DLL not present)"
+fi
+
 # Breadth-first over the import tables. Anything present in /mingw64/bin is
 # ours to ship; anything else is a Windows system DLL and must not be copied.
 declare -A seen
 queue=("$REL/avian-miner.exe")
+for f in avian_ocl.dll avian-ocl-selftest.exe avian-ocl-batchtest.exe; do
+    [ -f "$REL/$f" ] && queue+=("$REL/$f")
+done
 while [ ${#queue[@]} -gt 0 ]; do
     cur="${queue[0]}"; queue=("${queue[@]:1}")
     for d in $(objdump -p "$cur" 2>/dev/null | awk '/DLL Name:/ {print $3}'); do
         key=$(echo "$d" | tr 'A-Z' 'a-z')
         [ -n "${seen[$key]:-}" ] && continue
         seen[$key]=1
+        # The one DLL in /mingw64/bin that must not ship. It is the Khronos
+        # ICD loader, and the loader that has to be used is the driver's own
+        # in System32; the application directory comes first in the search
+        # order, so a copy here would shadow it. Shipping none of it is also
+        # what makes the test worth running, since the question being asked
+        # is whether the backend works on a stock driver.
+        [ "$key" = opencl.dll ] && continue
         if [ -f "/mingw64/bin/$d" ]; then
             cp -n "/mingw64/bin/$d" "$REL/"
             queue+=("$REL/$d")

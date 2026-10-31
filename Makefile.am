@@ -340,7 +340,10 @@ if HAVE_GPU_OCL
 # this backend has no device compiler, no .cu rule and no architecture list,
 # and the kernels ship as text rather than as a fatbinary.
 OCL_OBJECTS = cuda/ocl/avian-ocl.ocl.o
-GPU_BACKENDS += libavian_ocl.so
+# @OCL_LIB@ rather than a literal: this backend is the one of the three that
+# `make` builds on Windows too, since it needs no vendor compiler, and there
+# it has to come out as avian_ocl.dll. configure decides the name.
+GPU_BACKENDS += @OCL_LIB@
 
 # Listed rather than globbed: automake does not handle $(wildcard) in a
 # dependency, and a kernel that is not listed here would not trigger a
@@ -413,9 +416,9 @@ $(OCL_KERNELS_H): $(OCL_KERNEL_SOURCES) $(top_srcdir)/cuda/ocl/mkkernels.sh
 	$(SHELL) $(top_srcdir)/cuda/ocl/mkkernels.sh $@
 
 %.ocl.o: %.c $(OCL_KERNELS_H)
-	$(CC) $(CFLAGS) @OCL_CFLAGS@ -I$(top_srcdir) -I$(top_builddir) -fPIC -c -o $@ $<
+	$(CC) $(CFLAGS) @OCL_CFLAGS@ -I$(top_srcdir) -I$(top_builddir) @OCL_PICFLAG@ -c -o $@ $<
 
-libavian_ocl.so: $(OCL_OBJECTS)
+@OCL_LIB@: $(OCL_OBJECTS)
 	$(CC) -shared -o $@ $(OCL_OBJECTS) @OCL_LDFLAGS@ @OCL_LIBS@
 
 # Not in bin_PROGRAMS: this compares one round function against one sph
@@ -450,15 +453,16 @@ avian_ocl_selftest_LDADD = @OCL_LIBS@
 cuda/ocl/avian_ocl_selftest-avian-ocl-selftest.$(OBJEXT): $(OCL_KERNELS_H)
 
 # The other half of the testing: the selftest checks one kernel against one
-# sph function, this runs a whole batch through libavian_ocl.so and re-hashes
-# the candidates on the CPU. It dlopens the backend rather than linking it,
-# hence -ldl and no OpenCL flags of its own.
+# sph function, this runs a whole batch through the backend and re-hashes the
+# candidates on the CPU. It loads the backend rather than linking it, hence
+# @OCL_DL_LIBS@ and no OpenCL flags of its own.
 check_PROGRAMS += avian-ocl-batchtest
 avian_ocl_batchtest_SOURCES = cuda/ocl/avian-ocl-batchtest.c $(OCL_SPH_SOURCES)
 avian_ocl_batchtest_CPPFLAGS = -I$(top_srcdir) -I$(top_builddir)
-avian_ocl_batchtest_LDADD = -ldl
-# It loads ./libavian_ocl.so, so that has to exist before `make check` runs.
-check-local: libavian_ocl.so
+avian_ocl_batchtest_LDADD = @OCL_DL_LIBS@
+# It loads the backend from beside itself, so that has to exist before
+# `make check` runs.
+check-local: @OCL_LIB@
 endif
 
 # Built by `make`, not only by `make libavian_cuda.so`, and left beside the

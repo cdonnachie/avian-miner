@@ -4,9 +4,9 @@
  *   ./avian-ocl-batchtest 0123456789abcdef   # one specific order
  *
  * avian-ocl-selftest checks each kernel against its sph counterpart. This
- * checks the rest: that libavian_ocl.so loads, that the sixteen kernels run
- * in the order a job asks for, that the nonce reaches the first round, and
- * that the candidates coming back are real.
+ * checks the rest: that the backend library loads, that the sixteen kernels
+ * run in the order a job asks for, that the nonce reaches the first round,
+ * and that the candidates coming back are real.
  *
  * It verifies them the way the miner does, which is the point. The ABI makes
  * the caller re-hash every candidate on the CPU before submitting, so this
@@ -14,17 +14,37 @@
  * against it. A wrong chain order, a dropped round, a nonce that never
  * reached the kernel: all of them show up as candidates that do not verify.
  *
- * The backend is loaded with dlopen rather than linked, so what is tested is
- * the shared object the miner will load.
+ * The backend is loaded rather than linked, so what is tested is the library
+ * the miner will load, and it is loaded the way the miner loads it. On an AMD
+ * card this is also the one check that does not need the GPU to be idle: it
+ * says whether the chain is right, whatever the clocks are doing.
  */
 
-#include <dlfcn.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "cuda/avian-cuda-api.h"
+/* For AVIAN_GPU_OPENCL_LIB_NAME alone, so the file this looks for cannot
+ * drift from the one the miner looks for. */
+#include "cuda/avian-gpu-backend.h"
+
+#ifdef _WIN32
+#include <windows.h>
+/* A bare name, because Windows searches the directory holding the executable
+ * and that is where make leaves both of these. */
+#define OCL_TEST_LIB            AVIAN_GPU_OPENCL_LIB_NAME
+#define OCL_TEST_OPEN( p )      ( (void *) LoadLibraryA( p ) )
+#define OCL_TEST_SYM( h, n )    ( (void *) GetProcAddress( (HMODULE) (h), n ) )
+#else
+#include <dlfcn.h>
+/* "./" because dlopen on a bare name searches the loader's own paths and not
+ * the working directory. */
+#define OCL_TEST_LIB            "./" AVIAN_GPU_OPENCL_LIB_NAME
+#define OCL_TEST_OPEN( p )      dlopen( p, RTLD_NOW )
+#define OCL_TEST_SYM( h, n )    dlsym( h, n )
+#endif
 
 #include "algo/blake/sph_blake.h"
 #include "algo/bmw/sph_bmw.h"
@@ -230,17 +250,22 @@ int main( int argc, char **argv )
         "7e5c3a18f6d4b290",
     };
 
-    h = dlopen( "./libavian_ocl.so", RTLD_NOW );
+    h = OCL_TEST_OPEN( OCL_TEST_LIB );
     if ( h == NULL )
     {
-        printf( "dlopen: %s\n", dlerror() );
+#ifdef _WIN32
+        printf( "cannot load %s: Windows error %lu\n", OCL_TEST_LIB,
+                (unsigned long) GetLastError() );
+#else
+        printf( "cannot load %s: %s\n", OCL_TEST_LIB, dlerror() );
+#endif
         return 1;
     }
-    b.abi    = dlsym( h, "avian_cuda_abi_version" );
-    b.count  = dlsym( h, "avian_cuda_device_count" );
-    b.name   = dlsym( h, "avian_cuda_device_name" );
-    b.setlog = dlsym( h, "avian_cuda_set_logger" );
-    b.scan   = dlsym( h, "avian_cuda_scan_batch" );
+    b.abi    = OCL_TEST_SYM( h, "avian_cuda_abi_version" );
+    b.count  = OCL_TEST_SYM( h, "avian_cuda_device_count" );
+    b.name   = OCL_TEST_SYM( h, "avian_cuda_device_name" );
+    b.setlog = OCL_TEST_SYM( h, "avian_cuda_set_logger" );
+    b.scan   = OCL_TEST_SYM( h, "avian_cuda_scan_batch" );
     if ( !b.abi || !b.count || !b.name || !b.setlog || !b.scan )
     {
         printf( "an entry point is missing\n" );
