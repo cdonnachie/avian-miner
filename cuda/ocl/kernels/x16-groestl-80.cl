@@ -21,6 +21,10 @@ __kernel void groestl512_80(__global const uchar *block,
                             __global hash_t *hashes)
 {
     const uint gid = get_global_id(0);
+    /* Before anything else, and every work item reaches it: the macro
+     * ends in a barrier. See groestl.cl for why these are not left in
+     * __constant. */
+    GROESTL_STAGE_TABLES();
     hash_t avian_priv;
     hash_t *hash = &avian_priv;
     {

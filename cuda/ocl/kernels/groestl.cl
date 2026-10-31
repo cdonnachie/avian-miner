@@ -103,7 +103,7 @@
 
 #endif
 
-__constant static const sph_u64 T0[] = {
+__constant static const sph_u64 T0_C[] = {
   C64e(0xc632f4a5f497a5c6), C64e(0xf86f978497eb84f8),
   C64e(0xee5eb099b0c799ee), C64e(0xf67a8c8d8cf78df6),
   C64e(0xffe8170d17e50dff), C64e(0xd60adcbddcb7bdd6),
@@ -236,7 +236,7 @@ __constant static const sph_u64 T0[] = {
 
 #if !SPH_SMALL_FOOTPRINT_GROESTL
 
-__constant static const sph_u64 T1[] = {
+__constant static const sph_u64 T1_C[] = {
   C64e(0xc6c632f4a5f497a5), C64e(0xf8f86f978497eb84),
   C64e(0xeeee5eb099b0c799), C64e(0xf6f67a8c8d8cf78d),
   C64e(0xffffe8170d17e50d), C64e(0xd6d60adcbddcb7bd),
@@ -367,7 +367,7 @@ __constant static const sph_u64 T1[] = {
   C64e(0x6d6d0c61d661dad6), C64e(0x2c2c624e3a4e583a)
 };
 
-__constant static const sph_u64 T2[] = {
+__constant static const sph_u64 T2_C[] = {
   C64e(0xa5c6c632f4a5f497), C64e(0x84f8f86f978497eb),
   C64e(0x99eeee5eb099b0c7), C64e(0x8df6f67a8c8d8cf7),
   C64e(0x0dffffe8170d17e5), C64e(0xbdd6d60adcbddcb7),
@@ -498,7 +498,7 @@ __constant static const sph_u64 T2[] = {
   C64e(0xd66d6d0c61d661da), C64e(0x3a2c2c624e3a4e58)
 };
 
-__constant static const sph_u64 T3[] = {
+__constant static const sph_u64 T3_C[] = {
   C64e(0x97a5c6c632f4a5f4), C64e(0xeb84f8f86f978497),
   C64e(0xc799eeee5eb099b0), C64e(0xf78df6f67a8c8d8c),
   C64e(0xe50dffffe8170d17), C64e(0xb7bdd6d60adcbddc),
@@ -631,7 +631,7 @@ __constant static const sph_u64 T3[] = {
 
 #endif
 
-__constant static const sph_u64 T4[] = {
+__constant static const sph_u64 T4_C[] = {
   C64e(0xf497a5c6c632f4a5), C64e(0x97eb84f8f86f9784),
   C64e(0xb0c799eeee5eb099), C64e(0x8cf78df6f67a8c8d),
   C64e(0x17e50dffffe8170d), C64e(0xdcb7bdd6d60adcbd),
@@ -764,7 +764,7 @@ __constant static const sph_u64 T4[] = {
 
 #if !SPH_SMALL_FOOTPRINT_GROESTL
 
-__constant static const sph_u64 T5[] = {
+__constant static const sph_u64 T5_C[] = {
   C64e(0xa5f497a5c6c632f4), C64e(0x8497eb84f8f86f97),
   C64e(0x99b0c799eeee5eb0), C64e(0x8d8cf78df6f67a8c),
   C64e(0x0d17e50dffffe817), C64e(0xbddcb7bdd6d60adc),
@@ -895,7 +895,7 @@ __constant static const sph_u64 T5[] = {
   C64e(0xd661dad66d6d0c61), C64e(0x3a4e583a2c2c624e)
 };
 
-__constant static const sph_u64 T6[] = {
+__constant static const sph_u64 T6_C[] = {
   C64e(0xf4a5f497a5c6c632), C64e(0x978497eb84f8f86f),
   C64e(0xb099b0c799eeee5e), C64e(0x8c8d8cf78df6f67a),
   C64e(0x170d17e50dffffe8), C64e(0xdcbddcb7bdd6d60a),
@@ -1026,7 +1026,7 @@ __constant static const sph_u64 T6[] = {
   C64e(0x61d661dad66d6d0c), C64e(0x4e3a4e583a2c2c62)
 };
 
-__constant static const sph_u64 T7[] = {
+__constant static const sph_u64 T7_C[] = {
   C64e(0x32f4a5f497a5c6c6), C64e(0x6f978497eb84f8f8),
   C64e(0x5eb099b0c799eeee), C64e(0x7a8c8d8cf78df6f6),
   C64e(0xe8170d17e50dffff), C64e(0x0adcbddcb7bdd6d6),
@@ -1157,6 +1157,62 @@ __constant static const sph_u64 T7[] = {
   C64e(0x0c61d661dad66d6d), C64e(0x624e3a4e583a2c2c)
 };
 
+#endif
+
+/* The tables staged into __local, because __constant is the wrong memory for
+ * the way they are read.
+ *
+ * A constant cache is built for uniform access, where every lane of a warp
+ * reads one address and the hardware broadcasts it. Every index here is a
+ * byte of the state, so the lanes diverge and the read serialises: up to
+ * thirty-two of them where it meant to do one. Nvidia's cache is 8 KB per SM
+ * and these eight tables are 16 KB, so they do not even fit. Groestl-512
+ * does about eighteen hundred of these lookups per hash, fourteen rounds of
+ * eight columns by eight tables, twice over for P and Q.
+ *
+ * Measured on an RTX 3090 before this: 0.58 s per round against about
+ * 0.008 s for every other kernel in this backend, seventy times slower, and
+ * about 70% of a whole X16RT batch. Echo reads aes_helper.cl's tables the
+ * same way and is fast because those are 4 KB and fit.
+ *
+ * __local is the memory for an indexed read that diverges, and fugue's
+ * mixtab in this tree is already staged this way.
+ *
+ * The barrier is not optional and its absence would not be loud. Every work
+ * item has to finish writing before any of them reads, and a kernel reading
+ * a half filled table still returns a hash rather than failing. That is what
+ * avian-ocl-batchtest catches, by re-hashing on the CPU; the per-kernel
+ * selftest would not, because one kernel alone is not the failure.
+ *
+ * Declared at kernel scope rather than file scope because OpenCL has no
+ * file-scope __local, which is also why this is a macro: the two groestl
+ * kernels would otherwise carry the same twenty lines twice.
+ */
+#if SPH_SMALL_FOOTPRINT_GROESTL
+#define GROESTL_STAGE_TABLES() \
+    __local sph_u64 T0[256], T4[256]; \
+    do { \
+        for (uint i = get_local_id(0); i < 256; i += get_local_size(0)) \
+        { \
+            T0[i] = T0_C[i]; \
+            T4[i] = T4_C[i]; \
+        } \
+        barrier(CLK_LOCAL_MEM_FENCE); \
+    } while (0)
+#else
+#define GROESTL_STAGE_TABLES() \
+    __local sph_u64 T0[256], T1[256], T2[256], T3[256]; \
+    __local sph_u64 T4[256], T5[256], T6[256], T7[256]; \
+    do { \
+        for (uint i = get_local_id(0); i < 256; i += get_local_size(0)) \
+        { \
+            T0[i] = T0_C[i]; T1[i] = T1_C[i]; \
+            T2[i] = T2_C[i]; T3[i] = T3_C[i]; \
+            T4[i] = T4_C[i]; T5[i] = T5_C[i]; \
+            T6[i] = T6_C[i]; T7[i] = T7_C[i]; \
+        } \
+        barrier(CLK_LOCAL_MEM_FENCE); \
+    } while (0)
 #endif
 
 #if SPH_SMALL_FOOTPRINT_GROESTL
