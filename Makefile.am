@@ -357,6 +357,7 @@ OCL_KERNEL_SOURCES = \
 	cuda/ocl/kernels/skein.cl \
 	cuda/ocl/kernels/keccak.cl \
 	cuda/ocl/kernels/simd.cl \
+	cuda/ocl/kernels/simd-q80.cl \
 	cuda/ocl/kernels/echo.cl \
 	cuda/ocl/kernels/shabal.cl \
 	cuda/ocl/kernels/luffa.cl \
@@ -389,7 +390,8 @@ OCL_KERNEL_SOURCES = \
 	cuda/ocl/kernels/x16-shavite-80.cl \
 	cuda/ocl/kernels/x16-luffa-80.cl \
 	cuda/ocl/kernels/x16-hamsi-80.cl \
-	cuda/ocl/kernels/x16-jh-80.cl
+	cuda/ocl/kernels/x16-jh-80.cl \
+	cuda/ocl/kernels/x16-simd-80.cl
 
 # Generated into the build tree, so a read-only source tree still builds, and
 # BUILT_SOURCES because every object that embeds it needs it to exist before
