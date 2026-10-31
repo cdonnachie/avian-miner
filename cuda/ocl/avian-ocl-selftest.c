@@ -37,6 +37,9 @@
 #include "algo/simd/sph_simd.h"
 #include "algo/echo/sph_echo.h"
 #include "algo/shabal/sph_shabal.h"
+#include "algo/luffa/sph_luffa.h"
+#include "algo/cubehash/sph_cubehash.h"
+#include "algo/fugue/sph_fugue.h"
 
 /* Enough lanes that a bug depending on the work item index shows up, and few
  * enough that a CPU OpenCL device finishes quickly. */
@@ -78,6 +81,9 @@ CPU_REFERENCE( keccak512 )
 CPU_REFERENCE( simd512 )
 CPU_REFERENCE( echo512 )
 CPU_REFERENCE( shabal512 )
+CPU_REFERENCE( luffa512 )
+CPU_REFERENCE( cubehash512 )
+CPU_REFERENCE( fugue512 )
 
 /* Not through the macro: sph_shavite.h redirects sph_shavite512_* to the
  * AES-NI implementation where the host has those instructions and to the
@@ -110,6 +116,9 @@ static const struct
     { "simd512_64",     cpu_simd512 },
     { "echo512_64",     cpu_echo512 },
     { "shabal512_64",   cpu_shabal512 },
+    { "luffa512_64",    cpu_luffa512 },
+    { "cubehash512_64", cpu_cubehash512 },
+    { "fugue512_64",    cpu_fugue512 },
 };
 
 #define CASE_COUNT ( sizeof s_case / sizeof s_case[0] )
@@ -157,6 +166,52 @@ static cl_device_id first_gpu( char *name, size_t name_len )
         return dev;
     }
     return NULL;
+}
+
+/* The byte conversions a kernel's boundary might need.
+ *
+ * sgminer's chain files hold their inter-stage hash in whatever form the next
+ * stage wants, so there is no one convention: luffa is symmetric, cubehash
+ * loads byte-swapped and stores plain, fugue does the reverse. A ported
+ * kernel therefore needs its own conversion at the boundary, and guessing
+ * which is how a kernel comes to compile and hash wrongly.
+ *
+ * --explore applies each of these to the input before the kernel and to the
+ * output after it, and reports the pairs that reproduce the sph answer. The
+ * one that matches is then built into the kernel.
+ */
+enum conv { CONV_NONE, CONV_SWAP4, CONV_SWAP8, CONV_WORDS, CONV_COUNT };
+
+static const char *conv_name[CONV_COUNT] = {
+    "none", "swap4", "swap8", "words"
+};
+
+static void convert( unsigned char *dst, const unsigned char *src, enum conv c )
+{
+    switch ( c )
+    {
+    case CONV_SWAP4:        /* byte-reverse each 32-bit word */
+        for ( int w = 0; w < 16; w++ )
+            for ( int b = 0; b < 4; b++ )
+                dst[w * 4 + b] = src[w * 4 + 3 - b];
+        break;
+    case CONV_SWAP8:        /* byte-reverse each 64-bit word */
+        for ( int w = 0; w < 8; w++ )
+            for ( int b = 0; b < 8; b++ )
+                dst[w * 8 + b] = src[w * 8 + 7 - b];
+        break;
+    case CONV_WORDS:        /* swap the 32-bit halves of each 64-bit word */
+        for ( int w = 0; w < 8; w++ )
+        {
+            memcpy( dst + w * 8,     src + w * 8 + 4, 4 );
+            memcpy( dst + w * 8 + 4, src + w * 8,     4 );
+        }
+        break;
+    case CONV_NONE:
+    default:
+        memcpy( dst, src, 64 );
+        break;
+    }
 }
 
 static void print_build_log( cl_program pr, cl_device_id dev )
@@ -276,15 +331,126 @@ static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
     return bad != 0;
 }
 
+/* Runs the kernel once and returns its output for the given input, or
+ * non-zero on any OpenCL failure. Separate from run_one because explore
+ * needs the raw output rather than a verdict. */
+static int run_raw( cl_context cx, cl_command_queue q, cl_device_id dev,
+                    const char *entry,
+                    const unsigned char in[LANES][64],
+                    unsigned char out[LANES][64] )
+{
+    const char *src = kernel_source( entry );
+    size_t      len;
+    cl_program  pr;
+    cl_kernel   k;
+    cl_mem      buf;
+    cl_int      err;
+    size_t      global = LANES;
+
+    if ( src == NULL )
+        return 1;
+    len = strlen( src );
+    pr  = clCreateProgramWithSource( cx, 1, &src, &len, &err );
+    if ( err != CL_SUCCESS )
+        return 1;
+    if ( clBuildProgram( pr, 1, &dev, "", NULL, NULL ) != CL_SUCCESS )
+    {
+        print_build_log( pr, dev );
+        clReleaseProgram( pr );
+        return 1;
+    }
+    k = clCreateKernel( pr, entry, &err );
+    if ( err != CL_SUCCESS )
+    {
+        clReleaseProgram( pr );
+        return 1;
+    }
+    buf = clCreateBuffer( cx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+                          (size_t) LANES * 64, (void *) in, &err );
+    if ( err == CL_SUCCESS )
+        err = clSetKernelArg( k, 0, sizeof buf, &buf );
+    if ( err == CL_SUCCESS )
+        err = clEnqueueNDRangeKernel( q, k, 1, NULL, &global, NULL, 0, NULL, NULL );
+    if ( err == CL_SUCCESS )
+        err = clFinish( q );
+    if ( err == CL_SUCCESS )
+        err = clEnqueueReadBuffer( q, buf, CL_TRUE, 0, (size_t) LANES * 64,
+                                   out, 0, NULL, NULL );
+    clReleaseMemObject( buf );
+    clReleaseKernel( k );
+    clReleaseProgram( pr );
+    return err != CL_SUCCESS;
+}
+
+/* Which pre/post conversion pair makes this kernel agree with its sph
+ * function? Tries them all and says. Reports every match, because more than
+ * one hitting is itself information: it means the test inputs are not
+ * distinguishing them and need to be harder. */
+static int explore( cl_context cx, cl_command_queue q, cl_device_id dev,
+                    const char *entry, cpu_hash_fn cpu )
+{
+    static unsigned char in[LANES][64], want[LANES][64];
+    static unsigned char fed[LANES][64], got[LANES][64];
+    int matches = 0;
+
+    fill( in );
+    for ( int l = 0; l < LANES; l++ )
+        cpu( want[l], in[l] );
+
+    printf( "exploring %s\n", entry );
+    for ( int pre = 0; pre < CONV_COUNT; pre++ )
+    {
+        for ( int l = 0; l < LANES; l++ )
+            convert( fed[l], in[l], (enum conv) pre );
+        if ( run_raw( cx, q, dev, entry, fed, got ) != 0 )
+        {
+            printf( "  pre=%-6s the kernel would not run\n", conv_name[pre] );
+            return -1;
+        }
+        for ( int post = 0; post < CONV_COUNT; post++ )
+        {
+            unsigned char cand[64];
+            int bad = 0;
+
+            for ( int l = 0; l < LANES && !bad; l++ )
+            {
+                convert( cand, got[l], (enum conv) post );
+                if ( memcmp( cand, want[l], 64 ) != 0 )
+                    bad = 1;
+            }
+            printf( "  pre=%-6s post=%-6s %s\n", conv_name[pre],
+                    conv_name[post], bad ? "differ" : "MATCH" );
+            if ( !bad )
+                matches++;
+        }
+    }
+    if ( matches == 0 )
+        printf( "  nothing matched: the difference is not a byte permutation, "
+                "so the body itself needs looking at\n" );
+    return matches;
+}
+
 int main( int argc, char **argv )
 {
     const char      *only = ( argc > 1 ) ? argv[1] : NULL;
+    int              exploring = 0;
     char             name[256] = { 0 };
     cl_device_id     dev;
     cl_context       cx;
     cl_command_queue q;
     cl_int           err;
     int              failed = 0, ran = 0;
+
+    if ( only != NULL && strcmp( only, "--explore" ) == 0 )
+    {
+        exploring = 1;
+        only = ( argc > 2 ) ? argv[2] : NULL;
+        if ( only == NULL )
+        {
+            printf( "usage: avian-ocl-selftest --explore <entry>\n" );
+            return 1;
+        }
+    }
 
     dev = first_gpu( name, sizeof name );
     if ( dev == NULL )
@@ -317,7 +483,12 @@ int main( int argc, char **argv )
         if ( only != NULL && strcmp( only, s_case[i].entry ) != 0 )
             continue;
         ran++;
-        if ( run_one( cx, q, dev, s_case[i].entry, s_case[i].cpu ) != 0 )
+        if ( exploring )
+        {
+            if ( explore( cx, q, dev, s_case[i].entry, s_case[i].cpu ) <= 0 )
+                failed++;
+        }
+        else if ( run_one( cx, q, dev, s_case[i].entry, s_case[i].cpu ) != 0 )
             failed++;
     }
 
