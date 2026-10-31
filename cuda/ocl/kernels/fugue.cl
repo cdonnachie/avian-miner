@@ -638,7 +638,22 @@ __constant const sph_u32 mixtab3_c[] = {
   S08 = B35; S07 = B34; S06 = B33; S05 = B32; S04 = B31; S03 = B30; S02 = B29; S01 = B28; S00 = B27; \
   } while (0)
 
-#define FUGUE512_3(x, y, z)    do {  \
+/* MODIFIED from sgminer's fugue.cl, and the only change in this file.
+ *
+ * FUGUE512_3 bundles three absorption steps and hardcodes the state rotation
+ * per position: the first TIX4 works on S00/S01/S04, the second on
+ * S24/S25/S28, the third on S12/S13/S16. So it cannot absorb a number of
+ * words that is not a multiple of three. 64 bytes happens to be one, sixteen
+ * message words plus two length words being eighteen; 80 bytes is not,
+ * twenty plus two being twenty-two.
+ *
+ * Split into its three positional thirds, with FUGUE512_3 redefined as their
+ * composition, so the 64-byte round expands to exactly what it did before and
+ * the 80-byte round can do seven triples plus one step at rotation A, 21
+ * being a multiple of three. avian-ocl-selftest confirms the 64-byte round is
+ * unchanged.
+ */
+#define FUGUE512_1A(x)    do { \
     TIX4(x, S00, S01, S04, S07, S08, S22, S24, S27, S30); \
     CMIX36(S33, S34, S35, S01, S02, S03, S15, S16, S17); \
     SMIX(S33, S34, S35, S00); \
@@ -648,7 +663,9 @@ __constant const sph_u32 mixtab3_c[] = {
     SMIX(S27, S28, S29, S30); \
     CMIX36(S24, S25, S26, S28, S29, S30, S06, S07, S08); \
     SMIX(S24, S25, S26, S27); \
-    \
+  } while (0)
+
+#define FUGUE512_1B(y)    do { \
     TIX4(y, S24, S25, S28, S31, S32, S10, S12, S15, S18); \
     CMIX36(S21, S22, S23, S25, S26, S27, S03, S04, S05); \
     SMIX(S21, S22, S23, S24); \
@@ -658,7 +675,9 @@ __constant const sph_u32 mixtab3_c[] = {
     SMIX(S15, S16, S17, S18); \
     CMIX36(S12, S13, S14, S16, S17, S18, S30, S31, S32); \
     SMIX(S12, S13, S14, S15); \
-    \
+  } while (0)
+
+#define FUGUE512_1C(z)    do { \
     TIX4(z, S12, S13, S16, S19, S20, S34, S00, S03, S06); \
     CMIX36(S09, S10, S11, S13, S14, S15, S27, S28, S29); \
     SMIX(S09, S10, S11, S12); \
@@ -668,6 +687,12 @@ __constant const sph_u32 mixtab3_c[] = {
     SMIX(S03, S04, S05, S06); \
     CMIX36(S00, S01, S02, S04, S05, S06, S18, S19, S20); \
     SMIX(S00, S01, S02, S03); \
+  } while (0)
+
+#define FUGUE512_3(x, y, z)    do { \
+    FUGUE512_1A(x); \
+    FUGUE512_1B(y); \
+    FUGUE512_1C(z); \
   } while (0)
 
 
