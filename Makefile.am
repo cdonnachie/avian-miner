@@ -335,6 +335,20 @@ libavian_amd.so: $(AMD_OBJECTS)
 	@HIPCC@ -shared -o $@ $(AMD_OBJECTS) @HIP_LDFLAGS@ @HIP_LIBS@
 endif
 
+if HAVE_GPU_OCL
+# The host compiler and nothing else. OpenCL compiles kernels at run time, so
+# this backend has no device compiler, no .cu rule and no architecture list,
+# and the kernels ship as text rather than as a fatbinary.
+OCL_OBJECTS = cuda/ocl/avian-ocl.ocl.o
+GPU_BACKENDS += libavian_ocl.so
+
+%.ocl.o: %.c
+	$(CC) $(CFLAGS) @OCL_CFLAGS@ -I$(top_srcdir) -fPIC -c -o $@ $<
+
+libavian_ocl.so: $(OCL_OBJECTS)
+	$(CC) -shared -o $@ $(OCL_OBJECTS) @OCL_LDFLAGS@ @OCL_LIBS@
+endif
+
 # Built by `make`, not only by `make libavian_cuda.so`, and left beside the
 # binary, which is the first place the loader looks.
 all-local: $(GPU_BACKENDS)

@@ -45,7 +45,7 @@ typedef int         (*avian_gpu_abi_fn)( void );
 
 struct backend
 {
-   const char          *vendor;      /* "Nvidia" or "AMD", for logs */
+   const char          *vendor;      /* "Nvidia", "AMD" or "OpenCL", for logs */
    const char          *library;     /* the file name we tried */
    void                *handle;      /* NULL when absent, which is normal */
    bool                 found;       /* the file was on disk, loaded or not */
@@ -57,9 +57,16 @@ struct backend
    int                  devices;
 };
 
-static struct backend s_backend[2] = {
+/* OpenCL last on purpose. It can drive either vendor's card, so with a
+ * vendor backend present both would enumerate the same device; taking the
+ * vendor one first means the faster path wins by default and OpenCL serves
+ * the machines where the vendor runtime is missing, which is what it is for.
+ * Every loop over this array derives its length, so a fourth row needs
+ * nothing else. */
+static struct backend s_backend[3] = {
    { .vendor = "Nvidia", .library = AVIAN_GPU_NVIDIA_LIB_NAME },
    { .vendor = "AMD",    .library = AVIAN_GPU_AMD_LIB_NAME    },
+   { .vendor = "OpenCL", .library = AVIAN_GPU_OPENCL_LIB_NAME },
 };
 
 /* The flat numbering the miner sees. */

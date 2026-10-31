@@ -26,15 +26,23 @@
 #include "cuda/avian-cuda-api.h"
 
 /* What is looked for, beside the executable first and then on the loader's
- * own search path. Two names rather than one because two files cannot share
- * a name in a directory, which is the only reason the AMD library is not
- * also called avian_cuda. */
+ * own search path. Separate names because files cannot share one in a
+ * directory, which is the only reason the AMD and OpenCL libraries are not
+ * also called avian_cuda.
+ *
+ * The OpenCL one overlaps the other two by design rather than by accident: it
+ * can drive an AMD or an Nvidia card as well, and is there for the machines
+ * where the vendor runtime is absent. Which library ends up owning a card is
+ * then load order, so a machine with both sees it twice; avian_gpu_select is
+ * how an operator picks. */
 #ifdef _WIN32
 #  define AVIAN_GPU_NVIDIA_LIB_NAME "avian_cuda.dll"
 #  define AVIAN_GPU_AMD_LIB_NAME    "avian_amd.dll"
+#  define AVIAN_GPU_OPENCL_LIB_NAME "avian_ocl.dll"
 #else
 #  define AVIAN_GPU_NVIDIA_LIB_NAME "libavian_cuda.so"
 #  define AVIAN_GPU_AMD_LIB_NAME    "libavian_amd.so"
+#  define AVIAN_GPU_OPENCL_LIB_NAME "libavian_ocl.so"
 #endif
 
 /* Loads every backend present and takes its device inventory. Returns the
@@ -48,7 +56,7 @@ int avian_gpu_init( avian_cuda_log_fn log );
 /* Devices across all backends. Zero before avian_gpu_init. */
 int avian_gpu_device_count( void );
 
-/* Backend libraries that loaded, 0 to 2. Worth asking separately from the
+/* Backend libraries that loaded, 0 to 3. Worth asking separately from the
  * device count: no library is a packaging problem, while a library that
  * loaded and found nothing is a driver or a hardware one, and the two have
  * nothing in common but the symptom. */

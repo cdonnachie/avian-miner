@@ -307,6 +307,69 @@ if test "x$with_hip" != "x" && test "x$with_hip" != "xno" ; then
    have_amd=true
 fi
 
+dnl The OpenCL backend. A third path to a GPU and the only one needing no
+dnl vendor toolkit: OpenCL compiles its kernels at run time, so this is plain
+dnl C, there is no architecture list to maintain, and a card that does not
+dnl exist yet still works. It is here for mining distributions, which ship an
+dnl OpenCL stack and maintain it across image updates but do not ship HIP.
+AC_ARG_WITH([opencl],
+   [  --with-opencl@<:@=PATH@:>@  build the OpenCL X16RT backend; PATH holds include/CL and lib @<:@default=the system, or a CUDA toolkit if one was given@:>@])
+
+have_ocl=false
+if test "x$with_opencl" != "x" && test "x$with_opencl" != "xno" ; then
+   ocl_save_cppflags="$CPPFLAGS"
+   ocl_save_libs="$LIBS"
+   OCL_CFLAGS=""
+   if test "x$with_opencl" != "xyes" ; then
+      OCL_CFLAGS="-I$with_opencl/include"
+      dnl lib64 before lib, and neither unless it is there: a CUDA toolkit
+      dnl given as the prefix has lib64, and an -L at a directory that does
+      dnl not exist is the kind of thing that works until it hides a real
+      dnl one. The loader itself usually sits on the default path anyway.
+      for d in lib64 lib ; do
+         if test -d "$with_opencl/$d" ; then
+            OCL_LDFLAGS="-L$with_opencl/$d"
+            break
+         fi
+      done
+   dnl A CUDA toolkit ships CL/cl.h and libOpenCL, which is how the release
+   dnl container gets them with no OpenCL SDK installed: it is already built
+   dnl on an nvidia/cuda image for the Nvidia backend.
+   elif test "x$cuda_prefix" != "x" && test -f "$cuda_prefix/include/CL/cl.h" ; then
+      OCL_CFLAGS="-I$cuda_prefix/include"
+      AC_MSG_NOTICE([taking OpenCL headers from the CUDA toolkit at $cuda_prefix])
+   fi
+
+   CPPFLAGS="$CPPFLAGS $OCL_CFLAGS"
+   AC_CHECK_HEADER([CL/cl.h], [],
+      [AC_MSG_ERROR([no CL/cl.h; install an OpenCL SDK or pass --with-opencl=PREFIX])])
+
+   dnl -lOpenCL first, then the soname. A machine can have the ICD loader
+   dnl without the development symlink, which is the ordinary state of a
+   dnl mining rig and of WSL with only a vendor ICD installed: libOpenCL.so.1
+   dnl is there and libOpenCL.so is not, so -lOpenCL alone fails to link
+   dnl against a loader that is plainly present.
+   AC_MSG_CHECKING([how to link the OpenCL loader])
+   OCL_LIBS=""
+   for cand in -lOpenCL -l:libOpenCL.so.1 ; do
+      LIBS="$ocl_save_libs $cand"
+      AC_LINK_IFELSE(
+         [AC_LANG_PROGRAM([[#define CL_TARGET_OPENCL_VERSION 120
+                            #include <CL/cl.h>]],
+                          [[cl_uint n; clGetPlatformIDs(0, 0, &n);]])],
+         [OCL_LIBS="$cand"])
+      test "x$OCL_LIBS" != "x" && break
+   done
+   LIBS="$ocl_save_libs"
+   CPPFLAGS="$ocl_save_cppflags"
+   if test "x$OCL_LIBS" = "x" ; then
+      AC_MSG_RESULT([cannot])
+      AC_MSG_ERROR([found CL/cl.h but no OpenCL loader to link against])
+   fi
+   AC_MSG_RESULT([$OCL_LIBS])
+   have_ocl=true
+fi
+
 dnl Either vendor, or both. They are no longer alternatives: each builds its
 dnl own library exporting the same avian_cuda_* ABI, and the miner loads them
 dnl rather than linking them. That is what lets one binary drive an Nvidia
@@ -320,7 +383,7 @@ dnl avian_cuda_* or avian_gpu_* whichever card ends up running it, and it is
 dnl what cpu-miner.c, x16r-gate.c and the Windows build scripts already test.
 dnl A rename that stopped at this one symbol would leave those testing
 dnl something different from the sources.
-if test x$have_nv = xtrue || test x$have_amd = xtrue ; then
+if test x$have_nv = xtrue || test x$have_amd = xtrue || test x$have_ocl = xtrue ; then
    AC_DEFINE([HAVE_CUDA], [1], [Define to 1 to build a GPU X16RT backend.])
    have_gpu=true
 fi
@@ -334,6 +397,7 @@ fi
 AM_CONDITIONAL([HAVE_CUDA], [test x$have_gpu = xtrue])
 AM_CONDITIONAL([HAVE_GPU_NV], [test x$have_nv = xtrue])
 AM_CONDITIONAL([HAVE_GPU_AMD], [test x$have_amd = xtrue])
+AM_CONDITIONAL([HAVE_GPU_OCL], [test x$have_ocl = xtrue])
 AC_SUBST(NVCC)
 AC_SUBST(NVCC_ARCH)
 AC_SUBST(CUDA_LDFLAGS)
@@ -342,6 +406,9 @@ AC_SUBST(HIPCC)
 AC_SUBST(HIPCC_ARCH)
 AC_SUBST(HIP_LDFLAGS)
 AC_SUBST(HIP_LIBS)
+AC_SUBST(OCL_CFLAGS)
+AC_SUBST(OCL_LDFLAGS)
+AC_SUBST(OCL_LIBS)
 
 # libcurl install path (for mingw : --with-curl=/usr/local)
 AC_ARG_WITH([curl],
