@@ -40,6 +40,8 @@
 #include "algo/luffa/sph_luffa.h"
 #include "algo/cubehash/sph_cubehash.h"
 #include "algo/fugue/sph_fugue.h"
+#include "algo/whirlpool/sph_whirlpool.h"
+#include "algo/sha/sph_sha2.h"
 
 /* Enough lanes that a bug depending on the work item index shows up, and few
  * enough that a CPU OpenCL device finishes quickly. */
@@ -84,6 +86,7 @@ CPU_REFERENCE( shabal512 )
 CPU_REFERENCE( luffa512 )
 CPU_REFERENCE( cubehash512 )
 CPU_REFERENCE( fugue512 )
+CPU_REFERENCE( sha512 )
 
 /* Not through the macro: sph_shavite.h redirects sph_shavite512_* to the
  * AES-NI implementation where the host has those instructions and to the
@@ -97,6 +100,19 @@ static void cpu_shavite512( void *out, const void *in )
     sph_shavite512_init( &c );
     sph_shavite512( &c, in, 64 );
     sph_shavite512_close( &c, out );
+}
+
+/* Not through the macro either: Whirlpool is 512 bits by definition, so sph
+ * spells it without a size. sph_whirlpool is the final ISO revision, which is
+ * the one X16R uses; sph_whirlpool0 and sph_whirlpool1 are the superseded
+ * drafts and would quietly produce a different hash. */
+static void cpu_whirlpool( void *out, const void *in )
+{
+    sph_whirlpool_context c;
+
+    sph_whirlpool_init( &c );
+    sph_whirlpool( &c, in, 64 );
+    sph_whirlpool_close( &c, out );
 }
 
 /* One row per kernel, naming the sph function it must agree with. The entry
@@ -119,6 +135,8 @@ static const struct
     { "luffa512_64",    cpu_luffa512 },
     { "cubehash512_64", cpu_cubehash512 },
     { "fugue512_64",    cpu_fugue512 },
+    { "whirlpool512_64", cpu_whirlpool },
+    { "sha512_64",      cpu_sha512 },
 };
 
 #define CASE_COUNT ( sizeof s_case / sizeof s_case[0] )
