@@ -4,8 +4,14 @@
 # The tarball built directly in WSL needs GLIBC_2.39, because that is what
 # Ubuntu 24.04 has, and no mining distribution ships anything that new. The
 # current HiveOS stable image, 0.6-230, is Ubuntu 22.04 jammy with glibc 2.35,
-# so that is the floor set here. 22.04 is also a supported target for both the
-# CUDA toolkit and ROCm, so one image can build every backend.
+# so that is the floor set here.
+#
+# There is no ROCm in this image, so it builds the CPU and CUDA halves and a
+# Linux release carries no AMD backend. 22.04 is a supported ROCm target, so
+# adding it is possible rather than blocked; what argues against it is size,
+# since the devel stack is far larger than the CUDA one, for a backend whose
+# users can build from source. See "The HIP runtime on Linux" in
+# doc/building.md.
 #
 # Nvidia's devel image rather than ubuntu:22.04 plus a toolkit install: it is
 # the same toolkit from the same vendor, pinned by tag, and it saves scripting
