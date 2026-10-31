@@ -42,9 +42,9 @@ escape() {
 # copy compiles to nothing.
 inline_pass() {
     awk -v dir="$K" '
-        /^#include "/ {
+        /^[ \t]*#include "/ {
             f = $0
-            sub(/^#include "/, "", f)
+            sub(/^[ \t]*#include "/, "", f)
             sub(/".*$/, "", f)
             path = dir "/" f
             if ((getline line < path) <= 0) {
@@ -73,7 +73,10 @@ flatten() {
     dst=$2
     cp "$src" "$dst"
     i=0
-    while grep -q '^#include "' "$dst" ; do
+    # Leading whitespace allowed: hamsi.cl includes its helpers from inside a
+    # #if, indented, and a pattern anchored at column 0 silently left those
+    # in place for the device's compiler to fail on.
+    while grep -qE '^[ 	]*#include "' "$dst" ; do
         i=$((i + 1))
         if [ "$i" -gt 8 ] ; then
             echo "mkkernels.sh: $src still has includes after 8 passes; a cycle?" >&2

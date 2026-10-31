@@ -31,34 +31,59 @@
 #include "algo/jh/sph_jh.h"
 #include "algo/groestl/sph_groestl.h"
 #include "algo/shavite/sph_shavite.h"
+#include "algo/bmw/sph_bmw.h"
+#include "algo/skein/sph_skein.h"
+#include "algo/keccak/sph_keccak.h"
+#include "algo/simd/sph_simd.h"
+#include "algo/echo/sph_echo.h"
+#include "algo/shabal/sph_shabal.h"
 
 /* Enough lanes that a bug depending on the work item index shows up, and few
  * enough that a CPU OpenCL device finishes quickly. */
 #define LANES 64
 
+/* sph_keccak.c reads this to pick its padding byte, and the definition lives
+ * in keccak-gate.c, which a test binary has no business linking: that file
+ * pulls in the whole algo_gate machinery.
+ *
+ * 1, not 6, and the difference matters. 1 is classic Keccak and 6 is SHA3,
+ * and the only thing in this tree that sets 6 is register_sha3d_algo, which
+ * is an algorithm this miner no longer builds. X16RT therefore hashes with
+ * classic Keccak, which is also what sgminer's x15 kernel does, so the two
+ * agree. Were that wrong, this would be comparing the GPU against the wrong
+ * reference and calling it a pass.
+ */
+int hard_coded_eb = 1;
+
 typedef void (*cpu_hash_fn)( void *out, const void *in );
 
-static void cpu_jh512( void *out, const void *in )
-{
-    sph_jh512_context c;
+/* Every sph function has the same three-call shape, so one macro beats
+ * sixteen copies of it. 64 bytes in, 64 out, which is what an X16RT round
+ * does for every algorithm but the first. */
+#define CPU_REFERENCE( name )                                   \
+    static void cpu_##name( void *out, const void *in )         \
+    {                                                           \
+        sph_##name##_context c;                                 \
+                                                                \
+        sph_##name##_init( &c );                                \
+        sph_##name( &c, in, 64 );                               \
+        sph_##name##_close( &c, out );                          \
+    }
 
-    sph_jh512_init( &c );
-    sph_jh512( &c, in, 64 );
-    sph_jh512_close( &c, out );
-}
+CPU_REFERENCE( jh512 )
+CPU_REFERENCE( groestl512 )
+CPU_REFERENCE( bmw512 )
+CPU_REFERENCE( skein512 )
+CPU_REFERENCE( keccak512 )
+CPU_REFERENCE( simd512 )
+CPU_REFERENCE( echo512 )
+CPU_REFERENCE( shabal512 )
 
-static void cpu_groestl512( void *out, const void *in )
-{
-    sph_groestl512_context c;
-
-    sph_groestl512_init( &c );
-    sph_groestl512( &c, in, 64 );
-    sph_groestl512_close( &c, out );
-}
-
-/* Whichever sph_shavite.h selected: the AES-NI implementation where the host
- * has those instructions, the software one otherwise. Both are linked, and
- * either is a valid reference because they must agree with each other. */
+/* Not through the macro: sph_shavite.h redirects sph_shavite512_* to the
+ * AES-NI implementation where the host has those instructions and to the
+ * software one otherwise, but names the context type sph_shavite512_context
+ * either way, so the macro's sph_shavite512_context spelling would be wrong
+ * in neither case and right by accident. Spelled out so that is visible. */
 static void cpu_shavite512( void *out, const void *in )
 {
     sph_shavite512_context c;
@@ -76,9 +101,15 @@ static const struct
     const char  *entry;
     cpu_hash_fn  cpu;
 } s_case[] = {
-    { "jh512_64",      cpu_jh512 },
-    { "groestl512_64", cpu_groestl512 },
-    { "shavite512_64", cpu_shavite512 },
+    { "jh512_64",       cpu_jh512 },
+    { "groestl512_64",  cpu_groestl512 },
+    { "shavite512_64",  cpu_shavite512 },
+    { "bmw512_64",      cpu_bmw512 },
+    { "skein512_64",    cpu_skein512 },
+    { "keccak512_64",   cpu_keccak512 },
+    { "simd512_64",     cpu_simd512 },
+    { "echo512_64",     cpu_echo512 },
+    { "shabal512_64",   cpu_shabal512 },
 };
 
 #define CASE_COUNT ( sizeof s_case / sizeof s_case[0] )

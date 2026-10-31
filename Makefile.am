@@ -347,13 +347,26 @@ GPU_BACKENDS += libavian_ocl.so
 # regenerate, so the header would go stale against its own sources.
 OCL_KERNEL_SOURCES = \
 	cuda/ocl/kernels/sph-common.cl \
+	cuda/ocl/kernels/avian-ocl-common.cl \
 	cuda/ocl/kernels/aes_helper.cl \
 	cuda/ocl/kernels/jh.cl \
 	cuda/ocl/kernels/groestl.cl \
 	cuda/ocl/kernels/shavite.cl \
+	cuda/ocl/kernels/bmw.cl \
+	cuda/ocl/kernels/skein.cl \
+	cuda/ocl/kernels/keccak.cl \
+	cuda/ocl/kernels/simd.cl \
+	cuda/ocl/kernels/echo.cl \
+	cuda/ocl/kernels/shabal.cl \
 	cuda/ocl/kernels/x16-jh.cl \
 	cuda/ocl/kernels/x16-groestl.cl \
-	cuda/ocl/kernels/x16-shavite.cl
+	cuda/ocl/kernels/x16-shavite.cl \
+	cuda/ocl/kernels/x16-bmw.cl \
+	cuda/ocl/kernels/x16-skein.cl \
+	cuda/ocl/kernels/x16-keccak.cl \
+	cuda/ocl/kernels/x16-simd.cl \
+	cuda/ocl/kernels/x16-echo.cl \
+	cuda/ocl/kernels/x16-shabal.cl
 
 # Generated into the build tree, so a read-only source tree still builds, and
 # BUILT_SOURCES because every object that embeds it needs it to exist before
@@ -382,7 +395,13 @@ avian_ocl_selftest_SOURCES = cuda/ocl/avian-ocl-selftest.c \
                              algo/jh/sph_jh.c \
                              algo/groestl/sph_groestl.c \
                              algo/shavite/sph_shavite.c \
-                             algo/shavite/sph-shavite-aesni.c
+                             algo/shavite/sph-shavite-aesni.c \
+                             algo/bmw/sph_bmw.c \
+                             algo/skein/sph_skein.c \
+                             algo/keccak/sph_keccak.c \
+                             algo/simd/sph_simd.c \
+                             algo/echo/sph_echo.c \
+                             algo/shabal/sph_shabal.c
 avian_ocl_selftest_CPPFLAGS = -I$(top_srcdir) -I$(top_builddir) @OCL_CFLAGS@
 avian_ocl_selftest_LDFLAGS = @OCL_LDFLAGS@
 avian_ocl_selftest_LDADD = @OCL_LIBS@
