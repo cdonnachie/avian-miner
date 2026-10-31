@@ -46,8 +46,39 @@
 #include "algo/sha/sph_sha2.h"
 
 /* Enough lanes that a bug depending on the work item index shows up, and few
- * enough that a CPU OpenCL device finishes quickly. */
-#define LANES 64
+ * enough that the slow algorithms finish in a few seconds on a CPU device.
+ *
+ * 256 rather than something smaller, and all of them in one work group, and
+ * that is load-bearing rather than arbitrary. Several of these kernels fill a
+ * __local lookup table with a loop strided across the group and then read it,
+ * which is only correct with a barrier in between. The smaller the group, the
+ * less a missing barrier matters: at one item a group each item fills the
+ * whole table itself and the bug is invisible, and at 64 it passed here every
+ * time while failing in the miner. fugue was broken exactly that way and this
+ * test reported it correct; see the barrier note in x16-fugue.cl. 256 is also
+ * what the backend uses, so the test runs the kernels as the miner will.
+ */
+#define LANES 256
+
+/* The group size to launch with: LANES, unless a kernel cannot take that
+ * many, in which case the largest power of two it can. A card that allows
+ * fewer than 256 for a register-hungry kernel is ordinary, and failing to
+ * launch would be a worse answer than testing it at the size it allows.
+ */
+static size_t group_size( cl_kernel k, cl_device_id dev )
+{
+    size_t n = 0;
+
+    if ( clGetKernelWorkGroupInfo( k, dev, CL_KERNEL_WORK_GROUP_SIZE,
+                                   sizeof n, &n, NULL ) != CL_SUCCESS
+         || n == 0 )
+        return 1;
+    if ( n > LANES )
+        n = LANES;
+    while ( ( n & ( n - 1 ) ) != 0 )
+        n &= n - 1;
+    return n;
+}
 
 /* sph_keccak.c reads this to pick its padding byte, and the definition lives
  * in keccak-gate.c, which a test binary has no business linking: that file
@@ -294,7 +325,7 @@ static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
     cl_kernel            k;
     cl_mem               buf, hbuf = NULL;
     cl_int               err;
-    size_t               global = LANES;
+    size_t               global = LANES, local = 1;
     int                  bad = 0;
 
     if ( src == NULL )
@@ -359,6 +390,7 @@ static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
         clReleaseProgram( pr );
         return 2;
     }
+    local = group_size( k, dev );
 
     if ( in_len == 80 )
     {
@@ -388,7 +420,7 @@ static int run_one( cl_context cx, cl_command_queue q, cl_device_id dev,
             err = clSetKernelArg( k, 0, sizeof buf, &buf );
     }
     if ( err == CL_SUCCESS )
-        err = clEnqueueNDRangeKernel( q, k, 1, NULL, &global, NULL, 0, NULL, NULL );
+        err = clEnqueueNDRangeKernel( q, k, 1, NULL, &global, &local, 0, NULL, NULL );
     if ( err == CL_SUCCESS )
         err = clFinish( q );
     if ( err == CL_SUCCESS )
@@ -448,7 +480,7 @@ static int run_raw( cl_context cx, cl_command_queue q, cl_device_id dev,
     cl_kernel   k;
     cl_mem      buf;
     cl_int      err;
-    size_t      global = LANES;
+    size_t      global = LANES, local = 1;
 
     if ( src == NULL )
         return 1;
@@ -468,12 +500,13 @@ static int run_raw( cl_context cx, cl_command_queue q, cl_device_id dev,
         clReleaseProgram( pr );
         return 1;
     }
+    local = group_size( k, dev );
     buf = clCreateBuffer( cx, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
                           (size_t) LANES * 64, (void *) in, &err );
     if ( err == CL_SUCCESS )
         err = clSetKernelArg( k, 0, sizeof buf, &buf );
     if ( err == CL_SUCCESS )
-        err = clEnqueueNDRangeKernel( q, k, 1, NULL, &global, NULL, 0, NULL, NULL );
+        err = clEnqueueNDRangeKernel( q, k, 1, NULL, &global, &local, 0, NULL, NULL );
     if ( err == CL_SUCCESS )
         err = clFinish( q );
     if ( err == CL_SUCCESS )
