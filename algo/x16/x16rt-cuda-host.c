@@ -179,6 +179,17 @@ int scanhash_x16rt_cuda( struct work *work, uint32_t max_nonce,
 
         pdata[19] = job.start_nonce + throughput;
 
+        /* A backend that tried nothing cannot advance the nonce, so the
+         * condition below would be unchanged and this would spin for ever on
+         * empty batches. Both backends have a floor that stops them reporting
+         * zero, and both grew it after spinning, so the loop now refuses to
+         * depend on that. */
+        if ( throughput == 0 )
+        {
+            applog( LOG_ERR, "GPU #%d: the batch tried no nonces", thr_id );
+            break;
+        }
+
     } while ( !work_restart[thr_id].restart
               && ( (uint64_t) max_nonce > (uint64_t) throughput + pdata[19] ) );
 

@@ -851,10 +851,20 @@ AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
     }
     /* OpenCL 1.2 has no non-uniform work groups, so the global size has to be
      * a multiple of the local size. Rounding down loses at most one group of
-     * nonces from a batch, and the miner is told what was actually tried. */
+     * nonces from a batch, and the miner is told what was actually tried.
+     *
+     * Never to nothing, though. A caller asking for fewer nonces than one
+     * group rounds to zero, and a batch that tries nothing cannot advance the
+     * caller's nonce, so its scan loop spins for ever on empty launches. The
+     * host's first call does exactly that: the miner sizes its window from a
+     * nominal 20 H/s until a scan has been timed, which is a hundred nonces,
+     * and --gpu --benchmark then hung before printing a single rate. The CUDA
+     * backend carries the same floor for the same reason. One group over the
+     * window is a few hundred nonces past where the caller asked to stop,
+     * which is why the count comes back rather than being assumed. */
     global -= global % dev->local;
     if ( global == 0 )
-        return 0;
+        global = dev->local;
 
     target = ( (cl_ulong) job->target[7] << 32 ) | (cl_ulong) job->target[6];
 
