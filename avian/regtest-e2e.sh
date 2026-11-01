@@ -115,7 +115,7 @@ echo "   the miner will ask to be paid at $PAYOUT"
 
 echo "== starting the pool"
 # Space-separated, not --opt=value: that is what this pool's parser accepts.
-"$SV2/target/release/avian-sv2-pool" \
+"$SV2/target/release/avian-sv2-solo" \
     --datadir "$DATADIR" --chain regtest \
     --connect "127.0.0.1:$SV2_PORT" \
     --mining-bind "127.0.0.1:$MINING_PORT" \
@@ -249,7 +249,7 @@ if [ "${RECONNECT:-0}" = "1" ] && [ "$rc" -eq 0 ]; then
     kill "$POOL_PID" 2>/dev/null
     wait "$POOL_PID" 2>/dev/null
     sleep 2
-    "$SV2/target/release/avian-sv2-pool" \
+    "$SV2/target/release/avian-sv2-solo" \
         --datadir "$DATADIR" --chain regtest \
         --connect "127.0.0.1:$SV2_PORT" \
         --mining-bind "127.0.0.1:$MINING_PORT" \
