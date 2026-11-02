@@ -22,13 +22,23 @@ rev=
 if [ -d "$src/.git" ] && command -v git >/dev/null 2>&1 ; then
     rev=$(git -C "$src" --no-optional-locks rev-parse --short=9 HEAD 2>/dev/null || true)
     if [ -n "$rev" ] ; then
-        # autogen.sh rewrites these tracked files on every build and they are
-        # stale in the repo by design, so counting them would put -dirty on
-        # every build from a pristine commit and leave the suffix meaning
-        # nothing. Measured: without this the container, which clones a clean
-        # tree and then runs autogen, called itself dirty.
-        gen=':(exclude)configure :(exclude)aclocal.m4'
-        gen="$gen :(exclude)*Makefile.in :(exclude)cpuminer-config.h.in"
+        # Everything autoreconf --install writes. These are tracked here and
+        # stale by design, autogen.sh rewrites them before every compile, and
+        # which ones move depends on the build host's automake version: WSL
+        # refreshes five, the release container also refreshes the six aux
+        # scripts. Counting any of them would put -dirty on every build and
+        # leave the suffix meaning nothing.
+        #
+        # A positive list of source paths was the alternative. This way round
+        # because if a future automake installs a file not listed here the
+        # symptom is a cosmetic false -dirty with the hash still correct,
+        # where a missed source path would silently fail to flag a real edit.
+        gen=":(exclude)*Makefile.in :(exclude)aclocal.m4 :(exclude)configure"
+        gen="$gen :(exclude)cpuminer-config.h.in :(exclude)compile"
+        gen="$gen :(exclude)config.guess :(exclude)config.sub :(exclude)depcomp"
+        gen="$gen :(exclude)install-sh :(exclude)missing :(exclude)ltmain.sh"
+        gen="$gen :(exclude)ar-lib :(exclude)test-driver :(exclude)py-compile"
+        gen="$gen :(exclude)ylwrap :(exclude)mdate-sh"
         dirt=$(git -C "$src" --no-optional-locks status --porcelain --untracked-files=no -- $gen 2>/dev/null || true)
         [ -z "$dirt" ] || rev="$rev-dirty"
     fi
