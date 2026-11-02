@@ -3979,13 +3979,14 @@ int main(int argc, char *argv[])
          thread_affinity_map[ thr ] = cpu % num_cpus;
          if ( cpu < num_cpus ) active_cpus++;
       }
-      if ( opt_n_threads > active_cpus )
+      // Neither of these under --gpu, for the same reason. One host thread
+      // per card is right however few cores there are, so the warning reads
+      // as advice to run fewer cards, which would idle one; and the map has a
+      // column per logical CPU, so printed immediately after "using 3 mining
+      // threads, one per GPU" it reads as though the CPU is about to start
+      // hashing as well. A three-card rig on a dual-core host is the case.
+      if ( opt_n_threads > active_cpus && !opt_gpu )
          applog( LOG_WARNING, "More miner threads (%d) than active CPUs in affinity mask (%d)", opt_n_threads, active_cpus );
-      // Not under --gpu. The map has one column per logical CPU, and with a
-      // single host thread per GPU it says where that thread may sit rather
-      // than anything about the mining. Printed immediately after "using 1
-      // mining thread, one per GPU" it reads as though the CPU is about to
-      // start hashing as well.
       if ( !opt_quiet && !opt_gpu )
       {
          char affinity_mask[64];
