@@ -22,7 +22,14 @@ rev=
 if [ -d "$src/.git" ] && command -v git >/dev/null 2>&1 ; then
     rev=$(git -C "$src" --no-optional-locks rev-parse --short=9 HEAD 2>/dev/null || true)
     if [ -n "$rev" ] ; then
-        dirt=$(git -C "$src" --no-optional-locks status --porcelain --untracked-files=no 2>/dev/null || true)
+        # autogen.sh rewrites these tracked files on every build and they are
+        # stale in the repo by design, so counting them would put -dirty on
+        # every build from a pristine commit and leave the suffix meaning
+        # nothing. Measured: without this the container, which clones a clean
+        # tree and then runs autogen, called itself dirty.
+        gen=':(exclude)configure :(exclude)aclocal.m4'
+        gen="$gen :(exclude)*Makefile.in :(exclude)cpuminer-config.h.in"
+        dirt=$(git -C "$src" --no-optional-locks status --porcelain --untracked-files=no -- $gen 2>/dev/null || true)
         [ -z "$dirt" ] || rev="$rev-dirty"
     fi
 fi
