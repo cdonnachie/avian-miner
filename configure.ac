@@ -318,8 +318,10 @@ AC_ARG_WITH([opencl],
 have_ocl=false
 if test "x$with_opencl" != "x" && test "x$with_opencl" != "xno" ; then
    ocl_save_cppflags="$CPPFLAGS"
+   ocl_save_ldflags="$LDFLAGS"
    ocl_save_libs="$LIBS"
    OCL_CFLAGS=""
+   OCL_LDFLAGS=""
    if test "x$with_opencl" != "xyes" ; then
       OCL_CFLAGS="-I$with_opencl/include"
       dnl lib64 before lib, and neither unless it is there: a CUDA toolkit
@@ -342,6 +344,11 @@ if test "x$with_opencl" != "x" && test "x$with_opencl" != "xno" ; then
    fi
 
    CPPFLAGS="$CPPFLAGS $OCL_CFLAGS"
+   dnl The probe below has to link with the -L just worked out, or a
+   dnl prefix whose loader is off the default path fails a test that the
+   dnl real link in Makefile.am would have passed. That is the release
+   dnl container exactly: libOpenCL.so.1 lives in the CUDA toolkit.
+   LDFLAGS="$LDFLAGS $OCL_LDFLAGS"
    AC_CHECK_HEADER([CL/cl.h], [],
       [AC_MSG_ERROR([no CL/cl.h; install an OpenCL SDK or pass --with-opencl=PREFIX])])
 
@@ -362,6 +369,7 @@ if test "x$with_opencl" != "x" && test "x$with_opencl" != "xno" ; then
       test "x$OCL_LIBS" != "x" && break
    done
    LIBS="$ocl_save_libs"
+   LDFLAGS="$ocl_save_ldflags"
    CPPFLAGS="$ocl_save_cppflags"
    if test "x$OCL_LIBS" = "x" ; then
       AC_MSG_RESULT([cannot])
