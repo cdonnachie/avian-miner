@@ -225,25 +225,50 @@ static void fill( unsigned char buf[LANES][64] )
         }
 }
 
-static cl_device_id first_gpu( char *name, size_t name_len )
+#define SELFTEST_MAX_DEVICES 32
+
+/* Every OpenCL GPU, numbered as libavian_ocl numbers them: all devices of
+ * each platform, platforms in the order the loader reports.
+ *
+ * This replaced a first_gpu that asked each platform for one device and
+ * returned the first it found, which on a machine with two cards in one
+ * platform could not reach the second at all, and on a mixed rig always
+ * checked whichever vendor's platform came first. The card that has never
+ * run these kernels is the one worth checking. */
+static cl_uint all_gpus( cl_device_id *out, cl_uint max )
 {
     cl_platform_id platform[8];
-    cl_uint        platforms = 0;
+    cl_uint        platforms = 0, n = 0;
 
     if ( clGetPlatformIDs( 8, platform, &platforms ) != CL_SUCCESS )
-        return NULL;
-    for ( cl_uint p = 0; p < platforms; p++ )
+        return 0;
+    for ( cl_uint p = 0; p < platforms && n < max; p++ )
     {
-        cl_device_id dev = NULL;
-        cl_uint      n   = 0;
+        cl_uint got = 0;
 
-        if ( clGetDeviceIDs( platform[p], CL_DEVICE_TYPE_GPU, 1, &dev, &n )
-             != CL_SUCCESS || n == 0 )
+        if ( clGetDeviceIDs( platform[p], CL_DEVICE_TYPE_GPU, max - n,
+                             out + n, &got ) != CL_SUCCESS )
             continue;
-        clGetDeviceInfo( dev, CL_DEVICE_NAME, name_len, name, NULL );
-        return dev;
+        n += got;
     }
-    return NULL;
+    return n;
+}
+
+static void device_name( cl_device_id dev, char *name, size_t name_len )
+{
+    name[0] = '\0';
+    clGetDeviceInfo( dev, CL_DEVICE_NAME, name_len, name, NULL );
+}
+
+static void list_devices( const cl_device_id *dev, cl_uint devices )
+{
+    char name[256];
+
+    for ( cl_uint d = 0; d < devices; d++ )
+    {
+        device_name( dev[d], name, sizeof name );
+        printf( "  device %u: %s\n", (unsigned) d, name );
+    }
 }
 
 /* The byte conversions a kernel's boundary might need.
@@ -578,28 +603,45 @@ static int explore( cl_context cx, cl_command_queue q, cl_device_id dev,
 
 int main( int argc, char **argv )
 {
-    const char      *only = ( argc > 1 ) ? argv[1] : NULL;
-    int              exploring = 0;
+    const char      *only = NULL;
+    int              exploring = 0, listing = 0, want = 0;
     char             name[256] = { 0 };
+    cl_device_id     all[SELFTEST_MAX_DEVICES];
+    cl_uint          devices;
     cl_device_id     dev;
     cl_context       cx;
     cl_command_queue q;
     cl_int           err;
     int              failed = 0, ran = 0;
 
-    if ( only != NULL && strcmp( only, "--explore" ) == 0 )
+    /* An unknown dash argument is refused rather than taken for a kernel
+     * name, which is what --device used to be: it ran no cases and reported
+     * "no kernel called --device", which reads like the kernel is missing. */
+    for ( int a = 1; a < argc; a++ )
     {
-        exploring = 1;
-        only = ( argc > 2 ) ? argv[2] : NULL;
-        if ( only == NULL )
+        if ( strcmp( argv[a], "--explore" ) == 0 )
+            exploring = 1;
+        else if ( strcmp( argv[a], "--list" ) == 0 )
+            listing = 1;
+        else if ( strcmp( argv[a], "--device" ) == 0 && a + 1 < argc )
+            want = atoi( argv[++a] );
+        else if ( argv[a][0] == '-' )
         {
-            printf( "usage: avian-ocl-selftest --explore <entry>\n" );
+            printf( "usage: avian-ocl-selftest [--list] [--device N] "
+                    "[--explore] [<entry>]\n" );
             return 1;
         }
+        else
+            only = argv[a];
+    }
+    if ( exploring && only == NULL )
+    {
+        printf( "usage: avian-ocl-selftest --explore <entry>\n" );
+        return 1;
     }
 
-    dev = first_gpu( name, sizeof name );
-    if ( dev == NULL )
+    devices = all_gpus( all, SELFTEST_MAX_DEVICES );
+    if ( devices == 0 )
     {
         /* Not a failure. A machine with no OpenCL GPU cannot run this, and
          * saying so beats exiting non-zero and looking like a broken kernel.
@@ -608,7 +650,21 @@ int main( int argc, char **argv )
         printf( "no OpenCL GPU here, so nothing was checked\n" );
         return 0;
     }
-    printf( "device: %s\n", name );
+    if ( listing )
+    {
+        list_devices( all, devices );
+        return 0;
+    }
+    if ( want < 0 || (cl_uint) want >= devices )
+    {
+        printf( "no device %d here; this machine has %u:\n", want,
+                (unsigned) devices );
+        list_devices( all, devices );
+        return 1;
+    }
+    dev = all[want];
+    device_name( dev, name, sizeof name );
+    printf( "device %d: %s\n", want, name );
 
     cx = clCreateContext( NULL, 1, &dev, NULL, NULL, &err );
     if ( err != CL_SUCCESS )

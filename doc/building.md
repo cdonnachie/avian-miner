@@ -167,7 +167,10 @@ Linux](#the-hip-runtime-on-linux-and-on-a-mining-rig).
 `AVIAN_OCL=1` also puts `avian-ocl-selftest` and `avian-ocl-batchtest` in the
 tarball. They are how a card that has never run these kernels gets checked
 against `sph` and against the CPU before it is trusted with a share, and the
-machine that needs to run them is the rig, not this one.
+machine that needs to run them is the rig, not this one. On a rig with cards
+of both vendors, pass `--device N` from their own `--list`: the default is
+device 0, which may well be the Nvidia card that the CUDA backend is driving
+anyway.
 
 `scripts/release.sh linux` is a thin wrapper around `scripts/linux/build.sh`,
 passing `OUT` so the tarball lands where the `finish` stage signs it. The
@@ -459,6 +462,13 @@ of the sixteen used to be covered.
 make libavian_ocl.so
 make check && ./avian-ocl-selftest && ./avian-ocl-batchtest
 ```
+
+Both take `--list` and `--device N`, numbered as the OpenCL loader reports
+devices: every device of each platform, platforms in its own order. That is
+**not** the miner's numbering, which puts a vendor backend's cards first, so
+read `--list` rather than assuming `GPU #1` is `--device 1`. Without it they
+check device 0, which on a mixed rig is whichever platform the loader happens
+to return first and is rarely the card you added.
 
 The two tests answer different questions and both matter.
 `avian-ocl-selftest` compares each kernel against its `sph` function, 256

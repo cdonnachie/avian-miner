@@ -267,6 +267,8 @@ int main( int argc, char **argv )
     void           *h;
     struct backend  b;
     int             failed = 0;
+    int             device = 0, listing = 0, devices;
+    const char     *order = NULL;
     /* A few orders rather than one: all sixteen algorithms as the first
      * round across the set, since that is the part a 64-byte-only chain
      * would never exercise. */
@@ -291,6 +293,25 @@ int main( int argc, char **argv )
         "048c159d26ae37bf",
         "7e5c3a18f6d4b290",
     };
+
+    /* Same arguments as the selftest, and for the same reason: on a mixed
+     * rig the device that has never run these kernels is rarely number 0. An
+     * unknown dash argument is refused rather than taken for a chain order. */
+    for ( int a = 1; a < argc; a++ )
+    {
+        if ( strcmp( argv[a], "--list" ) == 0 )
+            listing = 1;
+        else if ( strcmp( argv[a], "--device" ) == 0 && a + 1 < argc )
+            device = atoi( argv[++a] );
+        else if ( argv[a][0] == '-' )
+        {
+            printf( "usage: avian-ocl-batchtest [--list] [--device N] "
+                    "[<order>]\n" );
+            return 1;
+        }
+        else
+            order = argv[a];
+    }
 
     h = OCL_TEST_OPEN( OCL_TEST_LIB );
     if ( h == NULL )
@@ -320,20 +341,34 @@ int main( int argc, char **argv )
     }
 
     b.setlog( logger );
-    if ( b.count() < 1 )
+    devices = b.count();
+    if ( devices < 1 )
     {
         /* Not a failure: a machine with no OpenCL GPU cannot run this, and
          * saying so beats exiting non-zero and looking like a broken chain. */
         printf( "no OpenCL device, so nothing was scanned\n" );
         return 0;
     }
-    printf( "device: %s\n", b.name( 0 ) );
+    if ( listing )
+    {
+        for ( int d = 0; d < devices; d++ )
+            printf( "  device %d: %s\n", d, b.name( d ) );
+        return 0;
+    }
+    if ( device < 0 || device >= devices )
+    {
+        printf( "no device %d here; this machine has %d:\n", device, devices );
+        for ( int d = 0; d < devices; d++ )
+            printf( "  device %d: %s\n", d, b.name( d ) );
+        return 1;
+    }
+    printf( "device %d: %s\n", device, b.name( device ) );
 
-    if ( argc > 1 )
-        return run_order( &b, argv[1], 0 );
+    if ( order != NULL )
+        return run_order( &b, order, device );
 
     for ( size_t i = 0; i < sizeof orders / sizeof orders[0]; i++ )
-        failed += run_order( &b, orders[i], 0 );
+        failed += run_order( &b, orders[i], device );
 
     printf( "%zu orders, %d with a problem\n",
             sizeof orders / sizeof orders[0], failed );
