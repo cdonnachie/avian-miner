@@ -21,9 +21,13 @@ FROM nvidia/cuda:${CUDA_TAG}
 
 # tzdata prompts without this, and a build must not stop to ask.
 ENV DEBIAN_FRONTEND=noninteractive
+
+# opencl-headers because this toolkit ships libOpenCL.so.1 and no CL/ at all,
+# so without it the OpenCL backend has a loader and nothing to compile
+# against. Measured on 12.9.1-devel-ubuntu22.04; older toolkits carried both.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential autoconf automake libtool pkg-config \
-        git ca-certificates curl \
+        git ca-certificates curl opencl-headers \
         libcurl4-openssl-dev libjansson-dev libgmp-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 

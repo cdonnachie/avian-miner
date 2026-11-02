@@ -332,9 +332,10 @@ if test "x$with_opencl" != "x" && test "x$with_opencl" != "xno" ; then
             break
          fi
       done
-   dnl A CUDA toolkit ships CL/cl.h and libOpenCL, which is how the release
-   dnl container gets them with no OpenCL SDK installed: it is already built
-   dnl on an nvidia/cuda image for the Nvidia backend.
+   dnl An older CUDA toolkit shipped CL/cl.h beside the loader, so a bare
+   dnl --with-opencl finds everything on one. The 12.9 toolkit has
+   dnl libOpenCL.so.1 and no CL/ directory, which is why the release container
+   dnl installs opencl-headers; see scripts/linux/Dockerfile.
    elif test "x$cuda_prefix" != "x" && test -f "$cuda_prefix/include/CL/cl.h" ; then
       OCL_CFLAGS="-I$cuda_prefix/include"
       AC_MSG_NOTICE([taking OpenCL headers from the CUDA toolkit at $cuda_prefix])
