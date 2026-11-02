@@ -156,11 +156,18 @@ in `/usr/lib/x86_64-linux-gnu`, as is `libcurl.so.4`, and `ldd --version`
 reports 2.35 against our 2.34. The CPU half then mined on that image and had
 a share accepted, so the floor is not theoretical.
 
-AMD is not covered here, because the image has no ROCm, so a release built
+HIP is not covered here, because the image has no ROCm, so a release built
 this way carries no `libavian_amd.so`. That is a real loss and a small one:
-the backends are `dlopen`ed, so the binary is identical for everyone else,
-and an AMD owner builds from source. See [The HIP runtime on
+the backends are `dlopen`ed, so the binary is identical for everyone else, an
+AMD owner builds from source, and with `AVIAN_OCL=1` the tarball drives an AMD
+card through OpenCL instead, which is what a mining distribution ships and is
+the faster of the two anyway. See [The HIP runtime on
 Linux](#the-hip-runtime-on-linux-and-on-a-mining-rig).
+
+`AVIAN_OCL=1` also puts `avian-ocl-selftest` and `avian-ocl-batchtest` in the
+tarball. They are how a card that has never run these kernels gets checked
+against `sph` and against the CPU before it is trusted with a share, and the
+machine that needs to run them is the rig, not this one.
 
 `scripts/release.sh linux` is a thin wrapper around `scripts/linux/build.sh`,
 passing `OUT` so the tarball lands where the `finish` stage signs it. The

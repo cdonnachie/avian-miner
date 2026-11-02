@@ -120,12 +120,26 @@ make -j"$(nproc)" > /build/make.log 2>&1 || {
     exit 1; }
 ls -l avian-miner libavian_cuda.so ${OCL:+libavian_ocl.so}
 
+# The OpenCL tests are check_PROGRAMS, so the default target skips them, and
+# they belong in the tarball: whether the kernels are right on a given card
+# can only be answered by that card, which is never the machine that built
+# this. There is no TESTS, so this builds them and runs nothing, which is
+# what we want in a container with no GPU.
+if [ -n "$OCL" ]; then
+    make -j"$(nproc)" avian-ocl-selftest avian-ocl-batchtest >> /build/make.log 2>&1 || {
+        echo "--- the OpenCL tests did not build ---"
+        tail -30 /build/make.log
+        exit 1; }
+    ls -l avian-ocl-selftest avian-ocl-batchtest
+fi
+
 echo
 echo "=== what the rig will need ==="
 # The whole point of the image, so it is reported rather than assumed. The
 # highest GLIBC_* version referenced is the floor: a machine with anything
 # older cannot run this at all.
-for f in avian-miner libavian_cuda.so ${OCL:+libavian_ocl.so}; do
+for f in avian-miner libavian_cuda.so \
+         ${OCL:+libavian_ocl.so avian-ocl-selftest avian-ocl-batchtest}; do
     echo "-- $f"
     echo -n "   glibc floor: "
     objdump -T "$f" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
@@ -139,6 +153,7 @@ D=$OUT/$PKG-linux-x86_64
 rm -rf "$D"; mkdir -p "$D"
 cp avian-miner "$D/"
 for so in libavian_cuda.so libavian_amd.so libavian_ocl.so; do [ -f "$so" ] && cp "$so" "$D/"; done
+for t in avian-ocl-selftest avian-ocl-batchtest; do [ -f "$t" ] && cp "$t" "$D/"; done
 cp README.md LICENSE COPYING doc/licensing.md "$D/"
 tar -C "$OUT" -czf "$OUT/$PKG-linux-x86_64.tar.gz" "$PKG-linux-x86_64"
 rm -rf "$D"
