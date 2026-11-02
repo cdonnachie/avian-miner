@@ -618,6 +618,10 @@ extern bool opt_gpu;
 extern bool gpu_backend_active;
 extern char *opt_gpu_devices;
 extern char *opt_gpu_backends;
+
+/* --list-devices, defined by the GPU gate because loading a backend and
+ * explaining why none would are both already there. A GPU build only. */
+bool x16rt_cuda_list_devices( void );
 /* --sv2-hashrate, in hashes per second. What the miner declares when it
  * opens a channel, which is what the pool derives its share target from.
  * Measured at startup unless the flag was given, which is what the second
@@ -745,11 +749,13 @@ Options:\n\
       --avian-selftest          check -a's proof of work against hashes a real node reported\n\
       --gpu                     mine x16rt on the GPU instead of the CPU, one thread per card\n\
       --devices=N[,N|N-N]       mine on these GPUs only, numbered as --gpu lists them\n\
+      --list-devices            print those numbers and exit, without mining\n\
       --gpu-backend=LIST        GPU backends to use, best first, from cuda,amd,ocl\n\
-                                default cuda,amd,ocl: each card to its own vendor's\n\
-                                backend, or OpenCL where that one did not load. A\n\
-                                priority per vendor, so cuda,ocl drives Nvidia cards\n\
-                                with CUDA and AMD ones with OpenCL\n\
+                                default cuda,ocl,amd: Nvidia cards to CUDA and AMD ones\n\
+                                to OpenCL, the faster of the two on both AMD cards\n\
+                                measured, leaving HIP the machines that have no OpenCL\n\
+                                runtime. A priority per vendor, so cuda,amd drives\n\
+                                Nvidia cards with CUDA and AMD ones with HIP\n\
       --sv2-hashrate=RATE       how fast this miner is, eg 30M. Measured at startup if\n\
                                 unset, which is the intended way. The pool works out this\n\
                                 worker's share target from it, so a wrong figure changes how\n\
@@ -841,6 +847,7 @@ static struct option const options[] = {
         { "gpu", 0, NULL, 1207 },
         { "devices", 1, NULL, 1209 },
         { "gpu-backend", 1, NULL, 1210 },
+        { "list-devices", 0, NULL, 1211 },
         { "sv2-hashrate", 1, NULL, 1208 },
         { 0, 0, 0, 0 }
 };

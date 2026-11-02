@@ -131,6 +131,7 @@ bool opt_gpu = false;
 bool gpu_backend_active = false;
 char *opt_gpu_devices = NULL;
 char *opt_gpu_backends = NULL;
+static bool opt_list_devices = false;
 /* Hashes per second. The old hardcoded 1000.0 put every miner on the
  * pool's 2/s share floor regardless of what it could actually do. */
 /* A last resort if the measurement at startup fails, and deliberately
@@ -3246,6 +3247,15 @@ void parse_arg(int key, char *arg )
       show_usage_and_exit(1);
 #endif
       break;
+   case 1211:  // list-devices
+#if defined(HAVE_CUDA)
+      opt_list_devices = true;
+#else
+      applog( LOG_ERR, "this build has no GPU backend, so --list-devices has "
+                       "nothing to list" );
+      show_usage_and_exit(1);
+#endif
+      break;
    case 1210:  // gpu-backend
 #if defined(HAVE_CUDA)
       /* Text again, and for a stronger reason than --devices: the list
@@ -3752,6 +3762,13 @@ int main(int argc, char *argv[])
    opt_n_threads = num_cpus;
 
    parse_cmdline( argc, argv );
+
+#if defined(HAVE_CUDA)
+   /* Ahead of the -a check, because listing the cards is not a mining run and
+    * should not need an algorithm chosen to do it. */
+   if ( opt_list_devices )
+      return x16rt_cuda_list_devices() ? 0 : 1;
+#endif
 
    if ( opt_algo == ALGO_NULL )
    {

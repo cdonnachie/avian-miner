@@ -28,17 +28,22 @@ static void x16rt_cuda_log( int level, const char *msg )
    applog( level, "%s", msg );
 }
 
-bool register_x16rt_cuda_algo( algo_gate_t* gate )
+/* The device inventory, or -1 with the reason logged.
+ *
+ * Shared by registration and by --list-devices, which differ only in what
+ * they do with the list. The diagnosis below is the long part of it and there
+ * is no second copy for it to drift away from. */
+static int gpu_inventory( const char *refused )
 {
    int devices;
 
-   /* Before the init, unlike --devices below, because this decides which
+   /* Before the init, unlike --devices, because this decides which
     * libraries are loaded rather than which of the found cards to keep. */
    if ( !avian_gpu_set_backend_order( opt_gpu_backends ) )
-      return false;                            /* which has said why */
+      return -1;                            /* which has said why */
 
    /* Loads whichever vendors are present and numbers their devices as one
-    * list, so the rest of the miner, and every "GPU #n" below, means one
+    * list, so the rest of the miner, and every "GPU #n", means one
     * thing whether this machine has Nvidia cards, AMD cards or both. A card
     * appears once: if two backends can drive it, the first in the order owns
     * it. */
@@ -51,8 +56,8 @@ bool register_x16rt_cuda_algo( algo_gate_t* gate )
        * retry is worth running: that retry swaps the shipped runtime for the
        * driver's, which only makes sense once a library has loaded. */
       if ( avian_gpu_backend_present() == 0 )
-         applog( LOG_ERR, "no GPU backend beside the miner, so --gpu cannot be "
-                          "honoured: expected %s, %s or %s in this directory",
+         applog( LOG_ERR, "no GPU backend beside the miner, so %s: expected "
+                          "%s, %s or %s in this directory", refused,
                  AVIAN_GPU_NVIDIA_LIB_NAME, AVIAN_GPU_AMD_LIB_NAME,
                  AVIAN_GPU_OPENCL_LIB_NAME );
       else if ( avian_gpu_backend_count() == 0 )
@@ -65,17 +70,44 @@ bool register_x16rt_cuda_algo( algo_gate_t* gate )
           * the AMD stack was there and the OpenCL loader was not. The lines
           * above this one say which library was missing and why. */
          applog( LOG_ERR, "a GPU backend is beside the miner but none would "
-                          "load, so --gpu cannot be honoured. Each needs its "
-                          "own runtime: a CUDA driver for %s, HIP for %s, and "
-                          "an OpenCL loader (libOpenCL) for %s, which ROCm "
-                          "does not install unless its OpenCL userspace is "
-                          "asked for",
+                          "load, so %s. Each needs its own runtime: a CUDA "
+                          "driver for %s, HIP for %s, and an OpenCL loader "
+                          "(libOpenCL) for %s, which ROCm does not install "
+                          "unless its OpenCL userspace is asked for", refused,
                  AVIAN_GPU_NVIDIA_LIB_NAME, AVIAN_GPU_AMD_LIB_NAME,
                  AVIAN_GPU_OPENCL_LIB_NAME );
       else
-         applog( LOG_ERR, "no CUDA device found, so --gpu cannot be honoured" );
-      return false;
+         applog( LOG_ERR, "no CUDA device found, so %s", refused );
+      return -1;
    }
+   return devices;
+}
+
+/* --list-devices: the numbers --devices takes, without mining for them.
+ *
+ * They used to exist only once registration had logged them, so learning
+ * which card is #2 meant starting a real run, which measures a hash rate and
+ * connects to a pool first. Enumeration is all this does: no kernel is
+ * compiled and no card is asked to hash. LOG_NOTICE because this is the
+ * output that was asked for rather than progress, so -q must not eat it. */
+bool x16rt_cuda_list_devices( void )
+{
+   int devices = gpu_inventory( "--list-devices has nothing to list" );
+
+   if ( devices < 0 )
+      return false;                            /* which has said why */
+   for ( int d = 0; d < devices; d++ )
+      applog( LOG_NOTICE, "GPU #%d: %s (%s)", avian_gpu_device_index( d ),
+              avian_gpu_device_name( d ), avian_gpu_vendor( d ) );
+   return true;
+}
+
+bool register_x16rt_cuda_algo( algo_gate_t* gate )
+{
+   int devices = gpu_inventory( "--gpu cannot be honoured" );
+
+   if ( devices < 0 )
+      return false;                            /* which has said why */
    if ( opt_gpu_devices )
    {
       devices = avian_gpu_select( opt_gpu_devices );   /* which has said why */
