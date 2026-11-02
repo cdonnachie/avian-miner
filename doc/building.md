@@ -382,8 +382,18 @@ header, and `--benchmark` pins the chain to `FE17C8172501B98C` because ntime
 is zero, so if the HIP measurement used a different order the two are not
 quite the same work: order composition matters more than it looks, since one
 groestl in a chain costs what fourteen cheap rounds do. And nobody mines on
-an Instinct. A consumer card is the number that decides anything, and the HIP
-backend's 25.3 MH/s on an RX 6900 XT is what it has to be set against.
+an Instinct, so a consumer card is the number that decides anything.
+
+**The consumer card, 2026-11-02.** An RX 6900 XT (`gfx1030`, RDNA2) on
+Windows did 27.28 MH/s through OpenCL against the HIP backend's 25.3 on the
+same card, both on `FE17C8172501B98C`, so OpenCL is ahead on RDNA2 as well as
+on CDNA3. Read that margin as parity at worst rather than as 8%: the HIP
+figure is a one-minute peak that was still climbing, where the OpenCL one
+converged over three minutes and held. The verification is the less equivocal
+half. All 32 kernels matched `sph` on `gfx1030` and all 19 orders verified
+every candidate, which is the whole harness, where HIP on that card has only
+ever been a working miner over a single order. Those two results together are
+what moved OpenCL ahead of HIP in the default backend order.
 
 The first AMD run was also the real test of correctness, because AMD's
 compiler is a third implementation after Nvidia's and POCL. All 32 kernels
@@ -455,18 +465,19 @@ failed every candidate in the second.
 ### Choosing a backend
 
 ```sh
-avian-miner -a x16rt --gpu                           # each card to its vendor's backend
+avian-miner -a x16rt --gpu                           # CUDA for Nvidia, OpenCL for AMD
 avian-miner -a x16rt --gpu --gpu-backend=ocl         # everything through OpenCL
-avian-miner -a x16rt --gpu --gpu-backend=cuda,ocl    # Nvidia on CUDA, AMD on OpenCL
+avian-miner -a x16rt --gpu --gpu-backend=cuda,amd    # the vendor toolkits, no OpenCL
 ```
 
 A priority applied **per vendor**, not a single choice, which is what lets a
-mixed rig run one backend per vendor. The third line above is the case: CUDA
-is first so it takes the Nvidia cards, HIP is absent from the list so it
-claims nothing, and the AMD cards fall through to OpenCL. The default is
-`cuda,amd,ocl`, so a card goes to its own vendor's backend when that loaded
-and to OpenCL when it did not, which is what OpenCL is for. A backend left
-out of the list is not loaded at all.
+mixed rig run one backend per vendor. The default is `cuda,ocl,amd`: CUDA
+takes the Nvidia cards, OpenCL takes the AMD ones, and HIP gets a card only
+where OpenCL loaded nothing, which is how a ROCm compute image with no OpenCL
+userspace comes. Each of those three placements is where that kind of card
+measured fastest; the third line above is the way back to the vendor toolkits
+if your own card says otherwise. A backend left out of the list is not loaded
+at all.
 
 **Each card now appears once.** Devices used to be numbered across the
 backends and left there, so a machine with a CUDA driver and an OpenCL one
@@ -1124,7 +1135,9 @@ reference written from the definition rather than copied from the headers:
   cannot meet the `amdgpu-waves-per-eu` occupancy the launch bounds ask
   for, and the block sizes are still chosen from Nvidia SM versions. The
   consumer figure was also still climbing when the minute ran out, so even
-  as a measurement it is a lower bound.
+  as a measurement it is a lower bound. OpenCL has since beaten both on the
+  same two cards, 107 and 27.3, and is now the default for AMD; closing the
+  occupancy gap above is what would make HIP worth preferring again.
 - **`ldg4`**, whose fallback copies one 32-byte structure where the PTX
   loads three. Nothing calls it.
 

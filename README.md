@@ -29,16 +29,18 @@ rather than quietly mining on the CPU.
 The last two mine nothing. They are kept because the pair is what measures
 how much of a MinotaurX nonce is memory hard, which turns out to be 98.4%.
 
-**On AMD, what has actually been run.** A Windows DLL built from these
-kernels hashes x16rt on an RX 6900 XT (`gfx1030`, RDNA2) at 25.3 MH/s with no
-submission failing to validate, and the same kernels run correctly on an
-Instinct MI325X (`gfx942`), verified against the CPU across the whole chain.
-That is one consumer card out of the sixteen architectures the libraries are
-built for: RDNA3, RDNA4 and the APUs compile and load but have not hashed on
-real hardware, and `libavian_amd.so` has not yet run on a card at all. Note
-also that `gfx942` is not in `cuda/hip/gfx-targets`, so an Instinct needs
-`--with-hip-arch=gfx942` and a build from source. Check your shares are being
-accepted before leaving an untried card running.
+**On AMD, what has actually been run.** Two cards, each through both of the
+backends that can drive them. An RX 6900 XT (`gfx1030`, RDNA2) hashes x16rt at
+27.3 MH/s through OpenCL against 25.3 through HIP, and an Instinct MI325X
+(`gfx942`, CDNA3) at 107 against 83.5. Nothing either card reported failed to
+re-hash on the CPU, in any of the four runs. OpenCL being the faster on both
+is why `--gpu` sends an AMD card there and leaves HIP to the machines that
+have no OpenCL runtime. That is still two architectures out of the sixteen
+the libraries are built for: RDNA3, RDNA4 and the APUs compile and load but
+have not hashed on real hardware. Note also that `gfx942` is not in
+`cuda/hip/gfx-targets`, so an Instinct needs `--with-hip-arch=gfx942` and a
+build from source. Check your shares are being accepted before leaving an
+untried card running.
 
 **Only the backend knows about your card.** The miner loads `avian_cuda.dll`
 and `avian_amd.dll`, or `libavian_cuda.so` and `libavian_amd.so`, at run time

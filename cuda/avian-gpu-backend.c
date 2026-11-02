@@ -60,10 +60,7 @@ struct backend
    int                  devices;
 };
 
-/* OpenCL last on purpose. It can drive either vendor's card, so with a
- * vendor backend present both would enumerate the same device; taking the
- * vendor one first means the faster path wins by default and OpenCL serves
- * the machines where the vendor runtime is missing, which is what it is for.
+/* The registry, not the priority: s_order below decides what is tried first.
  * Every loop over this array derives its length, so a fourth row needs
  * nothing else. */
 static struct backend s_backend[3] = {
@@ -74,16 +71,27 @@ static struct backend s_backend[3] = {
 
 /* Which backends to try and in what order, as indices into s_backend.
  *
- * The default is that array's own order, so a card goes to its vendor's
- * native backend when that loaded and to OpenCL when it did not, which is
- * what OpenCL is for. --gpu-backend replaces the list, and because it is a
- * priority applied per vendor rather than a single choice, a mixed rig can
- * have both: "cuda,ocl" gives the Nvidia cards CUDA and leaves the AMD ones
- * to OpenCL, because HIP is not in the list to claim them.
+ * CUDA, then OpenCL, then HIP, because a card goes to the first backend in
+ * this list reporting a device of its vendor and that is where each kind of
+ * card is fastest. CUDA beats OpenCL on an Nvidia card, 38.2 against 31.7
+ * MH/s on a 3090. OpenCL beats HIP on both AMD architectures that have run
+ * both, 107 against 83.5 on an MI325X and 27.3 against 25.3 on an RX 6900 XT,
+ * which is the opposite of what this order first assumed. HIP still takes the
+ * AMD cards where it is the only one there, which is how a ROCm compute image
+ * comes: OpenCL cannot claim a card it never enumerated.
+ *
+ * OpenCL ahead of HIP costs nothing in reach either, since it compiles at run
+ * time and so needs no architecture list, where libavian_amd drives only the
+ * targets cuda/hip/gfx-targets named when it was built.
+ *
+ * --gpu-backend replaces the list, and because it is a priority applied per
+ * vendor rather than a single choice, a mixed rig can have one backend per
+ * vendor: "cuda,amd" gives the Nvidia cards CUDA and the AMD ones HIP, with
+ * no OpenCL in the list to claim either.
  *
  * A backend left out of the list is not loaded at all rather than loaded and
  * ignored, which also keeps its absence out of the log. */
-static int  s_order[3] = { 0, 1, 2 };
+static int  s_order[3] = { 0, 2, 1 };
 static int  s_order_len = 3;
 
 /* The flat numbering the miner sees. */
