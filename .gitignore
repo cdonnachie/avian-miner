@@ -13,6 +13,12 @@ avian-miner
 # beside the binary.
 libavian_cuda.so
 libavian_amd.so
+libavian_ocl.so
+# The OpenCL tests are check_PROGRAMS, and its kernels are assembled
+# into one header at build time.
+avian-ocl-selftest
+avian-ocl-batchtest
+cuda/ocl/avian-ocl-kernels.h
 .dirstamp
 configure~
 cpuminer-config.h
