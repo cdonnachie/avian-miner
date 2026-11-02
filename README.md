@@ -98,7 +98,8 @@ avian-miner -a x16rt --gpu --sv2=POOL:PORT --sv2-user=ADDRESS.worker \
 Every GPU device is numbered in one list, Nvidia first, so `GPU #2` means the
 same thing whether this machine has Nvidia cards, AMD cards or both.
 `--devices 0,2` or `--devices 0-2` mines on a subset of them, numbered by that
-same list.
+same list, and `--list-devices` prints the numbering and exits, so finding out
+which card is which costs no mining run.
 
 Stratum v2 is built on [avian-sv2](https://github.com/cdonnachie/avian-sv2),
 a separate repository. A miner built without it still mines over Stratum v1;

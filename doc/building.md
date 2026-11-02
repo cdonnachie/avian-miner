@@ -479,6 +479,10 @@ measured fastest; the third line above is the way back to the vendor toolkits
 if your own card says otherwise. A backend left out of the list is not loaded
 at all.
 
+`--list-devices` prints the numbering that it and `--devices` share, and
+exits. It loads the backends and asks them what they have, so the list is the
+one a real run would use, but it compiles no kernel and asks no card to hash.
+
 **Each card now appears once.** Devices used to be numbered across the
 backends and left there, so a machine with a CUDA driver and an OpenCL one
 listed a single card as `GPU #0` and `GPU #1`; with no `--devices` the miner
