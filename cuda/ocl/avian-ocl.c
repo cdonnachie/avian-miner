@@ -45,12 +45,28 @@
 /* Enough for any rig. The loader has its own limit and will say so first. */
 #define AVIAN_OCL_MAX_DEVICES 32
 
-/* One batch's nonces. Deliberately modest: this backend has never run on an
- * AMD card, and a first version that is slow and finishes is worth more than
- * a fast one that trips a display driver's watchdog. Phase 5 measures it.
+/* One batch's nonces. Deliberately modest: it was chosen before this backend
+ * had run on an AMD card, preferring a first version that is slow and
+ * finishes over a fast one that trips a display driver's watchdog.
+ *
+ * Now measured on one: an RX 6600 mining through this backend sits at 99%
+ * load with this default, so it is long enough to hide the host's turnaround
+ * on that card and there is nothing to recover by raising it. Do not read a
+ * batchtest run as evidence either way. That reads 33% load, which is the
+ * test's own shape rather than the backend's: one batch inside a one-second
+ * process, with the card idle on both sides of it.
  *
  * A power of two so the rounding below leaves it alone. */
 #define AVIAN_OCL_THROUGHPUT ( 1u << 20 )
+
+/* Below this a batch stops being long enough to hide the host's turnaround,
+ * which is the thing being tuned. */
+#define AVIAN_OCL_MIN_THROUGHPUT ( 1u << 16 )
+
+/* The hash buffer is 64 bytes a nonce, so this ceiling is a gigabyte of it.
+ * Cards this backend is meant for have that; the allocation is checked anyway
+ * and says plainly when they do not. */
+#define AVIAN_OCL_MAX_THROUGHPUT ( 1u << 24 )
 
 /* Passed to clBuildProgram, and recorded in the cache key because a change
  * here changes the compiled output. Empty today: these kernels are upstream's
@@ -165,6 +181,51 @@ static void ocl_vendor_of( cl_device_id id, char *out, size_t n )
         snprintf( out, n, "intel" );
 }
 
+/* The batch size, which `AVIAN_OCL_BATCH` overrides in nonces.
+ *
+ * An environment variable rather than an option because the right value is a
+ * property of the card and is found by sweeping it, which wants no rebuild
+ * and no change to the ABI between the miner and its backends. Whatever is
+ * asked for is rounded down to a power of two, because the global size has to
+ * stay a multiple of the work group, and clamped at both ends.
+ *
+ * Read once: every device gets the same batch, which is wrong in principle
+ * for a mixed rig and has not yet been worth the complication of a per-device
+ * form of it. */
+static uint32_t settle_throughput( void )
+{
+    static uint32_t settled = 0;
+    const char     *want;
+    unsigned long   asked;
+    uint32_t        n;
+
+    if ( settled != 0 )
+        return settled;
+
+    settled = AVIAN_OCL_THROUGHPUT;
+    want    = getenv( "AVIAN_OCL_BATCH" );
+    if ( want == NULL )
+        return settled;
+
+    asked = strtoul( want, NULL, 0 );
+    if ( asked < AVIAN_OCL_MIN_THROUGHPUT )
+    {
+        ocl_log( OCL_LOG_ERR, "OpenCL: AVIAN_OCL_BATCH=%s is below %u nonces, "
+                              "so %u a batch stands", want,
+                 (unsigned) AVIAN_OCL_MIN_THROUGHPUT, settled );
+        return settled;
+    }
+
+    for ( n = AVIAN_OCL_MIN_THROUGHPUT;
+          n < AVIAN_OCL_MAX_THROUGHPUT && (unsigned long) ( n << 1 ) <= asked;
+          n <<= 1 )
+        ;
+    settled = n;
+    ocl_log( OCL_LOG_INFO, "OpenCL: AVIAN_OCL_BATCH=%s, so %u nonces a batch",
+             want, settled );
+    return settled;
+}
+
 static void enumerate( void )
 {
     cl_platform_id platform[8];
@@ -217,7 +278,7 @@ static void enumerate( void )
 
             dev->id         = ids[d];
             dev->platform   = platform[p];
-            dev->throughput = AVIAN_OCL_THROUGHPUT;
+            dev->throughput = settle_throughput();
             dev->name[0]    = '\0';
             clGetDeviceInfo( ids[d], CL_DEVICE_NAME, sizeof dev->name,
                              dev->name, NULL );
