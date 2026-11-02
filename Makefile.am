@@ -29,6 +29,21 @@ EXTRA_DIST = config-template.json cuda/sm-targets cuda/hip/gfx-targets
 
 SUFFIXES = .cu
 
+# The commit, generated into the build tree so a read-only source tree
+# still builds. Regenerated on every build rather than settled at
+# configure time, because a configure-time hash goes stale the moment you
+# commit and run make again. mkversion.sh rewrites the header only when
+# the value changes, so this costs one recompile per commit and nothing
+# otherwise.
+AVIAN_VERSION_H = avian-version.h
+BUILT_SOURCES = $(AVIAN_VERSION_H)
+CLEANFILES = $(AVIAN_VERSION_H)
+EXTRA_DIST += scripts/mkversion.sh
+
+.PHONY: force-avian-version
+$(AVIAN_VERSION_H): force-avian-version
+	$(SHELL) $(top_srcdir)/scripts/mkversion.sh $@ $(top_srcdir)
+
 SUBDIRS = compat
 
 ALL_INCLUDES = @PTHREAD_FLAGS@ -fno-strict-aliasing $(EXTRA_INCLUDES) -I. @AVIAN_SV2_CFLAGS@
@@ -409,7 +424,7 @@ OCL_KERNEL_SOURCES = \
 # BUILT_SOURCES because every object that embeds it needs it to exist before
 # the first compile rather than after.
 OCL_KERNELS_H = cuda/ocl/avian-ocl-kernels.h
-BUILT_SOURCES = $(OCL_KERNELS_H)
+BUILT_SOURCES += $(OCL_KERNELS_H)
 
 $(OCL_KERNELS_H): $(OCL_KERNEL_SOURCES) $(top_srcdir)/cuda/ocl/mkkernels.sh
 	$(MKDIR_P) cuda/ocl
@@ -477,6 +492,6 @@ avian_miner_SOURCES += algo/x16/x16rt-cuda-gate.c \
 EXTRA_DIST += $(CUDA_SOURCES) cuda/avian-cuda-api.h cuda/avian-gpu-backend.h
 EXTRA_DIST += cuda/ocl/mkkernels.sh cuda/ocl/amd-compile-check.sh
 EXTRA_DIST += $(OCL_KERNEL_SOURCES)
-CLEANFILES = $(NV_OBJECTS) $(AMD_OBJECTS) $(GPU_BACKENDS) \
+CLEANFILES += $(NV_OBJECTS) $(AMD_OBJECTS) $(GPU_BACKENDS) \
              $(OCL_OBJECTS) $(OCL_KERNELS_H)
 endif

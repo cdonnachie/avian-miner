@@ -22,6 +22,8 @@
  */
 
 #include <cpuminer-config.h>
+/* Generated each build by scripts/mkversion.sh. */
+#include "avian-version.h"
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -2882,6 +2884,12 @@ out:
 static void show_credits()
 {
    printf("\n         **********  avian-miner "PACKAGE_VERSION"  ********** \n");
+   /* The commit as well as the version. Every build between releases
+    * shares one version, so the number alone cannot tell two of them
+    * apart; this is what a log line needs to name its own tree. Empty
+    * from a release tarball, which has no checkout to ask. */
+   if ( *AVIAN_GIT_REV )
+      printf("                    built from %s\n", AVIAN_GIT_REV);
    // Which vendor is not a compile-time fact, and it is not one vendor. The
    // same binary drives either or both, through the plain-data ABI in
    // cuda/avian-cuda-api.h: it loads whichever backend libraries sit beside
