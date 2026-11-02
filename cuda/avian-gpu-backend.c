@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cuda/avian-gpu-backend.h"
@@ -379,6 +380,31 @@ bool avian_gpu_set_backend_order( const char *spec )
    return true;
 }
 
+/* An enumeration short of the cards in the machine looks exactly like a card
+ * that has dropped off the bus, and nothing said which it was. Masking is not
+ * a fault, so this is one informational line rather than a warning, but it
+ * belongs in the log of a rig that mines on one card of three.
+ *
+ * Here rather than in each backend because one variable crosses them:
+ * CUDA_VISIBLE_DEVICES hides devices from Nvidia's OpenCL as well as from
+ * CUDA, which is why both counts agree when it is set and neither is wrong. */
+static void report_device_masks( void )
+{
+   static const char *const var[] = { "CUDA_VISIBLE_DEVICES",
+                                      "HIP_VISIBLE_DEVICES",
+                                      "ROCR_VISIBLE_DEVICES",
+                                      "GPU_DEVICE_ORDINAL" };
+
+   for ( size_t i = 0; i < sizeof(var) / sizeof(var[0]); i++ )
+   {
+      const char *v = getenv( var[i] );
+
+      if ( v != NULL )
+         applog( LOG_INFO, "%s=%s is set, so the devices below can be fewer "
+                           "than the cards in this machine", var[i], v );
+   }
+}
+
 int avian_gpu_init( avian_cuda_log_fn log )
 {
    /* Which backend ended up owning each vendor's cards. A vendor goes to the
@@ -402,6 +428,8 @@ int avian_gpu_init( avian_cuda_log_fn log )
    if ( s_initialised )
       return s_devices;
    s_initialised = true;
+
+   report_device_masks();
 
    for ( int o = 0; o < s_order_len; o++ )
    {
