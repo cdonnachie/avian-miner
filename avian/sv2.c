@@ -682,12 +682,34 @@ void *avian_sv2_thread(void *userdata)
 
 /* X16RT reshuffles its chain of sixteen hashes every 128 seconds and the
  * orders are not equally fast, so a single sample measures a single order.
- * MinotaurX picks its six algorithms per hash out of the hash itself, so it
- * averages within one sample and needs only the one. */
-#define X16RT_EPOCHS 4
+ * Measured over 64 consecutive epochs on one 24-thread CPU: 1.87 to 10.19
+ * MH/s, a factor of 5.4, with a standard deviation of 39% of the mean. Most
+ * of that tracks how many times shavite512 lands in the order, which the
+ * sixteen nibbles choose with repetition: an order with none of it runs at
+ * 142% of the mean, one with three at 57%.
+ *
+ * Eight samples rather than four because it halves the error on the mean.
+ * Over that series, the spread of what a four-sample window concludes is a
+ * standard deviation of 20% of the true mean, and an eight-sample window 11%.
+ * The cost is three more seconds, once, before mining starts.
+ *
+ * MinotaurX picks six of its seven algorithms per hash out of the hash
+ * itself, and the seventh is always yespower, so it averages within one
+ * sample and needs only the one. */
+#define X16RT_EPOCHS 8
 
-/* Long enough for the slowest thing here. One MinotaurX core is about 1200
- * hashes a second, so even a quarter of this run is thousands of hashes. */
+/* Per sample, not per run.
+ *
+ * Fitting more samples into a fixed budget rather than spending more is a
+ * false economy: each one spends its first fraction of a second growing
+ * `chunk`, where a GPU is launch-bound and slower than it really is, so
+ * halving the samples doubles the share of the run spent measuring that
+ * rather than the hardware. */
+#define SECONDS_PER_SAMPLE 0.75
+
+/* One sample, for the algorithm that needs only one, and a long one because
+ * it is the slowest thing here: at about 1200 hashes a second per core this
+ * is still thousands of hashes. */
 #define DEFAULT_SECONDS 3.0
 
 struct bench_arg
@@ -781,7 +803,9 @@ double avian_sv2_measure_hash_rate( double seconds )
    if ( threads < 1 || !work_restart || !algo_gate.scanhash )
       return 0.0;
    if ( !( seconds > 0.0 ) )
-      seconds = DEFAULT_SECONDS;
+      seconds = ( opt_algo == ALGO_X16RT )
+                ? (double) X16RT_EPOCHS * SECONDS_PER_SAMPLE
+                : DEFAULT_SECONDS;
 
    args = (struct bench_arg *) calloc( threads, sizeof( *args ) );
    ids = (pthread_t *) calloc( threads, sizeof( *ids ) );
