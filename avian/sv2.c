@@ -617,9 +617,16 @@ void *avian_sv2_thread(void *userdata)
                 snprintf(printed + b * 2, 3, "%02x", event.block_hash[31 - b]);
             }
             if (event.block_confirmed) {
+                /* Not "it paid you". That claimed the whole coinbase, which
+                 * this side cannot know: it may carry an operator fee, or a
+                 * donation the identity asked for with a donate/<percent>/
+                 * prefix. Only the pool knows what it built, and on a
+                 * standard channel the miner never sees the coinbase. */
                 applog(LOG_NOTICE,
                        "*** BLOCK CONFIRMED *** %s is the chain tip. "
-                       "Share %u was yours and it paid you.",
+                       "Share %u was yours, and the coinbase it carries is "
+                       "what pays: your address, less any fee or donation "
+                       "that coinbase was built with.",
                        printed, event.sequence_number);
             } else {
                 /* Not "accepted". The pool has forwarded it and nothing has
