@@ -107,6 +107,25 @@ unauthenticated: the handshake proves nothing about who is on the other end,
 so anything able to reroute your traffic can take the hashrate. Pools that
 speak v2 publish the key.
 
+A pool running [avian-sv2-solo](https://github.com/cdonnachie/avian-sv2)
+takes a donation as part of the identity rather than as an option of its own,
+by prefixing it with `donate/<percent>/`:
+
+```sh
+avian-miner -a x16rt --gpu --sv2=POOL:PORT \
+            --sv2-user=donate/2/ADDRESS.worker \
+            --sv2-authority=POOL_AUTHORITY_KEY
+```
+
+The percentage takes up to two decimal places, so `donate/2/`, `donate/0.5/`
+and `donate/12.34/` all work, and it adds to whatever fee the operator
+charges. One that does not parse refuses the channel rather than being read
+as zero, so a typo stops the miner instead of quietly changing what you are
+paid. If the operator has set no address to pay donations to, the pool logs
+that and you keep everything; the miner cannot see that happen, so an
+accepted prefix and an ignored one look the same from here. Without the
+prefix nothing is taken: avian-miner has no fee of its own, and no default.
+
 ## Verifying a release
 
 Windows binaries are Authenticode signed and timestamped. Check before
