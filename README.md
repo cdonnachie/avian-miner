@@ -43,6 +43,19 @@ the APUs compile and load but have not hashed on real hardware. Note also that `
 build from source. Check your shares are being accepted before leaving an
 untried card running.
 
+**On HiveOS**, install the `-hiveos.tar.gz` asset as a custom miner rather
+than the ordinary Linux one: same binaries, but the layout and the four `h-`
+scripts HiveOS needs. AMD cards there go through OpenCL, which is what the
+image ships. See [doc/hiveos.md](doc/hiveos.md).
+
+**Intel GPUs are plausible and untested.** The OpenCL backend recognises
+`intel` as a vendor and nothing in it is AMD- or Nvidia-specific, so an Arc
+card or an integrated GPU should enumerate and run; neither CUDA nor HIP will
+claim it, so OpenCL gets it by default. But no Intel device has ever run these
+kernels, and "should" is not a measurement. If you have one, `avian-ocl-selftest`
+and `avian-ocl-batchtest` answer the question in about a minute, and the
+result is worth sending in either way.
+
 **Only the backend knows about your card.** The miner loads `avian_cuda.dll`
 and `avian_amd.dll`, or `libavian_cuda.so` and `libavian_amd.so`, at run time
 rather than linking them, across an ABI of plain data. So building one for your

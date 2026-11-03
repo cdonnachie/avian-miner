@@ -86,6 +86,12 @@ if [ "$STAGE" = linux ]; then
     [ -f "$T" ] || { echo "the container produced no $T"; exit 1; }
     echo "  $T"
 
+    # The same binaries again under the one layout HiveOS can install, which
+    # needs a fixed top-level directory name and the h- scripts beside the
+    # miner. A repack rather than a second build, so the two assets cannot
+    # differ. See hiveos/ and doc/hiveos.md.
+    OUT="$OUT" "$REPO/scripts/linux/hiveos-package.sh" "$T"
+
 elif [ "$STAGE" = windows ]; then
     "$REPO/scripts/windows/win-build.sh"
     "$REPO/scripts/windows/win-sv2.sh"
