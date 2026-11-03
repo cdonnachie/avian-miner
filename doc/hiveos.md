@@ -9,11 +9,20 @@ The release publishes that tarball beside the ordinary Linux one:
 | asset | for |
 | --- | --- |
 | `avian-miner-<version>-linux-x86_64.tar.gz` | any Linux machine, unpack and run |
-| `avian-miner-<version>-hiveos.tar.gz` | HiveOS, as a custom miner |
+| `avian-miner-<version>.tar.gz` | HiveOS, as a custom miner |
 
-They hold the same binaries. The HiveOS one differs only in that its
-top-level directory is `avian-miner` rather than a versioned name, which is
-what HiveOS requires, and that the four `h-` scripts are in it.
+They hold the same binaries. The HiveOS one differs only in its name and
+layout, and both of those matter.
+
+**Do not rename that file.** HiveOS takes the miner's identity from the file
+name rather than from the manifest inside: it splits the name at the last
+hyphen, treats what comes before as the miner and what comes after as the
+version, and then insists the archive hold one top-level directory called
+exactly that miner name. `avian-miner-1.1.0.tar.gz` is read as `avian-miner`
+at version `1.1.0`, and the directory inside is `avian-miner`, which is why
+it works. Adding anything after the version, such as `-hiveos`, makes HiveOS
+look for a directory named `avian-miner-1.1.0` and the install fails with
+`No avian-miner-1.1.0/h-manifest.conf`.
 
 ## Setting up a flight sheet
 
@@ -21,8 +30,8 @@ Create a flight sheet with **Miner: Custom**, then:
 
 | field | value |
 | --- | --- |
-| Miner name | `avian-miner` |
-| Installation URL | the `-hiveos.tar.gz` URL from the release page |
+| Miner name | `avian-miner`, which HiveOS fills in from the URL |
+| Installation URL | the `avian-miner-<version>.tar.gz` URL from the release page |
 | Hash algorithm | `x16rt` for GPUs, `minotaurx` for CPUs |
 | Wallet and worker template | `%WAL%.%WORKER_NAME%`, or your address and rig name |
 | Pool URL | `stratum+tcp://host:port` |

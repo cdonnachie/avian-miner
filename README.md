@@ -43,9 +43,9 @@ the APUs compile and load but have not hashed on real hardware. Note also that `
 build from source. Check your shares are being accepted before leaving an
 untried card running.
 
-**On HiveOS**, install the `-hiveos.tar.gz` asset as a custom miner rather
-than the ordinary Linux one: same binaries, but the layout and the four `h-`
-scripts HiveOS needs. AMD cards there go through OpenCL, which is what the
+**On HiveOS**, install the `avian-miner-<version>.tar.gz` asset as a custom
+miner rather than the `-linux-x86_64` one: same binaries, but the name and
+layout HiveOS parses and the four `h-` scripts it drives. AMD cards there go through OpenCL, which is what the
 image ships. See [doc/hiveos.md](doc/hiveos.md).
 
 **Intel GPUs are plausible and untested.** The OpenCL backend recognises
