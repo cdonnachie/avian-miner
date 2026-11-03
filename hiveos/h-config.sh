@@ -6,7 +6,19 @@
 # Config" box then shows the user exactly what the miner will be given, and
 # an extra option is one more line rather than a quoting problem.
 
-cd "$(dirname "$0")" || exit 1
+# ${BASH_SOURCE[0]} and not $0, which is not a matter of taste: HiveOS
+# sources this script rather than running it, the same way it sources
+# h-stats.sh, so $0 is the agent's own name and dirname $0 is wherever the
+# agent happens to be. The cd then succeeds against the wrong directory and
+# the source below fails in a directory that does contain the file. Seen on a
+# rig as "./h-manifest.conf: No such file or directory" with h-manifest.conf
+# sitting beside this script. BASH_SOURCE is the script's own path either way.
+#
+# It went unnoticed because nothing here needs the manifest to be read:
+# HiveOS exports CUSTOM_CONFIG_FILENAME itself, and CUSTOM_API_PORT falls back
+# to the same 4048 both here and in h-stats.sh. So the two agreed by
+# coincidence, and any value edited into the manifest was silently ignored.
+cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 # ./ matters: the dot command searches PATH, not the working directory, so a
 # bare name fails here however carefully the cd above was done.
 . ./h-manifest.conf

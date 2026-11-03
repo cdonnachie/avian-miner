@@ -5,7 +5,9 @@
 # takes the exit status as the miner's: a wrapper process in between turns a
 # crash into a clean exit and the rig never restarts it.
 
-cd "$(dirname "$0")" || exit 1
+# ${BASH_SOURCE[0]} rather than $0, so this is right whether HiveOS runs this
+# script or sources it. See h-config.sh for what the difference cost there.
+cd "$(dirname "${BASH_SOURCE[0]}")" || exit 1
 # ./ matters: the dot command searches PATH, not the working directory.
 . ./h-manifest.conf
 
