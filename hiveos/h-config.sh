@@ -7,7 +7,9 @@
 # an extra option is one more line rather than a quoting problem.
 
 cd "$(dirname "$0")" || exit 1
-. h-manifest.conf
+# ./ matters: the dot command searches PATH, not the working directory, so a
+# bare name fails here however carefully the cd above was done.
+. ./h-manifest.conf
 
 [[ -z $CUSTOM_CONFIG_FILENAME ]] && echo "no CUSTOM_CONFIG_FILENAME" && exit 1
 mkdir -p "$(dirname "$CUSTOM_CONFIG_FILENAME")"
@@ -48,6 +50,11 @@ if [[ -n $CUSTOM_USER_CONFIG ]]; then
         merged=$(jq -s '.[0] * .[1]' <<< "$conf {$line}" 2>/dev/null)
         if [[ -z $merged ]]; then
             echo "avian-miner: ignoring extra config that is not JSON: $line"
+            # Said once, with the shape, because the thing anyone will type
+            # here first is the command-line flag they already know.
+            echo "             This box takes JSON, one fragment a line, so"
+            echo "             --gpu is \"gpu\": true and --devices 1 is"
+            echo "             \"devices\": \"1\"."
             continue
         fi
         conf=$merged

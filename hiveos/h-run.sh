@@ -6,7 +6,8 @@
 # crash into a clean exit and the rig never restarts it.
 
 cd "$(dirname "$0")" || exit 1
-. h-manifest.conf
+# ./ matters: the dot command searches PATH, not the working directory.
+. ./h-manifest.conf
 
 if [[ ! -f $CUSTOM_CONFIG_FILENAME ]]; then
     echo "avian-miner: no config at $CUSTOM_CONFIG_FILENAME."

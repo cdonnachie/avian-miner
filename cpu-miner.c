@@ -1051,8 +1051,14 @@ void report_summary_log( bool force )
          else
             sprintf( tempstr, "%d C", curr_temp );
 
-         applog( LOG_NOTICE,"CPU temp: curr %s max %d, Freq: %.3f/%.3f GHz",
-                 tempstr, hi_temp, lo_freq / 1e6, hi_freq / 1e6 );
+         /* Not on a GPU run. This is the host core waiting on a card, and
+          * printed between GPU hash rates it reads as the card's own, which
+          * is the second place that had to be fixed. The max-temp guard just
+          * below still applies, because it is a safety check and not a
+          * report. */
+         if ( !opt_gpu )
+            applog( LOG_NOTICE,"CPU temp: curr %s max %d, Freq: %.3f/%.3f GHz",
+                    tempstr, hi_temp, lo_freq / 1e6, hi_freq / 1e6 );
          if ( curr_temp > hi_temp ) hi_temp = curr_temp;
          if ( ( opt_max_temp > 0.0 ) && ( curr_temp > opt_max_temp ) )
             restart_threads();
