@@ -45,6 +45,14 @@
 /* Enough for any rig. The loader has its own limit and will say so first. */
 #define AVIAN_OCL_MAX_DEVICES 32
 
+/* cl_amd_device_attribute_query. Declared here rather than included from
+ * CL/cl_ext.h, which an SDK need not ship and which a CUDA toolkit's partial
+ * CL headers do not. An implementation without the extension simply fails
+ * the query and the fallback below applies. */
+#ifndef CL_DEVICE_BOARD_NAME_AMD
+#define CL_DEVICE_BOARD_NAME_AMD 0x4038
+#endif
+
 /* One batch's nonces. Deliberately modest: it was chosen before this backend
  * had run on an AMD card, preferring a first version that is slow and
  * finishes over a fast one that trips a display driver's watchdog.
@@ -181,6 +189,38 @@ static void ocl_vendor_of( cl_device_id id, char *out, size_t n )
         snprintf( out, n, "intel" );
 }
 
+/* The card's name, preferring the board over the architecture.
+ *
+ * CL_DEVICE_NAME is whatever the implementation chooses to call the device,
+ * and the two AMD stacks disagree: Adrenalin on Windows answers "AMD Radeon
+ * RX 6900 XT" and ROCm answers "gfx1032", which names a whole family of
+ * parts and tells the owner of an RX 6600 nothing about which card in their
+ * rig this is. CL_DEVICE_BOARD_NAME_AMD is the marketing name and is what
+ * ROCm has instead.
+ *
+ * Both are kept when they differ, as "AMD Radeon RX 6600 [gfx1032]", because
+ * the architecture is what a kernel build problem is reported against and
+ * losing it would cost more than the tidier line is worth. */
+static void ocl_name_of( cl_device_id id, char *out, size_t n )
+{
+    char board[160] = { 0 };
+    char arch[160]  = { 0 };
+
+    out[0] = '\0';
+    clGetDeviceInfo( id, CL_DEVICE_NAME, sizeof arch, arch, NULL );
+
+    if ( clGetDeviceInfo( id, CL_DEVICE_BOARD_NAME_AMD, sizeof board, board,
+                          NULL ) != CL_SUCCESS )
+        board[0] = '\0';
+
+    if ( board[0] == '\0' || strcmp( board, arch ) == 0 )
+        snprintf( out, n, "%s", arch );
+    else if ( arch[0] == '\0' )
+        snprintf( out, n, "%s", board );
+    else
+        snprintf( out, n, "%s [%s]", board, arch );
+}
+
 /* The batch size, which `AVIAN_OCL_BATCH` overrides in nonces.
  *
  * An environment variable rather than an option because the right value is a
@@ -279,9 +319,7 @@ static void enumerate( void )
             dev->id         = ids[d];
             dev->platform   = platform[p];
             dev->throughput = settle_throughput();
-            dev->name[0]    = '\0';
-            clGetDeviceInfo( ids[d], CL_DEVICE_NAME, sizeof dev->name,
-                             dev->name, NULL );
+            ocl_name_of( ids[d], dev->name, sizeof dev->name );
             ocl_vendor_of( ids[d], dev->vendor, sizeof dev->vendor );
             ocl_log( OCL_LOG_INFO, "OpenCL: %s on %s", dev->name, pname );
             s_devices++;
