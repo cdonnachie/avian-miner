@@ -2459,12 +2459,22 @@ static void *miner_thread( void *userdata )
 #if (defined(_WIN64) || defined(__WINDOWS__) || defined(_WIN32) || defined(__APPLE__))
                 applog( LOG_NOTICE, "Total: %s %sH/s", hr, hr_units );
 #else
-                float lo_freq = 0., hi_freq = 0.;
-                linux_cpu_hilo_freq( &lo_freq, &hi_freq );
-                applog( LOG_NOTICE,
-                     "Total: %s %sH/s, Temp: %dC, Freq: %.3f/%.3f GHz",
-                     hr, hr_units, (uint32_t)cpu_temp(0), lo_freq / 1e6,
-                     hi_freq / 1e6 );
+                /* The temperature and frequency are the host CPU's. On a GPU
+                 * run they describe a core that is waiting on a card, so they
+                 * read as an idle machine beside a real hash rate, which is
+                 * worse than saying nothing. The card's own are the backend's
+                 * to report and it does not yet. */
+                if ( opt_gpu )
+                   applog( LOG_NOTICE, "Total: %s %sH/s", hr, hr_units );
+                else
+                {
+                   float lo_freq = 0., hi_freq = 0.;
+                   linux_cpu_hilo_freq( &lo_freq, &hi_freq );
+                   applog( LOG_NOTICE,
+                        "Total: %s %sH/s, Temp: %dC, Freq: %.3f/%.3f GHz",
+                        hr, hr_units, (uint32_t)cpu_temp(0), lo_freq / 1e6,
+                        hi_freq / 1e6 );
+                }
 #endif
              }
           }
