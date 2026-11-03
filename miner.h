@@ -545,6 +545,11 @@ void parse_arg(int key, char *arg);
 void parse_config(json_t *config, char *ref);
 void proper_exit(int reason);
 
+/* proper_exit without atexit handlers or GPU driver teardown, for when a
+ * device has stopped answering and an orderly close would wait on it. Log
+ * before calling: this flushes, but nothing after it runs. */
+void hard_exit(int reason);
+
 void applog_hash(void *hash);
 void format_hashrate(double hashrate, char *output);
 void print_hash_tests(void);

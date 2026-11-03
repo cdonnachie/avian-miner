@@ -29,6 +29,25 @@
 /* Two is what a batch can report: the winning nonce and one runner-up. */
 #define AVIAN_MAX_CANDIDATES 4
 
+/* How many batches in a row may fail before this stops trying.
+ *
+ * A card that fails repeatedly is almost always one that has left the PCIe
+ * bus, usually a riser, and nothing the miner can do re-enumerates it.
+ * Carrying on means an error line per iteration and no hashes, so a rig
+ * quietly loses that card's share of its rate while still looking busy.
+ *
+ * Small, because there is nothing to wait for. A real transient, a job
+ * arriving mid-batch, does not arrive here: the backend reports zero nonces
+ * tried and the loop below handles that separately. */
+#define AVIAN_GPU_MAX_FAILURES 5
+
+/* One slot per possible device rather than per mining thread, so --devices
+ * cannot shift the indices under it. Consecutive failures only: one good
+ * batch clears a card's count, because this is for a card that has gone and
+ * not for one that hiccups. */
+#define AVIAN_GPU_MAX_TRACKED 32
+static int s_batch_failures[ AVIAN_GPU_MAX_TRACKED ] = { 0 };
+
 int scanhash_x16rt_cuda( struct work *work, uint32_t max_nonce,
                          uint64_t *hashes_done, struct thr_info *mythr )
 {
@@ -118,12 +137,37 @@ int scanhash_x16rt_cuda( struct work *work, uint32_t max_nonce,
          * number once both vendors are present. */
         int found = avian_gpu_scan_batch( thr_id, &job, candidates,
                                           AVIAN_MAX_CANDIDATES, &throughput );
+        int slot = ( thr_id >= 0 && thr_id < AVIAN_GPU_MAX_TRACKED )
+                   ? thr_id : 0;
+
         if ( found < 0 )
         {
             applog( LOG_ERR, "GPU #%d: the batch failed (%d)", thr_id, found );
+
+            if ( ++s_batch_failures[ slot ] >= AVIAN_GPU_MAX_FAILURES )
+            {
+                /* Exiting rather than carrying on, because a supervisor
+                 * restart is the one thing that does recover a card which
+                 * has left the bus, and every mining distribution restarts
+                 * a miner that exits. A bare shell does not, so the message
+                 * says what happened and what to go and look at.
+                 *
+                 * hard_exit, not proper_exit: exit() would run this very
+                 * driver's teardown against the device that just stopped
+                 * answering, which is how the miner became unkillable in
+                 * the first place. */
+                applog( LOG_ERR, "GPU #%d: %d batches failed in a row, so "
+                                 "this card is gone rather than busy. "
+                                 "Exiting so the rig restarts us, which is "
+                                 "what re-enumerates it. Check the riser and "
+                                 "the PCIe seating if it does not come back.",
+                        thr_id, AVIAN_GPU_MAX_FAILURES );
+                hard_exit( 1 );
+            }
             *hashes_done = pdata[19] - first_nonce;
             return 0;
         }
+        s_batch_failures[ slot ] = 0;
 
         for ( int c = 0; c < found; c++ )
         {

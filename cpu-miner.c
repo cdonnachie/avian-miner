@@ -368,6 +368,21 @@ void get_currentalgo(char* buf, int sz)
 	snprintf(buf, sz, "%s", algo_names[opt_algo]);
 }
 
+/* Leave now, skipping atexit handlers and the GPU runtimes' destructors.
+ *
+ * Same reason as signal_exit further down, which the signal handler uses:
+ * their teardown waits on a device, and what calls either of these is a
+ * device that has stopped answering. Unlike that one this runs on an
+ * ordinary thread, so it can flush, and the caller is expected to have
+ * logged already.
+ *
+ * Does not return. */
+void hard_exit( int reason )
+{
+   fflush( NULL );
+   _exit( reason );
+}
+
 void proper_exit(int reason)
 {
    if (opt_debug) applog(LOG_INFO,"Program exit");
