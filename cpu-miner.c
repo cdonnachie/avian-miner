@@ -71,6 +71,9 @@
 #endif
 
 #include "miner.h"
+#if defined(HAVE_CUDA)
+#include "cuda/avian-gpu-backend.h"
+#endif
 #include "algo-gate-api.h"
 #ifdef HAVE_AVIAN_SV2
 #include "avian/sv2.h"
@@ -980,9 +983,28 @@ const long double exp96  = EXP32 * EXP32 * EXP32;                 // 2**96
 const long double exp128 = EXP32 * EXP32 * EXP32 * EXP32;         // 2**128
 const long double exp160 = EXP32 * EXP32 * EXP32 * EXP32 * EXP16; // 2**160
 
+/* "GPU #n " for a GPU run and nothing at all otherwise, because on a CPU
+ * run a thread is not a card and there can be dozens of them.
+ *
+ * Numbered as every other GPU line numbers them, through
+ * avian_gpu_device_index, so --devices 1 reports GPU #1 here as well rather
+ * than renumbering the one card it kept to zero. */
+static void card_tag( char *out, size_t n, int thr_id )
+{
+   out[0] = '\0';
+#if defined(HAVE_CUDA)
+   if ( opt_gpu )
+      snprintf( out, n, "GPU #%d ", avian_gpu_device_index( thr_id ) );
+#else
+   (void) thr_id;
+   (void) n;
+#endif
+}
+
 struct share_stats_t
 {
    int share_count;
+   int thr_id;             /* which card found it, on a GPU run */
    struct timeval submit_time;
    double net_diff;
    double share_diff;
@@ -1315,9 +1337,17 @@ static int share_result( int result, struct work *work,
    }
 
    const char *bell = !result && opt_bell ? &ASCII_BELL : "";
-   applog( LOG_INFO, "%s%d %s%s %s%s %s%s %s%s%s, %.3f sec (%dms)",
-           bell, my_stats.share_count, acol, ares, scol, sres, rcol, rres,
-           bcol, bres, use_colors ? CL_N : "", share_time, latency );
+   {
+      char tag[24];
+
+      /* The card is on the result line as well as the submit line, because a
+       * rig's useful question is which card the rejects are coming from, and
+       * the two lines can be far apart in a busy log. */
+      card_tag( tag, sizeof tag, my_stats.thr_id );
+      applog( LOG_INFO, "%s%d %s%s%s %s%s %s%s %s%s%s, %.3f sec (%dms)",
+              bell, my_stats.share_count, tag, acol, ares, scol, sres, rcol,
+              rres, bcol, bres, use_colors ? CL_N : "", share_time, latency );
+   }
    if ( unlikely( !( opt_quiet || result || stale ) ) )
    {
       applog2( LOG_INFO, "%sReject reason: %s", bell, reason ? reason : "" );
@@ -1855,12 +1885,14 @@ err_out:
 	return false;
 }
 
-static void update_submit_stats( struct work *work, const void *hash )
+static void update_submit_stats( struct work *work, const void *hash,
+                                 int thr_id )
 {
    pthread_mutex_lock( &stats_lock );
 
    submitted_share_count++;
    share_stats[ s_put_ptr ].share_count = submitted_share_count;
+   share_stats[ s_put_ptr ].thr_id = thr_id;
    gettimeofday( &share_stats[ s_put_ptr ].submit_time, NULL );
    share_stats[ s_put_ptr ].share_diff = work->sharediff;
    share_stats[ s_put_ptr ].net_diff = net_diff;
@@ -1891,7 +1923,7 @@ bool submit_solution( struct work *work, const void *hash,
    work->sharediff = hash_to_diff( hash );
    if ( likely( submit_work( thr, work ) ) )
    {
-     update_submit_stats( work, hash );
+     update_submit_stats( work, hash, thr->id );
 
      if unlikely( !have_stratum && !have_longpoll )
      {   // solo, block solved, force getwork
@@ -1905,8 +1937,11 @@ bool submit_solution( struct work *work, const void *hash,
      {
         if ( have_stratum )
         {
-           applog( LOG_INFO, "%d Submitted Diff %.5g, Block %d, Job %s",
-                   submitted_share_count, work->sharediff, work->height,
+           char tag[24];
+
+           card_tag( tag, sizeof tag, thr->id );
+           applog( LOG_INFO, "%d %sSubmitted Diff %.5g, Block %d, Job %s",
+                   submitted_share_count, tag, work->sharediff, work->height,
                    work->job_id );
            if ( opt_debug && opt_extranonce )
            {
@@ -1917,9 +1952,14 @@ bool submit_solution( struct work *work, const void *hash,
            }
         }
         else
-           applog( LOG_INFO, "%d Submitted Diff %.5g, Block %d, Ntime %08x",
-                   submitted_share_count, work->sharediff, work->height,
+        {
+           char tag[24];
+
+           card_tag( tag, sizeof tag, thr->id );
+           applog( LOG_INFO, "%d %sSubmitted Diff %.5g, Block %d, Ntime %08x",
+                   submitted_share_count, tag, work->sharediff, work->height,
                    work->data[ algo_gate.ntime_index ] );
+        }
 
         if ( opt_debug )
         {
