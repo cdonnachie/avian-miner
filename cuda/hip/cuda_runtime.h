@@ -75,6 +75,13 @@ typedef hipDeviceProp_t cudaDeviceProp;
 #define cudaGetDeviceProperties hipGetDeviceProperties
 #define cudaSetDevice          hipSetDevice
 #define cudaGetDeviceCount     hipGetDeviceCount
+
+/* Added with ABI 4, which reports each card's PCIe bus. HIP spells the
+ * attribute enumerator differently from the call, so both are needed: the
+ * Linux release builds no HIP at all, its container having no ROCm, so the
+ * only thing that catches a gap here is a Windows build. */
+#define cudaDeviceGetAttribute hipDeviceGetAttribute
+#define cudaDevAttrPciBusId    hipDeviceAttributePciBusId
 #define cudaFuncCachePreferL1  hipFuncCachePreferL1
 #define cudaDeviceSetCacheConfig hipDeviceSetCacheConfig
 #define cudaHostAlloc          hipHostMalloc
