@@ -177,5 +177,9 @@ else
     echo
     echo "to publish:"
     echo "  gh release create v$VERSION --title 'avian-miner $VERSION' \\"
-    echo "    $(ls -1 "$NAME"-*.tar.gz "$NAME"-*.zip SHA256SUMS SHA256SUMS.asc | tr '\n' ' ')"
+    # $HIVE first and by name, for the same reason as SHA256SUMS above:
+    # every glob here is "$NAME-*" and the HiveOS package has nothing
+    # after the version. Leaving it out would publish a SHA256SUMS that
+    # lists a file the release does not contain.
+    echo "    $(ls -1 $HIVE "$NAME"-*.tar.gz "$NAME"-*.zip SHA256SUMS SHA256SUMS.asc | tr '\n' ' ')"
 fi
