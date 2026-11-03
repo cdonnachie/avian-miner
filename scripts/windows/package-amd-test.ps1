@@ -191,7 +191,7 @@ Run-Once '$(if ($NoRuntime) { "benchmark run, using the runtime from the driver"
 # HIP never reads, so it was the same run twice and two testers duly
 # sent back files whose halves were identical. This one can only differ
 # or fail to start, and the runner reports either.
-if (Select-String -Path `$res -Pattern 'no CUDA device found' -Quiet) {
+if (Select-String -Path `$res -Pattern 'found no card' -Quiet) {
     `$rt = '$($hipRt.Name)'
     `$shipped = Join-Path `$PSScriptRoot `$rt
     if (Test-Path `$shipped) {

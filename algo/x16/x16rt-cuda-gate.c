@@ -77,7 +77,13 @@ static int gpu_inventory( const char *refused )
                  AVIAN_GPU_NVIDIA_LIB_NAME, AVIAN_GPU_AMD_LIB_NAME,
                  AVIAN_GPU_OPENCL_LIB_NAME );
       else
-         applog( LOG_ERR, "no CUDA device found, so %s", refused );
+         /* A backend loaded and enumerated nothing. It said "no CUDA device
+          * found", which is wrong in the case that now matters most: an AMD
+          * card on a rig with no Nvidia in it, where CUDA is not what was
+          * tried and not what is missing. Any masking variable in the
+          * environment has already been logged above. */
+         applog( LOG_ERR, "a GPU backend loaded and found no card, so %s",
+                 refused );
       return -1;
    }
    return devices;
