@@ -3726,6 +3726,29 @@ static void parse_cmdline(int argc, char *argv[])
 }
 
 #ifndef WIN32
+/* Leave without running atexit handlers, the GPU runtimes' destructors or
+ * anything else that might wait on hardware.
+ *
+ * The case this exists for is a card that has dropped off the PCIe bus. A
+ * mining thread is then parked inside a driver call that will not return,
+ * and proper_exit's exit() would run that driver's teardown against a device
+ * which no longer answers, so Ctrl-C appears to do nothing and the miner has
+ * to be killed from another terminal. Nothing here owns state that needs an
+ * orderly close: the sockets, the memory and the device handles are all the
+ * kernel's to reclaim.
+ *
+ * write() rather than applog() for the same reason. applog takes a mutex,
+ * and a signal handler that takes a mutex can deadlock against the thread it
+ * interrupted, which is precisely the thread that is already stuck. write,
+ * strlen and _exit are safe to call from here; printf and exit are not. */
+static void signal_exit( const char *msg, int reason )
+{
+   ssize_t written = write( STDERR_FILENO, msg, strlen( msg ) );
+
+   (void) written;          /* going anyway, and there is nowhere to report */
+   _exit( reason );
+}
+
 static void signal_handler(int sig)
 {
 	switch (sig) {
@@ -3733,12 +3756,10 @@ static void signal_handler(int sig)
 		applog(LOG_INFO, "SIGHUP received");
 		break;
 	case SIGINT:
-		applog(LOG_INFO, "SIGINT received, exiting");
-		proper_exit(0);
+		signal_exit( "\nSIGINT received, exiting\n", 0 );
 		break;
 	case SIGTERM:
-		applog(LOG_INFO, "SIGTERM received, exiting");
-		proper_exit(0);
+		signal_exit( "\nSIGTERM received, exiting\n", 0 );
 		break;
 	}
 }
