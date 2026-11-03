@@ -67,17 +67,21 @@ if [ "$STAGE" = linux ]; then
     # share accepted. For a build against this host, use
     # scripts/configure-build.sh.
     #
-    # The container carries no ROCm, so a Linux release has no AMD backend and
-    # an AMD owner builds from source. That is the cost of portability and it
-    # is paid by few: the backends are dlopened, so the binary is identical for
-    # everyone else, and configure now records $ORIGIN in the backend's rpath
-    # so a source build can keep the HIP runtime beside it. See doc/building.md.
+    # AVIAN_OCL=1 is what gives a Linux release any AMD support at all, and
+    # it is not optional here. The container carries no ROCm, so there is no
+    # libavian_amd.so in a release and an AMD owner would otherwise be told to
+    # build from source; OpenCL needs only the loader, which the image has, and
+    # is the faster of the two backends on every AMD card measured. It also
+    # puts avian-ocl-selftest and avian-ocl-batchtest in the tarball, which are
+    # how a card that has never run these kernels gets checked on the rig that
+    # has it. Without this the Windows release ships the OpenCL backend and the
+    # Linux one silently does not. See doc/building.md.
     #
     # OUT is passed through so both stages land in the directory the finish
     # stage signs. Everything else the container derives for itself, including
     # the version, the package name and the same -O3 -march=x86-64-v2 this
     # stage used to set.
-    OUT="$OUT" "$REPO/scripts/linux/build.sh"
+    OUT="$OUT" AVIAN_OCL=1 "$REPO/scripts/linux/build.sh"
     T=$OUT/$NAME-linux-x86_64.tar.gz
     [ -f "$T" ] || { echo "the container produced no $T"; exit 1; }
     echo "  $T"
