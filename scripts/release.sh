@@ -124,7 +124,16 @@ else
     cd "$OUT"
     ls -1 "$NAME"-*.tar.gz "$NAME"-*.zip >/dev/null 2>&1 || {
         echo "nothing to finish: run the linux and windows stages first"; exit 1; }
-    sha256sum "$NAME"-*.tar.gz "$NAME"-*.zip > SHA256SUMS
+    # The HiveOS package is $NAME.tar.gz with nothing after the version,
+    # because HiveOS parses the miner's name and version out of the file name
+    # and any suffix breaks the install. Every glob here is "$NAME-*", so it
+    # would be left out of SHA256SUMS and so out of the signature: a
+    # published asset nobody can verify, which is worse than one that is
+    # missing, and silent either way. Named explicitly, and only when it is
+    # there, so a release without it still finishes.
+    HIVE=
+    [ -f "$NAME.tar.gz" ] && HIVE=$NAME.tar.gz
+    sha256sum $HIVE "$NAME"-*.tar.gz "$NAME"-*.zip > SHA256SUMS
     # Detached and armoured. Authenticode covers the Windows binaries and
     # nothing covers the tarball, so this is what makes the Linux half
     # verifiable at all.
