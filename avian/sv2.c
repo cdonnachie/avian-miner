@@ -693,6 +693,13 @@ void *avian_sv2_thread(void *userdata)
  * standard deviation of 20% of the true mean, and an eight-sample window 11%.
  * The cost is three more seconds, once, before mining starts.
  *
+ * Re-measured on a GPU, where the expensive algorithm is groestl rather than
+ * shavite512, and eight holds. Timing each algorithm as its own chain on an
+ * RX 6600 and an RTX 3070 (doc/building.md has the loop) puts one epoch's
+ * spread at 25-28% of the mean on both, so an eight-sample window concludes
+ * within about 10%. A GPU is the narrower case rather than the harder one,
+ * so a count chosen on the CPU is conservative there, not marginal.
+ *
  * MinotaurX picks six of its seven algorithms per hash out of the hash
  * itself, and the seventh is always yespower, so it averages within one
  * sample and needs only the one. */

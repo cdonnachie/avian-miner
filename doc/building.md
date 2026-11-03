@@ -409,9 +409,12 @@ The first AMD run was also the real test of correctness, because AMD's
 compiler is a third implementation after Nvidia's and POCL. All 32 kernels
 matched `sph`, all 19 chain orders verified every candidate, and the
 uncapped candidate counts came back identical to Nvidia's, order by order.
-Three implementations agreeing on which nonces clear a target, over the same
-header, is what makes the header-convention fix below credible rather than
-merely self-consistent.
+A fourth has since agreed: an RX 6600 (`gfx1032`) under **ROCm's** OpenCL on
+a HiveOS rig, a different compiler from the Windows driver's on `gfx1030`,
+returned the same 32 matches, the same 19 orders and the same candidate
+counts again. Four implementations agreeing on which nonces clear a target,
+over the same header, is what makes the header-convention fix below credible
+rather than merely self-consistent.
 
 83% of a backend whose kernels carry inline PTX and texture lookups, from a
 portable one. It was 4% until two things were fixed, and both are worth
@@ -433,14 +436,51 @@ macros, so the copy was made every launch and ignored. Note what stayed:
 address, and `__constant` is right for it.
 
 To find the next one, time each algorithm as a whole chain, which is what
-makes a single slow kernel obvious:
+makes a single slow kernel obvious. `date` rather than `/usr/bin/time`,
+because a mining distribution may not have the latter:
 
 ```sh
 for d in 0 1 2 3 4 5 6 7 8 9 a b c d e f ; do
     order=$(printf "%0.s$d" $(seq 16))
-    /usr/bin/time -f "$d %e" ./avian-ocl-batchtest $order > /dev/null
+    t0=$(date +%s%N)
+    ./avian-ocl-batchtest --device 1 $order > /dev/null
+    t1=$(date +%s%N)
+    echo "$d $(( (t1 - t0) / 1000000 )) ms"
 done
 ```
+
+Run it twice and read the second pass, because every OpenCL implementation
+caches compiled programs and the first pass times the compiler. You can tell
+the cache is warm without trusting that: blake, bmw, keccak, shabal and
+sha512 are five kernels of quite different sizes, and they land within a few
+milliseconds of each other once it is.
+
+**What it found, on an RX 6600 and an RTX 3070 through the same path.**
+Subtracting the flat per-invocation cost leaves each algorithm's share of a
+chain holding one of each:
+
+| | groestl | echo | simd | whirlpool | shavite | hamsi | fugue | cubehash | jh | luffa | the cheap six |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| RX 6600 | 25.6% | 13.6% | 11.7% | 9.1% | 7.3% | 7.1% | 6.4% | 6.2% | 4.8% | 3.6% | 4.5% |
+| RTX 3070 | 25.6% | 11.4% | 18.2% | 7.3% | 6.2% | 10.2% | 6.1% | 4.5% | 6.5% | 2.9% | 1.1% |
+
+Shares rather than times, because a share does not depend on the clock: the
+6600's held within a point of these across three overclock profiles spanning
+1.7x in frequency, which is what makes them worth writing down at all.
+
+Three things follow. **Groestl is the algorithm to optimise**, a quarter of a
+chain on its own and the same quarter on both cards. **The cheap six**, blake,
+bmw, keccak, skein, shabal and sha512, are 4.5% and 1.1% of a chain between
+them, so work on any of them pays nothing however slow it looks next to the
+others. And the two cards disagree most on **simd** and **hamsi**, the two
+most register-hungry kernels, so a profile measured on one vendor does not
+transfer to the other.
+
+**A batchtest run is not a load measurement.** On that RX 6600 it reports 33%
+GPU load where the miner on the same card at the same clock reports 99%: the
+test is a single batch inside a one-second process, with the card idle either
+side of it. To ask whether a card is saturated, run the miner with
+`--benchmark` and read the load while that is going.
 
 **The header is byte-swapped, and the tests have to check that.** See
 `cuda/ocl/kernels/avian-ocl-common.cl`. The backend uploaded `job.data`
