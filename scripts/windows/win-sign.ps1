@@ -55,12 +55,30 @@ if (-not $Thumbprint) {
 $cert = Get-Item "Cert:\CurrentUser\My\$Thumbprint" -ErrorAction SilentlyContinue
 if ($cert) { Write-Host ("expires:     {0:yyyy-MM-dd}" -f $cert.NotAfter) }
 
-$ours = 'avian-miner.exe', 'avian_cuda.dll', 'avian_amd.dll'
-$targets = $ours | ForEach-Object { Join-Path $Dir $_ } | Where-Object { Test-Path $_ }
+# Everything this repository compiles, which is not just the exe. Since the
+# backends became a run-time LoadLibrary, avian_ocl.dll does every hash on an
+# AMD card, and the two test tools are what a tester runs on a card nobody
+# has tried yet. The vendor backends come out of build-cuda-dll.ps1 and
+# build-hip-dll.ps1 and are ours as well.
+$ours = 'avian-miner.exe', 'avian_cuda.dll', 'avian_amd.dll', 'avian_ocl.dll',
+        'avian-ocl-selftest.exe', 'avian-ocl-batchtest.exe'
+
+# A package legitimately carries only some of these: a CUDA-only build has no
+# avian_amd.dll, and a build without --with-opencl has no avian_ocl.dll. So a
+# missing file cannot be an error. It was silent, though, and that is how
+# avian_ocl.dll shipped unsigned under a closing line reading "signed and
+# verified: 3 file(s)", which looks like success. Named on screen instead.
+$targets = @()
+$missing = @()
+foreach ($n in $ours) {
+    $p = Join-Path $Dir $n
+    if (Test-Path $p) { $targets += $p } else { $missing += $n }
+}
 if (-not $targets) { throw "none of $($ours -join ', ') found in $Dir" }
 
 Write-Host "`n=== signing ==="
 foreach ($t in $targets) { Write-Host "  $(Split-Path -Leaf $t)" }
+if ($missing) { Write-Host "  (not in this package: $($missing -join ', '))" }
 
 & $signtool.FullName sign /sha1 $Thumbprint /fd SHA256 /tr $TimestampUrl /td SHA256 /v @targets
 if ($LASTEXITCODE -ne 0) { throw "signtool sign failed ($LASTEXITCODE)" }

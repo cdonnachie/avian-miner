@@ -95,7 +95,19 @@ if [ "$STAGE" = linux ]; then
 elif [ "$STAGE" = windows ]; then
     "$REPO/scripts/windows/win-build.sh"
     "$REPO/scripts/windows/win-sv2.sh"
-    "$REPO/scripts/windows/win-gpu.sh"
+    # AVIAN_WITH_OPENCL=1 is as little optional here as AVIAN_OCL=1 is in the
+    # linux stage above, and for a sharper reason: it is the only AMD backend
+    # a Windows user already has the runtime for. avian_amd.dll needs
+    # amdhip64.dll out of the HIP SDK, which an AMD owner has no reason to
+    # have installed, while the OpenCL.dll it loads instead arrives with every
+    # driver. OpenCL is also the faster of the two on every AMD card measured.
+    #
+    # It keeps the commit stamp honest as a side effect. Without it win-gpu.sh
+    # appends the GPU sources to Makefile.am, which is tracked and is not in
+    # mkversion.sh's list of files autoreconf rewrites, so every Windows GPU
+    # release before this one went out stamped -dirty. With --with-opencl the
+    # committed `if HAVE_CUDA` block already names them and nothing is edited.
+    AVIAN_WITH_OPENCL=1 "$REPO/scripts/windows/win-gpu.sh"
     "$REPO/scripts/windows/win-package.sh"
     # Derived the way win-package.sh derives it, not written out again.
     # Hardcoding the default meant AVIAN_BUILD_DIR moved the build and not
@@ -176,7 +188,14 @@ else
     cat SHA256SUMS
     echo
     echo "to publish:"
-    echo "  gh release create v$VERSION --title 'avian-miner $VERSION' \\"
+    # -R, because this hint is pasted in $OUT and $OUT is not a git checkout,
+    # so gh has no remote to infer the repository from and stops with "none of
+    # the git remotes configured for this repository point to a known GitHub
+    # host". Derived rather than written out, so a fork gets its own name.
+    SLUG=$(git -C "$REPO" remote get-url origin 2>/dev/null |
+           sed -E 's|^.*[:/]([^/]+/[^/]+)$|\1|; s|\.git$||')
+    echo "  gh release create v$VERSION ${SLUG:+-R $SLUG }\\"
+    echo "    --title 'avian-miner $VERSION' \\"
     # $HIVE first and by name, for the same reason as SHA256SUMS above:
     # every glob here is "$NAME-*" and the HiveOS package has nothing
     # after the version. Leaving it out would publish a SHA256SUMS that
