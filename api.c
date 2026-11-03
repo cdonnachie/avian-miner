@@ -34,6 +34,9 @@
 
 #include "miner.h"
 #include "sysinfos.c"
+#if defined(HAVE_CUDA)
+#include "cuda/avian-gpu-backend.h"
+#endif
 #ifndef WIN32
 # include <errno.h>
 # include <sys/socket.h>
@@ -120,8 +123,28 @@ static void cpustatus(int thr_id)
       double hashrate = thr_hashrates[thr_id];
 
       scale_hash_for_display ( &hashrate, units );
-      snprintf( buf, sizeof(buf), "CPU=%d;%sH/s=%.2f|", thr_id, units,
+      snprintf( buf, sizeof(buf), "CPU=%d;%sH/s=%.2f", thr_id, units,
                 hashrate );
+
+#if defined(HAVE_CUDA)
+      /* The card this thread is on, for anything pairing a rate with a slot:
+       * one mining thread is one GPU, and the miner's own numbering is not
+       * the order a rig's tooling uses. Absent rather than -1 when unknown,
+       * so a reader can tell "no answer" from a real bus. */
+      if ( opt_gpu )
+      {
+         int bus = avian_gpu_device_pci_bus( thr_id );
+
+         if ( bus >= 0 )
+         {
+            char slot[32];
+
+            snprintf( slot, sizeof(slot), ";BUS=%d", bus );
+            strncat( buf, slot, sizeof(buf) - strlen(buf) - 1 );
+         }
+      }
+#endif
+      strncat( buf, "|", sizeof(buf) - strlen(buf) - 1 );
       // append to buffer
       strcat( buffer, buf );
    }

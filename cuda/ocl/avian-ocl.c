@@ -53,6 +53,35 @@
 #define CL_DEVICE_BOARD_NAME_AMD 0x4038
 #endif
 
+/* Three extensions for one fact, because no two vendors agreed on it:
+ * cl_amd_device_attribute_query, cl_nv_device_attribute_query and the later
+ * cl_khr_pci_bus_info, which Intel implements. Declared here for the same
+ * reason as the board name above, that CL/cl_ext.h need not be present. */
+#ifndef CL_DEVICE_TOPOLOGY_AMD
+#define CL_DEVICE_TOPOLOGY_AMD 0x4037
+#endif
+#ifndef CL_DEVICE_PCI_BUS_ID_NV
+#define CL_DEVICE_PCI_BUS_ID_NV 0x4008
+#endif
+#ifndef CL_DEVICE_PCI_BUS_INFO_KHR
+#define CL_DEVICE_PCI_BUS_INFO_KHR 0x410F
+#endif
+
+/* The AMD topology union, of which only the PCIe arm is of interest. Its
+ * first field is a type tag and 1 means PCIe; anything else means the rest
+ * of the struct is something other than a bus number. */
+typedef union
+{
+    struct { cl_uint type; cl_uint data[5]; } raw;
+    struct { cl_uint type; cl_char unused[17], bus, device, function; } pcie;
+} avian_cl_topology_amd;
+
+/* cl_khr_pci_bus_info returns four 32-bit fields, bus second. */
+typedef struct
+{
+    cl_uint domain, bus, device, function;
+} avian_cl_pci_bus_info_khr;
+
 /* One batch's nonces. Deliberately modest: it was chosen before this backend
  * had run on an AMD card, preferring a first version that is slow and
  * finishes over a fast one that trips a display driver's watchdog.
@@ -219,6 +248,33 @@ static void ocl_name_of( cl_device_id id, char *out, size_t n )
         snprintf( out, n, "%s", board );
     else
         snprintf( out, n, "%s [%s]", board, arch );
+}
+
+/* Which PCIe bus the card sits on, or -1 if nothing here will say.
+ *
+ * Tried in the order that answers soonest on the hardware this runs on, and
+ * every one of them is an extension: the core specification has no way to
+ * ask. A device whose implementation has none of the three is not an error,
+ * it is a rig that will show its hash rates without a card to pin them to. */
+static int ocl_pci_bus_of( cl_device_id id )
+{
+    avian_cl_topology_amd     amd;
+    avian_cl_pci_bus_info_khr khr;
+    cl_uint                   nv = 0;
+
+    if ( clGetDeviceInfo( id, CL_DEVICE_TOPOLOGY_AMD, sizeof amd, &amd, NULL )
+         == CL_SUCCESS && amd.raw.type == 1 )
+        return (int) (unsigned char) amd.pcie.bus;
+
+    if ( clGetDeviceInfo( id, CL_DEVICE_PCI_BUS_ID_NV, sizeof nv, &nv, NULL )
+         == CL_SUCCESS )
+        return (int) nv;
+
+    if ( clGetDeviceInfo( id, CL_DEVICE_PCI_BUS_INFO_KHR, sizeof khr, &khr,
+                          NULL ) == CL_SUCCESS )
+        return (int) khr.bus;
+
+    return -1;
 }
 
 /* The batch size, which `AVIAN_OCL_BATCH` overrides in nonces.
@@ -907,6 +963,14 @@ AVIAN_CUDA_API const char *avian_cuda_device_name( int dev_id )
     if ( dev_id < 0 || dev_id >= s_devices )
         return "";
     return s_device[dev_id].name;
+}
+
+AVIAN_CUDA_API int avian_cuda_device_pci_bus( int dev_id )
+{
+    enumerate();
+    if ( dev_id < 0 || dev_id >= s_devices )
+        return -1;
+    return ocl_pci_bus_of( s_device[dev_id].id );
 }
 
 AVIAN_CUDA_API const char *avian_cuda_device_vendor( int dev_id )

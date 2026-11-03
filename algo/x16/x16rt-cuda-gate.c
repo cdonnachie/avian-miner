@@ -103,8 +103,20 @@ bool x16rt_cuda_list_devices( void )
    if ( devices < 0 )
       return false;                            /* which has said why */
    for ( int d = 0; d < devices; d++ )
-      applog( LOG_NOTICE, "GPU #%d: %s (%s)", avian_gpu_device_index( d ),
-              avian_gpu_device_name( d ), avian_gpu_vendor( d ) );
+   {
+      int bus = avian_gpu_device_pci_bus( d );
+
+      /* Hex, and padded, because that is how lspci, nvidia-smi and a mining
+       * distribution's own tools write a bus, and the point of printing it
+       * is to match this list against one of those. */
+      if ( bus >= 0 )
+         applog( LOG_NOTICE, "GPU #%d: %s (%s) on PCI bus %02x",
+                 avian_gpu_device_index( d ), avian_gpu_device_name( d ),
+                 avian_gpu_vendor( d ), bus );
+      else
+         applog( LOG_NOTICE, "GPU #%d: %s (%s)", avian_gpu_device_index( d ),
+                 avian_gpu_device_name( d ), avian_gpu_vendor( d ) );
+   }
    return true;
 }
 

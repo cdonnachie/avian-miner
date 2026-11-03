@@ -104,6 +104,24 @@ extern "C" AVIAN_CUDA_API const char *avian_cuda_device_vendor(int dev_id)
 #endif
 }
 
+extern "C" AVIAN_CUDA_API int avian_cuda_device_pci_bus(int dev_id)
+{
+    int bus = -1;
+
+    (void) avian_cuda_device_count();
+    if (dev_id < 0 || dev_id >= cuda_num_devices) {
+        return -1;
+    }
+    /* Through device_map, because dev_id numbers this backend's inventory
+     * and the attribute wants the runtime's own ordinal. hipcc compiles this
+     * file too, and the shim renames both of these. */
+    if (cudaDeviceGetAttribute(&bus, cudaDevAttrPciBusId, device_map[dev_id])
+        != cudaSuccess) {
+        return -1;
+    }
+    return bus;
+}
+
 extern "C" AVIAN_CUDA_API const char *avian_cuda_device_name(int dev_id)
 {
     /* From the inventory, so the name matches the device the kernels will

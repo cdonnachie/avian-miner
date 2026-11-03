@@ -56,7 +56,14 @@ this miner takes the same JSON config.
 `"devices"` is worth knowing about on a mixed rig: it picks which cards to
 use, numbered as the miner numbers them, which is **not** the order HiveOS
 shows. Run `./avian-miner --list-devices` over SSH in the install directory
-to see the numbering before you set it.
+to see the numbering before you set it. It prints the PCIe bus beside each
+card, in hex, so the list lines up with `amd-info`, `nvidia-info` and
+`lspci`:
+
+```
+GPU #0: NVIDIA GeForce RTX 3070 (Nvidia) on PCI bus 05
+GPU #1: AMD Radeon RX 6600 [gfx1032] (OpenCL) on PCI bus 08
+```
 
 ## What the stats show
 
@@ -64,13 +71,16 @@ to see the numbering before you set it.
 the total hash rate, a rate per mining thread, accepted and rejected shares,
 uptime, the algorithm and the version.
 
-**Per-card hash rates are not yet mapped to cards.** The miner runs one
-thread per GPU, so the numbers are there, but it cannot yet report which PCIe
-card a thread ran on, and guessing an order HiveOS already knows better would
-be worse than leaving it out. The GPU table on the rig page still shows each
-card's temperature, fan and power from HiveOS's own agent, which is the
-correct source for those anyway. A CPU run does report its temperature here,
-because there is only one.
+**Per-card rates are mapped by PCIe bus**, not by position in a list. The
+miner runs one thread per GPU and reports the bus each one is on, which
+HiveOS pairs with its own GPU table. This matters on a mixed rig: the miner
+numbers CUDA cards before OpenCL ones, HiveOS follows the bus, and the two
+coincide only by luck. If a backend cannot report a bus, the mapping is
+omitted rather than guessed, and the rig page shows the total alone.
+
+Temperatures and fans for a GPU run are not reported here. They belong to the
+cards, and the HiveOS agent reads them from the driver, which is a better
+source than a miner. A CPU run does report its one temperature.
 
 The API is bound to `127.0.0.1` and `--api-remote` is never passed. It is an
 unauthenticated control socket that can change the pool and stop the miner,

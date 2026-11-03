@@ -93,6 +93,7 @@ int avian_gpu_backend_present( void );
 
 /* The card's own name, or "" for an index out of range. */
 const char *avian_gpu_device_name( int device );
+int avian_gpu_device_pci_bus( int device );
 
 /* Which backend owns this device, for logging: "Nvidia" or "AMD". */
 const char *avian_gpu_vendor( int device );

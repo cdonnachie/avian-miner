@@ -44,7 +44,7 @@
  *      device_map, which only works when there is one backend
  *   2  job.device names the device, so two backends can each number from
  *      zero, and avian_cuda_abi_version exists to say so */
-#define AVIAN_CUDA_ABI_VERSION 3
+#define AVIAN_CUDA_ABI_VERSION 4
 
 #ifdef __cplusplus
 extern "C" {
@@ -103,6 +103,24 @@ AVIAN_CUDA_API const char *avian_cuda_device_name(int dev_id);
  * two backends do not describe a card the same way.
  */
 AVIAN_CUDA_API const char *avian_cuda_device_vendor(int dev_id);
+
+/* The card's PCI bus number, or -1 when this backend cannot tell.
+ *
+ * Added in ABI 4, for the same reason as the vendor above: only the library
+ * knows. A mining distribution identifies a card by its PCIe slot, because
+ * that is the one name that does not move when a driver renumbers or a
+ * second vendor's runtime loads, and it is what HiveOS pairs a hash rate
+ * with to fill the right row of its GPU table. Without it a rig with cards
+ * of both vendors shows its rates against the wrong cards.
+ *
+ * The bus alone, not the whole domain:bus:device.function. It is what the
+ * consumers want, it fits an int, and on any machine this runs on no two
+ * GPUs share a bus.
+ *
+ * -1 rather than 0 for unknown, because bus 0 exists and an integrated GPU
+ * can be on it.
+ */
+AVIAN_CUDA_API int avian_cuda_device_pci_bus(int dev_id);
 
 /* Logging. The kernels have plenty to say but no business owning the
  * miner's log, so the miner hands one in. Unset means silence. */

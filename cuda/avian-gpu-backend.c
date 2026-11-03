@@ -41,6 +41,7 @@ typedef int         (*avian_gpu_scan_fn)( const avian_cuda_job *, uint32_t *, in
 typedef int         (*avian_gpu_count_fn)( void );
 typedef const char *(*avian_gpu_name_fn)( int );
 typedef const char *(*avian_gpu_vendor_fn)( int );
+typedef int         (*avian_gpu_bus_fn)( int );
 typedef void        (*avian_gpu_logger_fn)( avian_cuda_log_fn );
 typedef void        (*avian_gpu_diag_fn)( avian_cuda_hash_n_fn, avian_cuda_prehash_fn );
 typedef int         (*avian_gpu_abi_fn)( void );
@@ -56,6 +57,7 @@ struct backend
    avian_gpu_count_fn   device_count;
    avian_gpu_name_fn    device_name;
    avian_gpu_vendor_fn  device_vendor;
+   avian_gpu_bus_fn     device_pci_bus;
    avian_gpu_logger_fn  set_logger;
    avian_gpu_diag_fn    set_diagnostics;
    int                  devices;
@@ -205,11 +207,13 @@ static bool bind_entry_points( struct backend *b )
    b->device_count    = (avian_gpu_count_fn)  AVIAN_GPU_DLSYM( b->handle, "avian_cuda_device_count" );
    b->device_name     = (avian_gpu_name_fn)   AVIAN_GPU_DLSYM( b->handle, "avian_cuda_device_name" );
    b->device_vendor   = (avian_gpu_vendor_fn) AVIAN_GPU_DLSYM( b->handle, "avian_cuda_device_vendor" );
+   b->device_pci_bus  = (avian_gpu_bus_fn) AVIAN_GPU_DLSYM( b->handle, "avian_cuda_device_pci_bus" );
    b->set_logger      = (avian_gpu_logger_fn) AVIAN_GPU_DLSYM( b->handle, "avian_cuda_set_logger" );
    b->set_diagnostics = (avian_gpu_diag_fn)   AVIAN_GPU_DLSYM( b->handle, "avian_cuda_set_diagnostics" );
 
    return b->scan_batch && b->device_count && b->device_name
-       && b->device_vendor && b->set_logger && b->set_diagnostics;
+       && b->device_vendor && b->device_pci_bus
+       && b->set_logger && b->set_diagnostics;
 }
 
 /* A backend built against a different revision of cuda/avian-cuda-api.h is
@@ -602,6 +606,17 @@ const char *avian_gpu_vendor( int device )
    if ( device < 0 || device >= s_devices )
       return "";
    return s_device[device].backend->vendor;
+}
+
+/* The PCIe bus, which is the only name for a card that a mining distribution
+ * and this miner can both agree on: our numbering puts a backend's cards
+ * first and theirs follows the bus, so the two coincide only by luck. -1
+ * when the backend cannot tell, which callers must expect rather than print. */
+int avian_gpu_device_pci_bus( int device )
+{
+   if ( device < 0 || device >= s_devices )
+      return -1;
+   return s_device[device].backend->device_pci_bus( s_device[device].local );
 }
 
 void avian_gpu_set_diagnostics( avian_cuda_hash_n_fn hash_n,

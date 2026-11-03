@@ -85,6 +85,12 @@ AVIAN_CUDA_API const char *avian_cuda_device_vendor( int dev_id )
     return "amd";          /* it stands in for the AMD backend */
 }
 
+AVIAN_CUDA_API int avian_cuda_device_pci_bus( int dev_id )
+{
+   (void) dev_id;
+   return -1;            /* a stub has no slot to be in */
+}
+
 AVIAN_CUDA_API const char *avian_cuda_device_name( int dev_id )
 {
     static char name[STUB_MAX_DEVICES][64];
