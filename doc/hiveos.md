@@ -34,8 +34,8 @@ Create a flight sheet with **Miner: Custom**, then:
 | Installation URL | the `avian-miner-<version>.tar.gz` URL from the release page |
 | Hash algorithm | `x16rt` for GPUs, `minotaurx` for CPUs |
 | Wallet and worker template | `%WAL%.%WORKER_NAME%`, or your address and rig name |
-| Pool URL | `stratum+tcp://host:port` |
-| Pass | usually `x` |
+| Pool URL | `stratum+tcp://host:port`, or `sv2://host:port` for Stratum v2 |
+| Pass | usually `x`, or the authority key for Stratum v2 |
 
 Nothing else is required. The miner name must be exactly `avian-miner`,
 because HiveOS derives the install directory from it and the scripts inside
@@ -46,6 +46,53 @@ would otherwise quietly use it at a thousandth of the rate, which on a rig
 looks like the cards have failed rather than like a missing flag. The
 generated config therefore carries `"gpu": true` whenever the algorithm is
 `x16rt`, and says so in the setup output.
+
+## A Stratum v2 pool
+
+The same sheet, with an `sv2://` scheme on the Pool URL:
+
+| field | value |
+| --- | --- |
+| Hash algorithm | `x16rt` or `minotaurx`, as before |
+| Wallet and worker template | `%WAL%.%WORKER_NAME%`, which becomes `--sv2-user` |
+| Pool URL | `sv2://host:port` |
+| Pass | the authority key the pool publishes |
+
+The scheme is what picks the protocol, because a bare `host:port` is also how
+people type a Stratum v1 pool. `stratum2://` and `stratum2+tcp://` are
+accepted too, and the scheme is stripped before the address reaches the miner,
+which resolves the host itself.
+
+**Stratum v2 has no password**, so the Pass field carries the pool's authority
+public key instead: the one the pool's own page prints inside the command it
+tells you to copy. Without it the session is still encrypted, but the pool is
+not authenticated, and anything that can reroute the traffic can take the
+hashrate. The field is checked for the shape of a key, 64 hex characters or 40
+or more of base58, and ignored with a line in the log when it holds something
+else, such as the `x` a Stratum v1 sheet leaves there. That check is not
+pedantry: the miner exits on a key it cannot parse, and HiveOS would restart
+it in a loop.
+
+The generated config then carries the `sv2` keys and no `url`, `user` or
+`pass`, because the Stratum v2 path does not read those, and a pool address
+sitting in the config box that the miner is not using is worse than nothing.
+
+Everything else goes in the extra config, one fragment a line:
+
+```
+"sv2-standard": true
+"sv2-extranonce-size": 8
+"sv2-expect-payout": "RYourAddress"
+```
+
+`"sv2"` itself can go there as well, which is the other way to select the
+protocol. It wins over the Pool URL field, and the log says that field is
+being ignored.
+
+Leave `"sv2-hashrate"` out unless you have a reason to set it. The miner
+measures this machine at startup and tells the pool what it found, and that
+figure is what the pool derives the channel's share target from, so a wrong
+one typed here aims the whole channel at the wrong cadence.
 
 ## Extra config arguments
 
