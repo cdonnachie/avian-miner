@@ -345,6 +345,11 @@ static bool install_job(const AvianMiningJob *job)
     g_work_time = time(NULL);
     pthread_rwlock_unlock(&g_work_lock);
 
+    /* Before the wake rather than after, or a thread parked on this would
+     * see the flag still set and go back to sleep on the job that just
+     * arrived. */
+    sv2_down = false;
+
     restart_threads();
 
     struct sv2_work_report report = {
@@ -440,6 +445,18 @@ bool avian_sv2_submit(struct work *work)
     g_queue_count++;
     pthread_mutex_unlock(&g_queue_lock);
     return true;
+}
+
+/* Everything queued is for a job that is about to be void, so none of it can
+ * be sent. Dropped rather than drained: drain_submissions would report each
+ * one stale against a stats ring that sv2_report_connection_reset has just
+ * emptied, which pairs later acknowledgements with the wrong shares. */
+static void discard_submissions(void)
+{
+    pthread_mutex_lock(&g_queue_lock);
+    g_queue_head = 0;
+    g_queue_count = 0;
+    pthread_mutex_unlock(&g_queue_lock);
 }
 
 static void drain_submissions(void)
@@ -677,8 +694,19 @@ void *avian_sv2_thread(void *userdata)
             restart_threads();
             break;
         case AVIAN_SV2_EVENT_DISCONNECTED:
+            /* Every job in hand is void from this instant: ids belong to the
+             * connection that issued them, and the library refuses a share
+             * from an earlier one. The threads are parked first so nothing
+             * new is queued while the rest is torn down. Without this they
+             * went on hashing a dead job for the length of the outage, and
+             * each share they found announced itself as submitted on its way
+             * into a queue that could only be emptied into the log. */
+            sv2_down = true;
+            discard_submissions();
+            forget_all_jobs();
             sv2_report_connection_reset();
             applog(LOG_WARNING, "SV2: disconnected: %s", event.message);
+            restart_threads();
             break;
         default:
             break;

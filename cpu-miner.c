@@ -109,6 +109,9 @@ bool have_stratum = false;
 // compile with or without libavian-sv2.
 bool have_sv2 = false;
 bool stratum_down = true;
+// The same role for Stratum v2: true whenever there is no job a share could
+// be submitted against, so a thread parks instead of hashing for nothing.
+bool sv2_down = true;
 bool allow_mininginfo = true;
 bool use_syslog = false;
 bool use_colors = true;
@@ -1154,7 +1157,14 @@ void report_summary_log( bool force )
    sprintf_et( et_str, et.tv_sec );
    sprintf_et( upt_str, uptime.tv_sec );
 
-   applog( LOG_BLUE, "%s: %s", algo_names[ opt_algo ], rpc_url );
+   /* -o is what sets rpc_url, and an SV2 session never has one, so this
+      printed "(null)" on every report of every SV2 run. Each way of
+      getting work names itself instead. */
+   const char *endpoint = have_sv2      ? opt_sv2_url
+                        : rpc_url       ? rpc_url
+                        : opt_benchmark ? "benchmark" : "no pool";
+
+   applog( LOG_BLUE, "%s: %s", algo_names[ opt_algo ], endpoint );
    applog2( LOG_NOTICE, "Periodic Report     %s        %s", et_str, upt_str );
    applog2( LOG_INFO, "Share rate        %.2f/min     %.2f/min",
             submit_rate, safe_div( (double)submitted_share_count*60.,
@@ -2445,6 +2455,13 @@ static void *miner_thread( void *userdata )
 #ifdef HAVE_AVIAN_SV2
        if ( have_sv2 )
        {
+          // Parked while the link is down, exactly as the stratum branch
+          // below does it. A job belongs to the connection that issued it,
+          // so once that connection is gone there is nothing a share could
+          // be submitted against, and hashing on would only produce shares
+          // to drop, each of them reported as submitted on the way.
+          while ( unlikely( sv2_down ) )
+             sleep( 1 );
           // Pushed, like stratum: there is nothing to fetch. A thread
           // that has run out of nonces rolls ntime if the job allows
           // it, which buys a fresh nonce range without asking the pool
