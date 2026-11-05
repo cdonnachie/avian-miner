@@ -243,10 +243,10 @@ checkout builds the DLL on its own. `L` and `W` override the two paths.
 
 **`build-cuda-dll.ps1`** compiles every `.cu` in one nvcc invocation, so
 device linking is implicit and there is no separate `-dlink` step to get
-wrong. It takes one switch:
+wrong. It takes three parameters:
 
 ```powershell
-scripts\windows\build-cuda-dll.ps1 -NoPtx
+scripts\windows\build-cuda-dll.ps1 -NoPtx -Arch 86 -Threads 8
 ```
 
 `-NoPtx` builds the plain-C form of all 60 `lop3.b32` sites instead of the
@@ -254,6 +254,17 @@ inline PTX, which is what hipcc would select on its own. It exists so the
 portable path can be verified on Nvidia hardware before anyone owns an AMD
 card. The resulting DLL is larger, around 12MB against 9.4MB, which is one
 instruction becoming several and is why the asm stays the default.
+
+`-Arch` builds a shorter target list: one card's worth is a few megabytes
+and a couple of minutes, against eight architectures and forty.
+
+`-Threads` is nvcc's `--threads`, and defaults to 0, meaning one thread per
+logical CPU. It matters here because nvcc is a front end that spawns `cicc`
+and `ptxas` per architecture and waits on each, so `nvcc.exe` itself sits at
+0% CPU for the whole build while one child burns one core. Passing every
+`.cu` to a single invocation is what gives it something to overlap: nine
+codegen passes per file across eight architectures plus the PTX. Lower it if
+memory runs short, since that many `cicc` processes are not small.
 
 **`win-gpu.sh`** appends the gate and host half to `Makefile.am`, reruns
 automake, reconfigures with `-DHAVE_CUDA`, and `make clean`s before

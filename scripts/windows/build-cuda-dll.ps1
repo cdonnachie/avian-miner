@@ -22,7 +22,14 @@ param(
     # result drops in beside an existing avian-miner.exe, since the miner
     # loads the backend rather than linking it and checks its ABI version, so
     # a mismatched one is skipped with a message instead of breaking anything.
-    [int[]]$Arch = @()
+    [int[]]$Arch = @(),
+    # nvcc is a front end: it spawns cicc and ptxas per architecture and waits
+    # on each, so without this it saturates one core and leaves the rest idle.
+    # 0 means one thread per logical CPU, which is what passing every .cu to a
+    # single invocation buys: there are (architectures + 1) codegen passes per
+    # file to overlap. Lower it if the machine runs short of memory, since
+    # cicc is not small and this many run at once. Needs CUDA 11.2 or newer.
+    [int]$Threads = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -97,7 +104,7 @@ cd /d "$W"
 "$CUDA\bin\nvcc.exe" -O3 -shared -o "$OUT\avian_cuda.dll" ^
   -DAVIAN_CUDA_BUILDING_DLL $ptxDef ^
   $archArgs ^
-  -std=c++14 -w ^
+  -std=c++14 -w --threads $Threads ^
   -I"$W" -I"$W\cuda" -I"$W\cuda\upstream" ^
   -Xcompiler "/MD /wd4819" ^
   $list $extra 2>&1
@@ -106,7 +113,8 @@ echo nvcc_exit=%ERRORLEVEL%
 $bat | Set-Content -Encoding ASCII "$OUT\build.bat"
 
 Write-Output ""
-Write-Output "=== nvcc (this takes a few minutes for 31 translation units) ==="
+$howmany = if ($Threads -eq 0) { "one per logical CPU" } else { "$Threads" }
+Write-Output "=== nvcc ($($cu.Count + 2) translation units, $howmany threads) ==="
 $log = & cmd.exe /c "`"$OUT\build.bat`"" 2>&1
 $log | Select-String -Pattern "error|nvcc_exit" | Select-Object -First 20 |
     ForEach-Object { "  $_" }
