@@ -4021,7 +4021,13 @@ int main(int argc, char *argv[])
 
    if ( !opt_scantime )
    {
-      if      ( have_stratum )  opt_scantime = 30;
+      /* Stratum v2 is pushed work exactly as v1 is, so it takes v1's scan
+       * time rather than falling through to the solo default. Not cosmetic
+       * on a GPU: max64 is opt_scantime times the last measured rate, and
+       * the CUDA backend clamps one batch to that, so five seconds puts the
+       * clamp six times closer to a batch too small to amortise sixteen
+       * kernel launches and the copy back. */
+      if      ( have_stratum || have_sv2 ) opt_scantime = 30;
       else if ( have_longpoll ) opt_scantime = LP_SCANTIME;
       else                      opt_scantime = 5;
    }
