@@ -10,6 +10,7 @@
 #include <sys/time.h>
 
 #include "algo-gate-api.h"
+#include "algo/x16/x16r-gate.h"
 #include "avian/ntime.h"
 #include "avian/sv2.h"
 
@@ -905,13 +906,37 @@ double avian_sv2_measure_hash_rate( double seconds )
 
       /* The longest of the threads, not the shortest: dividing by a thread
        * that finished early would report a rate nobody sustained. */
+      uint64_t epoch_hashes = 0;
       for ( t = 0; t < started; t++ )
       {
-         hashes += args[t].hashes;
+         epoch_hashes += args[t].hashes;
          if ( args[t].elapsed > slowest )
             slowest = args[t].elapsed;
       }
+      hashes += epoch_hashes;
       elapsed += slowest;
+
+      /* Reported per epoch and not only as the mean, because the mean is the
+       * one thing this cannot tell a miner about its own cadence. X16RT
+       * rederives its chain every 128 seconds and the rate goes with it: on
+       * one CPU measurement the spread was 5.4x, and shavite512 accounted for
+       * most of it, so the chain is printed beside the rate rather than left
+       * to be inferred from the epoch number. The pool is told the mean, sets
+       * one share target from it, and never moves it, so these lines are
+       * where the cadence a miner actually sees comes from. */
+      if ( ( opt_algo == ALGO_X16RT ) && ( slowest > 0.0 ) )
+      {
+         uint32_t time_hash[8];
+         char order[X16R_HASH_FUNC_COUNT + 1] = {0};
+         double rate = (double) epoch_hashes / slowest;
+         char units[4] = {0};
+
+         x16rt_getTimeHash( ntime & 0xffffff80u, time_hash );
+         x16rt_getAlgoString( &time_hash[0], order );
+         scale_hash_for_display( &rate, units );
+         applog( LOG_INFO, "SV2: epoch %d of %d, %s: %.2f %sh/s", epoch + 1,
+                 epochs, order, rate, units );
+      }
    }
 
    free( args );
