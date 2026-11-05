@@ -752,9 +752,10 @@ void *avian_sv2_thread(void *userdata)
  * Re-measured on a GPU, where the expensive algorithm is groestl rather than
  * shavite512, and eight holds. Timing each algorithm as its own chain on an
  * RX 6600 and an RTX 3070 (doc/building.md has the loop) puts one epoch's
- * spread at 25-28% of the mean on both, so an eight-sample window concludes
- * within about 10%. A GPU is the narrower case rather than the harder one,
- * so a count chosen on the CPU is conservative there, not marginal.
+ * spread at 25-28% of the mean on both, and 14% on an RTX 3090, so an
+ * eight-sample window concludes within about 10%. A GPU is the narrower
+ * case rather than the harder one, so a count chosen on the CPU is
+ * conservative there, not marginal.
  *
  * MinotaurX picks six of its seven algorithms per hash out of the hash
  * itself, and the seventh is always yespower, so it averages within one
@@ -764,10 +765,9 @@ void *avian_sv2_thread(void *userdata)
 /* Per sample, not per run.
  *
  * Fitting more samples into a fixed budget rather than spending more is a
- * false economy: each one spends its first fraction of a second growing
- * `chunk`, where a GPU is launch-bound and slower than it really is, so
- * halving the samples doubles the share of the run spent measuring that
- * rather than the hardware. */
+ * false economy: each one pays for growing `chunk` to a size the hardware
+ * saturates, and that call is thrown away rather than measured, so halving
+ * the samples does not halve what a sample costs. */
 #define SECONDS_PER_SAMPLE 0.75
 
 /* One sample, for the algorithm that needs only one, and a long one because
@@ -782,6 +782,9 @@ struct bench_arg
    double seconds;
    uint64_t hashes;
    double elapsed;
+   /* Carried from the previous epoch, so the batch is grown once per run
+    * rather than once per epoch. Zero on the first. */
+   uint32_t chunk;
 };
 
 static double since( const struct timeval *start )
@@ -802,7 +805,7 @@ static void *bench_thread( void *untyped )
    /* Grows until a call takes long enough to be worth timing. MinotaurX runs
     * at about a thousand hashes a second and X16RT on a card at tens of
     * millions, and one fixed chunk cannot serve both. */
-   uint32_t chunk = 64;
+   uint32_t chunk = arg->chunk ? arg->chunk : 64;
 
    memset( &thr, 0, sizeof( thr ) );
    thr.id = arg->thread;
@@ -820,20 +823,41 @@ static void *bench_thread( void *untyped )
     * This measures the cost of hashing and nothing else. */
    memset( work.target, 0, sizeof( work.target ) );
 
-   gettimeofday( &start, NULL );
+   /* Grow the batch before the clock starts, not during. A call covering too
+    * few nonces is bound by its sixteen kernel launches rather than by the
+    * hardware, and the first call of a run also pays for loading the
+    * backend's kernels, so neither belongs in the measurement. Measured
+    * inside it, the first epoch read 251 kh/s on a card doing 44 Mh/s. */
    for ( ;; )
    {
+      struct timeval probe;
       uint64_t done = 0;
-      double before = since( &start );
-      double elapsed;
 
       /* Wrap rather than letting max_nonce overflow, which would leave
        * scanhash with a range that runs backwards. */
       if ( nonce > UINT32_MAX - chunk - 16 )
          nonce = 0;
       work.data[19] = nonce;
+      gettimeofday( &probe, NULL );
       /* scanhash needs room for one whole pass: a wide one computes its last
        * nonce as max_nonce - 8 and underflows on a tighter range. */
+      algo_gate.scanhash( &work, nonce + chunk, &done, &thr );
+      nonce += chunk;
+      if ( since( &probe ) >= 0.05 || chunk >= ( 1u << 22 ) )
+         break;
+      chunk *= 4;
+   }
+   arg->chunk = chunk;
+
+   gettimeofday( &start, NULL );
+   for ( ;; )
+   {
+      uint64_t done = 0;
+      double elapsed;
+
+      if ( nonce > UINT32_MAX - chunk - 16 )
+         nonce = 0;
+      work.data[19] = nonce;
       algo_gate.scanhash( &work, nonce + chunk, &done, &thr );
       arg->hashes += done;
       nonce += chunk;
@@ -844,8 +868,6 @@ static void *bench_thread( void *untyped )
          arg->elapsed = elapsed;
          break;
       }
-      if ( elapsed - before < 0.05 && chunk < ( 1u << 22 ) )
-         chunk *= 4;
    }
    return NULL;
 }
@@ -895,6 +917,8 @@ double avian_sv2_measure_hash_rate( double seconds )
          args[t].seconds = seconds / (double) epochs;
          args[t].hashes = 0;
          args[t].elapsed = 0.0;
+         /* args[t].chunk is deliberately left alone: it is what the last
+          * epoch settled on, and starting from it saves growing it again. */
          if ( pthread_create( &ids[t], NULL, bench_thread, &args[t] ) != 0 )
             break;
          started++;
