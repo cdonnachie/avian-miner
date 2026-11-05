@@ -2475,15 +2475,35 @@ static void *miner_thread( void *userdata )
           // it, which buys a fresh nonce range without asking the pool
           // for anything, and otherwise waits rather than rolling into
           // another thread's range.
-          if ( unlikely( ( *nonceptr >= end_nonce )
-                        && !work_restart[thr_id].restart ) )
+          //
+          // Rolled at the tail of the range rather than at the end of it.
+          // max_nonce below is pinned to end_nonce once less than a scan's
+          // worth is left, and a GPU clamps one batch to whatever span it is
+          // given, so the last batches of a range shrink and each measures
+          // slower than the card really is: sixteen kernel launches and the
+          // copy back cost the same however few nonces they cover. A roll
+          // hands back a whole range and costs nothing, because nonces are
+          // not scarce and every (ntime, nonce) is its own trial.
           {
-             if ( !avian_sv2_roll_ntime() )
+             int64_t budget = (int64_t) ( opt_scantime * thr_hashrates[thr_id] );
+             bool spent = ( *nonceptr >= end_nonce );
+             bool tail = ( (uint64_t) *nonceptr + (uint64_t) budget
+                           >= (uint64_t) end_nonce );
+
+             if ( unlikely( ( spent || tail ) && !work_restart[thr_id].restart ) )
              {
-                if ( !thr_id )
-                   applog( LOG_INFO, "Nonce range exhausted, waiting for work" );
-                while ( !work_restart[thr_id].restart )
-                   sleep( 1 );
+                // Only a range with nothing left waits. Waiting at the tail
+                // would idle the card for the rest of a scan it could still
+                // have spent hashing, which is the cost this avoids rather
+                // than the one it pays, and a job whose ntime is pinned has
+                // no roll to give.
+                if ( !avian_sv2_roll_ntime() && spent )
+                {
+                   if ( !thr_id )
+                      applog( LOG_INFO, "Nonce range exhausted, waiting for work" );
+                   while ( !work_restart[thr_id].restart )
+                      sleep( 1 );
+                }
              }
           }
        }
@@ -2545,6 +2565,18 @@ static void *miner_thread( void *userdata )
        
        // opt_scantime expressed in hashes
        max64 = opt_scantime * thr_hashrates[thr_id];
+
+       /* A GPU's quantum is a batch, not a nonce, and max_nonce below is what
+        * the backend clamps one batch to. A budget shorter than a batch buys
+        * nothing and costs the measurement: the batch then covers fewer
+        * nonces for the same sixteen kernel launches and copy back, so it
+        * reports a rate below what the card does, and the next budget is
+        * computed from that report. One slow sample would otherwise halve the
+        * batch, and the halved batch reports slower again. Floored at the
+        * largest batch any card in the backend's table asks for, which leaves
+        * the backend's own choice as the only thing sizing a batch. */
+       if ( opt_gpu && max64 < 0x1000000 )
+          max64 = 0x1000000;
 
        // time limit
        if ( unlikely( opt_time_limit ) )
