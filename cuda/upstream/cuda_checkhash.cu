@@ -13,25 +13,34 @@ __constant__ uint32_t pTarget[8]; // 32 bytes
 // store MAX_GPUS device arrays of 8 nonces
 static uint32_t* h_resNonces[MAX_GPUS] = { NULL };
 static uint32_t* d_resNonces[MAX_GPUS] = { NULL };
-static __thread bool init_done = false;
+/* Per device, not per thread.
+ *
+ * The resources this flag guards are per device, and upstream's __thread held
+ * only because the thread that initialised a device was always the one that
+ * later mined on it. Avian's Stratum v2 hash rate measurement breaks that: it
+ * runs scanhash on short-lived threads of its own before mining starts, so the
+ * device is initialised there and the miner thread that follows sees a false
+ * flag, logs "missing call to cuda_check_cpu_init" and returns "nothing found"
+ * for every batch whose last stage has no _final kernel. */
+static bool init_done[MAX_GPUS] = { false };
 
 __host__
 void cuda_check_cpu_init(int thr_id, uint32_t threads)
 {
     CUDA_CALL_OR_RET(cudaMalloc(&d_resNonces[thr_id], 32));
     CUDA_SAFE_CALL(cudaMallocHost(&h_resNonces[thr_id], 32));
-    init_done = true;
+    init_done[thr_id] = true;
 }
 
 __host__
 void cuda_check_cpu_free(int thr_id)
 {
-	if (!init_done) return;
+	if (!init_done[thr_id]) return;
 	cudaFree(d_resNonces[thr_id]);
 	cudaFreeHost(h_resNonces[thr_id]);
 	d_resNonces[thr_id] = NULL;
 	h_resNonces[thr_id] = NULL;
-	init_done = false;
+	init_done[thr_id] = false;
 }
 
 // Target Difficulty
@@ -128,7 +137,7 @@ uint32_t cuda_check_hash(int thr_id, uint32_t threads, uint32_t startNounce, uin
 	if (bench_algo >= 0) // dont interrupt the global benchmark
 		return UINT32_MAX;
 
-	if (!init_done) {
+	if (!init_done[thr_id]) {
 		applog(LOG_ERR, "missing call to cuda_check_cpu_init");
 		return UINT32_MAX;
 	}
@@ -153,7 +162,7 @@ uint32_t cuda_check_hash_32(int thr_id, uint32_t threads, uint32_t startNounce, 
 	if (bench_algo >= 0) // dont interrupt the global benchmark
 		return UINT32_MAX;
 
-	if (!init_done) {
+	if (!init_done[thr_id]) {
 		applog(LOG_ERR, "missing call to cuda_check_cpu_init");
 		return UINT32_MAX;
 	}
@@ -191,7 +200,7 @@ uint32_t cuda_check_hash_suppl(int thr_id, uint32_t threads, uint32_t startNounc
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	if (!init_done) {
+	if (!init_done[thr_id]) {
 		applog(LOG_ERR, "missing call to cuda_check_cpu_init");
 		return 0;
 	}
@@ -250,7 +259,7 @@ uint32_t cuda_check_hash_branch(int thr_id, uint32_t threads, uint32_t startNoun
 	if (bench_algo >= 0) // dont interrupt the global benchmark
 		return result;
 
-	if (!init_done) {
+	if (!init_done[thr_id]) {
 		applog(LOG_ERR, "missing call to cuda_check_cpu_init");
 		return result;
 	}
