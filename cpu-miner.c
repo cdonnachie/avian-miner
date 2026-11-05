@@ -1159,10 +1159,18 @@ void report_summary_log( bool force )
 
    /* -o is what sets rpc_url, and an SV2 session never has one, so this
       printed "(null)" on every report of every SV2 run. Each way of
-      getting work names itself instead. */
-   const char *endpoint = have_sv2      ? opt_sv2_url
-                        : rpc_url       ? rpc_url
+      getting work names itself instead.
+
+      The SV2 arm is guarded and the others are not, because have_sv2 is
+      declared here on purpose, so that the places main() tests it compile
+      with or without the backend, while opt_sv2_url belongs to the backend
+      and exists only when it is built. Reading have_sv2 therefore says
+      nothing about whether the address beside it is declared. */
+   const char *endpoint = rpc_url       ? rpc_url
                         : opt_benchmark ? "benchmark" : "no pool";
+#ifdef HAVE_AVIAN_SV2
+   if ( have_sv2 ) endpoint = opt_sv2_url;
+#endif
 
    applog( LOG_BLUE, "%s: %s", algo_names[ opt_algo ], endpoint );
    applog2( LOG_NOTICE, "Periodic Report     %s        %s", et_str, upt_str );
