@@ -1299,7 +1299,12 @@ static int share_result( int result, struct work *work,
      sprintf( ares, "A%d", accepted_share_count );
      sprintf( bres, "B%d", solved_block_count );
      if ( reason )
-        stale = strstr( reason, "job" ) || strstr( reason, "Job" );
+        /* Stratum v2 calls these stale-share and invalid-job-id, and a v1
+         * pool says "Stale share". Only the ones naming a job were matched
+         * before, so the rest were counted as rejects, which is the counter
+         * with an exit guard on it. */
+        stale = strstr( reason, "job" ) || strstr( reason, "Job" )
+             || strstr( reason, "stale" ) || strstr( reason, "Stale" );
      else if ( work )
         stale =  work->data[ algo_gate.ntime_index ]
              != g_work.data[ algo_gate.ntime_index ];
@@ -1971,9 +1976,12 @@ bool submit_solution( struct work *work, const void *hash,
            char tag[24];
 
            card_tag( tag, sizeof tag, thr->id );
+           /* Byteswapped, as the two New Block lines above do it: work->data
+            * holds big-endian words, so the raw field prints the timestamp
+            * reversed and disagrees with the Hash order line beside it. */
            applog( LOG_INFO, "%d %sSubmitted Diff %.5g, Block %d, Ntime %08x",
                    submitted_share_count, tag, work->sharediff, work->height,
-                   work->data[ algo_gate.ntime_index ] );
+                   bswap_32( work->data[ algo_gate.ntime_index ] ) );
         }
 
         if ( opt_debug )
@@ -2215,6 +2223,132 @@ static void stratum_gen_work( struct stratum_ctx *sctx, struct work *g_work )
        }  // hr > 0
     } // !quiet
 }
+
+#ifdef HAVE_AVIAN_SV2
+
+/* The Stratum v2 half of the reporting just above, and of share_result.
+ *
+ * Here rather than in avian/sv2.c because the session counters both read are
+ * static to this file. See struct sv2_work_report in avian/sv2.h. */
+void sv2_report_new_work( const struct sv2_work_report *rep )
+{
+   /* Anchored on the first tip move rather than on session_start, which is
+      what the v1 estimate above uses: the part of the first block that had
+      already been mined when this miner connected is time nobody can
+      attribute, and counting it inflates the interval. */
+   static struct timeval first_tip = {0};
+   double hr = 0.;
+
+   /* Byteswapped, because nbits_to_diff reads the exponent out of the low
+      byte of what it is given and the mantissa out of the byteswap of it:
+      what it wants is the big-endian word the v1 path keeps in
+      work->data[nbits_index], not a compact target in host order. Passing the
+      host-order value lands in the slow branch with shift zero and returns
+      zero. */
+   net_diff     = nbits_to_diff( bswap_32( rep->nbits ) );
+   /* No advertised difficulty exists to report: the Mining Protocol sends a
+      channel a target and never a difficulty, which is why the Diff line
+      below has two fields where the v1 one has three. */
+   stratum_diff = rep->targetdiff;
+
+   report_summary_log( false );
+
+   pthread_mutex_lock( &stats_lock );
+   for ( int i = 0; i < opt_n_threads; i++ )
+      hr += thr_hashrates[i];
+   global_hashrate = hr;
+   pthread_mutex_unlock( &stats_lock );
+
+   if ( rep->tip_moved )
+   {
+      last_block_height = rep->height;
+      if ( !first_tip.tv_sec ) gettimeofday( &first_tip, NULL );
+   }
+   if ( rep->tip_moved || ( rep->targetdiff != last_targetdiff ) )
+   {
+      last_targetdiff = rep->targetdiff;
+      if ( lowest_share < last_targetdiff ) lowest_share = 9e99;
+   }
+
+   if ( opt_quiet ) return;
+
+   /* Worded as the two v1 lines above word it. The height is zero on a
+      standard channel, where the pool sends a finished merkle root and the
+      coinbase that carries the height never reaches the miner, so it is left
+      out rather than printed as zero. */
+   {
+      char headline[48];
+
+      if ( !rep->height )
+         snprintf( headline, sizeof headline, "%s",
+                   rep->tip_moved ? "New Block," : "New Work:" );
+      else if ( rep->tip_moved )
+         snprintf( headline, sizeof headline, "New Block %d,", rep->height );
+      else
+         snprintf( headline, sizeof headline, "New Work: Block %d,",
+                   rep->height );
+
+      applog( LOG_BLUE, "%s Netdiff %.5g, SV2 job %u, %s channel%s",
+              headline, net_diff, rep->job_id,
+              rep->extended ? "extended" : "standard",
+              rep->ntime_pinned ? ", ntime pinned" : "" );
+   }
+
+   applog2( LOG_INFO, "Diff: Net %.5g, Target %.5g", net_diff,
+                      rep->targetdiff );
+
+   if ( likely( hr > 0. ) )
+   {
+      double nd = net_diff * exp32;
+      char hr_units[4] = {0};
+      char block_ttf[32];
+      char share_ttf[32];
+
+      sprintf_et( block_ttf, nd / hr );
+      sprintf_et( share_ttf, ( rep->targetdiff * exp32 ) / hr );
+      scale_hash_for_display ( &hr, hr_units );
+      applog2( LOG_INFO, "TTF @ %.2f %sh/s: Block %s, Share %s",
+                         hr, hr_units, block_ttf, share_ttf );
+
+      /* One full interval needs two moves. */
+      if ( ( rep->tip_moves > 1 ) && first_tip.tv_sec && ( net_diff > 0. ) )
+      {
+         struct timeval now, et;
+         gettimeofday( &now, NULL );
+         timeval_subtract( &et, &now, &first_tip );
+         uint64_t net_ttf = safe_div( et.tv_sec, rep->tip_moves - 1, 0 );
+         if ( net_ttf )
+         {
+            double net_hr = safe_div( nd, net_ttf, 0. );
+            char net_hr_units[4] = {0};
+            scale_hash_for_display ( &net_hr, net_hr_units );
+            applog2( LOG_INFO, "Net hash rate (est) %.2f %sh/s",
+                               net_hr, net_hr_units );
+         }
+      }
+   }
+}
+
+void sv2_report_share_result( bool accepted, const char *reason )
+{
+   /* NULL work, as the v1 stratum response does it: work is only read for the
+      stale heuristic when no reason was given, and a rejection here always
+      carries the pool's refusal code. */
+   share_result( accepted, NULL, reason );
+}
+
+void sv2_report_connection_reset( void )
+{
+   pthread_mutex_lock( &stats_lock );
+   /* Counted as a reset for the same reason a stratum reset is: it is what
+      explains the count mismatch the dropped entries leave behind. */
+   stratum_errors++;
+   memset( share_stats, 0, sizeof share_stats );
+   s_get_ptr = s_put_ptr = 0;
+   pthread_mutex_unlock( &stats_lock );
+}
+
+#endif // HAVE_AVIAN_SV2
 
 static void *miner_thread( void *userdata )
 {

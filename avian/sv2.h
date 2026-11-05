@@ -69,4 +69,44 @@ double avian_sv2_measure_hash_rate( double seconds );
  * without a share going anywhere. */
 bool avian_selftest_capture(const void *hash);
 
+/* ---- the other direction: reporting, which lives in cpu-miner.c ----
+ *
+ * Stratum v1 prints its new-work block and its share results from
+ * stratum_gen_work and share_result, and both read counters that are static to
+ * cpu-miner.c. These three entry points let the Stratum v2 path print the same
+ * lines from the same numbers rather than keep a second copy of the
+ * arithmetic, which is how two paths drift apart. */
+
+struct sv2_work_report {
+    uint32_t job_id;
+    /* Zero on a standard channel, where the pool sends a finished merkle root
+     * and the coinbase that carries the height never reaches the miner. */
+    int height;
+    /* The candidate header's compact network target, in host order, as
+     * SetNewPrevHash carried it. */
+    uint32_t nbits;
+    double targetdiff;
+    /* SetNewPrevHash messages seen this session, which is the block count the
+     * network hash rate estimate divides by. Counted rather than taken from a
+     * height delta so that a standard channel can have the estimate too. */
+    unsigned tip_moves;
+    bool extended;
+    bool ntime_pinned;
+    /* This job is the first since the tip moved. */
+    bool tip_moved;
+};
+
+void sv2_report_new_work(const struct sv2_work_report *report);
+
+/* A share the pool answered, or one this side could not deliver. `reason` is
+ * the refusal code on a rejection and NULL on an acceptance. Exactly one call
+ * per share that reached update_submit_stats, because the stats ring is a
+ * queue: a share that is never reported offsets every acknowledgement after
+ * it. */
+void sv2_report_share_result(bool accepted, const char *reason);
+
+/* The connection went away, so the shares in flight on it will never be
+ * answered. Drops their stats entries instead of guessing a verdict. */
+void sv2_report_connection_reset(void);
+
 #endif /* AVIAN_SV2_BACKEND_H */

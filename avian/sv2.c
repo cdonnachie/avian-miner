@@ -60,6 +60,15 @@ static pthread_mutex_t g_queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static AvianSv2Client *g_client = NULL;
 
+/* SetNewPrevHash messages seen on this connection, and whether the next job
+ * is the first since the last one. The tip moving and a job arriving are two
+ * messages in Stratum v2 where mining.notify with clean_jobs is one, so the
+ * report waits for the job: that is where the height and the target are.
+ *
+ * Both are touched only by the backend thread. */
+static unsigned g_tip_moves = 0;
+static bool g_tip_fresh = false;
+
 /* The rolling extranonce. An extended channel lets this backend choose it, and
  * it has to differ between jobs or two jobs with the same prev_hash would be
  * the same search. Threads do not need their own: std_get_new_work already
@@ -338,11 +347,18 @@ static bool install_job(const AvianMiningJob *job)
 
     restart_threads();
 
-    if (!opt_quiet) {
-        applog(LOG_BLUE, "SV2 job %u, %s channel, diff %.5g%s", job->job_id,
-               job->extended ? "extended" : "standard", g_work.targetdiff,
-               job->ntime_min == job->ntime_max ? ", ntime pinned" : "");
-    }
+    struct sv2_work_report report = {
+        .job_id = job->job_id,
+        .height = height,
+        .nbits = job->nbits,
+        .targetdiff = g_work.targetdiff,
+        .tip_moves = g_tip_moves,
+        .extended = job->extended != 0,
+        .ntime_pinned = job->ntime_min == job->ntime_max,
+        .tip_moved = g_tip_fresh,
+    };
+    g_tip_fresh = false;
+    sv2_report_new_work(&report);
     return true;
 }
 
@@ -447,6 +463,10 @@ static void drain_submissions(void)
         if (!found) {
             pthread_mutex_unlock(&g_jobs_lock);
             applog(LOG_INFO, "SV2: share went stale before it could be sent");
+            /* Reported as well as logged. update_submit_stats counted this one
+             * on the way in, and the stats ring is a queue: leaving an entry
+             * in it pairs every later acknowledgement with the wrong share. */
+            sv2_report_share_result(false, "stale-share, never sent");
             continue;
         }
         slot = *found;
@@ -464,6 +484,9 @@ static void drain_submissions(void)
         if (status != AVIAN_SV2_OK) {
             applog(LOG_WARNING, "SV2: submit failed: %s",
                    avian_sv2_last_error(g_client));
+            /* Stale rather than rejected: no pool refused it, and rejected is
+             * the counter with an exit guard on it. */
+            sv2_report_share_result(false, "stale-share, submit failed");
         }
     }
 }
@@ -598,14 +621,17 @@ void *avian_sv2_thread(void *userdata)
             break;
         case AVIAN_SV2_EVENT_JOBS_INVALIDATED:
             forget_all_jobs();
+            g_tip_moves++;
+            g_tip_fresh = true;
             applog(LOG_INFO, "SV2: the tip moved, previous jobs are void");
             restart_threads();
             break;
         case AVIAN_SV2_EVENT_SHARE_ACCEPTED:
-            if (!opt_quiet) {
-                applog(LOG_NOTICE, "SV2: share accepted (%u so far)",
-                       event.accepted_count);
-            }
+            /* The count the pool keeps is not reported here. It answers a
+             * different question from the miner's own counters, which is what
+             * share_result prints, and the two disagreeing by the shares in
+             * flight would read as a bug. */
+            sv2_report_share_result(true, NULL);
             break;
         case AVIAN_SV2_EVENT_BLOCK_FOUND: {
             /* The pool telling the miner something the Mining Protocol has no
@@ -641,7 +667,7 @@ void *avian_sv2_thread(void *userdata)
             break;
         }
         case AVIAN_SV2_EVENT_SHARE_REJECTED:
-            applog(LOG_WARNING, "SV2: share rejected: %s", event.message);
+            sv2_report_share_result(false, event.message);
             break;
         case AVIAN_SV2_EVENT_RECONNECTED:
             /* Job ids start again on a new connection, so nothing held here
@@ -651,6 +677,7 @@ void *avian_sv2_thread(void *userdata)
             restart_threads();
             break;
         case AVIAN_SV2_EVENT_DISCONNECTED:
+            sv2_report_connection_reset();
             applog(LOG_WARNING, "SV2: disconnected: %s", event.message);
             break;
         default:
