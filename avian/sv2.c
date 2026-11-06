@@ -775,6 +775,10 @@ void *avian_sv2_thread(void *userdata)
  * is still thousands of hashes. */
 #define DEFAULT_SECONDS 3.0
 
+/* Nonces in one scanhash call at most. Past this a call is long enough that
+ * work_restart cannot be answered promptly, and no backend asks for more. */
+#define BENCH_MAX_CHUNK ( 1u << 22 )
+
 struct bench_arg
 {
    int thread;
@@ -804,8 +808,21 @@ static void *bench_thread( void *untyped )
    uint32_t nonce = 0;
    /* Grows until a call takes long enough to be worth timing. MinotaurX runs
     * at about a thousand hashes a second and X16RT on a card at tens of
-    * millions, and one fixed chunk cannot serve both. */
-   uint32_t chunk = arg->chunk ? arg->chunk : 64;
+    * millions, and one fixed chunk cannot serve both.
+    *
+    * A card starts at the ceiling instead, because growing into it cannot be
+    * done safely. A backend's first call for a device does not honour the
+    * range it was given: it sizes the batch from the device, allocates for
+    * that and only then starts clamping to max_nonce (x16rt-cuda-batch.cu,
+    * under `if (init[thr_id])`). So that call costs whatever initialising a
+    * device costs, the ramp below reads the duration as "already big enough",
+    * and the measurement spends itself on 64-nonce calls that the backend
+    * rounds up to 256. That read 155 kh/s on a card doing 44 Mh/s. Asking
+    * for the ceiling leaves nothing to infer: the backend clamps the range
+    * to the batch it wants and loops over the rest, which is what it does
+    * when mining. */
+   uint32_t chunk = arg->chunk ? arg->chunk
+                  : ( opt_gpu ? BENCH_MAX_CHUNK : 64 );
 
    memset( &thr, 0, sizeof( thr ) );
    thr.id = arg->thread;
@@ -825,9 +842,7 @@ static void *bench_thread( void *untyped )
 
    /* Grow the batch before the clock starts, not during. A call covering too
     * few nonces is bound by its sixteen kernel launches rather than by the
-    * hardware, and the first call of a run also pays for loading the
-    * backend's kernels, so neither belongs in the measurement. Measured
-    * inside it, the first epoch read 251 kh/s on a card doing 44 Mh/s. */
+    * hardware, so the growing does not belong in the measurement either. */
    for ( ;; )
    {
       struct timeval probe;
@@ -843,7 +858,7 @@ static void *bench_thread( void *untyped )
        * nonce as max_nonce - 8 and underflows on a tighter range. */
       algo_gate.scanhash( &work, nonce + chunk, &done, &thr );
       nonce += chunk;
-      if ( since( &probe ) >= 0.05 || chunk >= ( 1u << 22 ) )
+      if ( since( &probe ) >= 0.05 || chunk >= BENCH_MAX_CHUNK )
          break;
       chunk *= 4;
    }
