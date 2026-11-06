@@ -752,10 +752,10 @@ void *avian_sv2_thread(void *userdata)
  * Re-measured on a GPU, where the expensive algorithm is groestl rather than
  * shavite512, and eight holds. Timing each algorithm as its own chain on an
  * RX 6600 and an RTX 3070 (doc/building.md has the loop) puts one epoch's
- * spread at 25-28% of the mean on both, and 14% on an RTX 3090, so an
- * eight-sample window concludes within about 10%. A GPU is the narrower
- * case rather than the harder one, so a count chosen on the CPU is
- * conservative there, not marginal.
+ * spread at 25-28% of the mean on both, and 14-16% over two runs on an
+ * RTX 3090, so an eight-sample window concludes within about 10%. A GPU
+ * is the narrower case rather than the harder one, so a count chosen on
+ * the CPU is conservative there, not marginal.
  *
  * MinotaurX picks six of its seven algorithms per hash out of the hash
  * itself, and the seventh is always yespower, so it averages within one
