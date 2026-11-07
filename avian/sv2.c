@@ -11,7 +11,6 @@
 
 #include "algo-gate-api.h"
 #include "algo/x16/x16r-gate.h"
-#include "avian-version.h"
 #include "avian/ntime.h"
 #include "avian/sv2.h"
 
@@ -510,32 +509,6 @@ static void drain_submissions(void)
     }
 }
 
-/* Which build this is, for the pool to show its operator.
- *
- * The version and, when there is one, the commit, for the reason
- * show_credits() gives: every build between releases shares one version, so
- * the number alone cannot tell two of them apart, and whether a rig is on a
- * release or on something somebody built is most of what an operator wants
- * to know. Empty from a release tarball, which has no checkout to ask, and
- * the version then stands alone.
- *
- * Static because the pool is told this on every reconnect and the string is
- * the same every time. The library copies it out of the config, but a buffer
- * that outlives the call cannot be got wrong by a later one that does not. */
-static const char *sv2_firmware(void)
-{
-    static char build[96];
-
-    if (!build[0]) {
-        if (*AVIAN_GIT_REV)
-            snprintf(build, sizeof(build), "%s (%s)", PACKAGE_VERSION,
-                     AVIAN_GIT_REV);
-        else
-            snprintf(build, sizeof(build), "%s", PACKAGE_VERSION);
-    }
-    return build;
-}
-
 static AvianSv2Client *connect_once(bool extended, int32_t *status)
 {
     AvianSv2ClientConfig config;
@@ -556,9 +529,21 @@ static AvianSv2Client *connect_once(bool extended, int32_t *status)
      * fields for this at connection setup, and a pool that shows them gives
      * an operator the one thing a rig cannot tell them from the outside:
      * whether it is running what they think it is. The pool cannot check
-     * any of it, and should not claim to. */
+     * any of it, and should not claim to.
+     *
+     * USER_AGENT and not a string composed here, because this is the same
+     * question stratum v1 asks and util.c already answers it: the first
+     * parameter of mining.subscribe is this macro. An operator reading one
+     * pool page with rigs on both protocols should not have to learn that
+     * two spellings mean the same build, and a new architecture added to
+     * miner.h then reaches this path with nothing to update.
+     *
+     * The commit is left out. It is in the startup banner, where
+     * show_credits() prints it for the operator who built the thing, and
+     * appending it here would put nine hex digits in a table column for
+     * every rig on a release, which is the common case. */
     config.vendor = PACKAGE_NAME;
-    config.firmware = sv2_firmware();
+    config.firmware = USER_AGENT;
     config.extended = extended ? 1 : 0;
     config.min_extranonce_size = (uint32_t)opt_sv2_extranonce_size;
     /* A miner's whole job is to dial a pool somewhere else. The library
