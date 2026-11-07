@@ -490,6 +490,31 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
          * lead the chain. Read it here, report it, and start clean, so the
          * error is attributed to the batch that caused it rather than to an
          * unrelated kernel one epoch in sixteen later. */
+        /* CUDA's current device belongs to the calling thread, while init[]
+         * is per device and shared between them, so a thread arriving at a
+         * device another thread initialised never reaches the cudaSetDevice
+         * below and works on whichever device it inherited. That is device 0,
+         * which is correct on a single-card machine and wrong on every other
+         * one. The SV2 startup measurement runs each of its epochs on a fresh
+         * set of threads, so every epoch after the first arrives here on a
+         * thread that never bound the device, and which card it works on is
+         * down to whichever one that thread inherited.
+         *
+         * Seen once on a rig with two 3070s: the second epoch failed on the
+         * first pointer it touched, "invalid argument" from the cudaMemset
+         * below, before a single share had been asked for. The same binary
+         * then completed the measurement cleanly twice, so the failure is
+         * intermittent and this bind is required by CUDA's contract rather
+         * than proven to be its cure. The one visible difference in the
+         * failing run was the two cards initialising in the other order.
+         *
+         * Only when the device is already initialised, because the first call
+         * binds it itself immediately before cudaSetDeviceFlags, and that
+         * ordering is load-bearing: the flags have to be set before the
+         * primary context exists. */
+        if (init[thr_id])
+                cudaSetDevice(device_map[thr_id]);
+
         avian_phase_check(dev_id, "a previous batch");
 
         memcpy(pdata_copy, job->data, sizeof(pdata_copy));
