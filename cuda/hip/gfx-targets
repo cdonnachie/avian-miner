@@ -6,8 +6,11 @@
 #
 # Unlike CUDA there is no PTX to fall back on: a card not listed here will not
 # launch the result at all. So the list errs towards covering consumer
-# hardware rather than towards a quick build. Build time scales with it, at
-# roughly 1.9 minutes and 2.3 MB of library per target.
+# hardware rather than towards a quick build. Size scales with it, at about
+# 2.6 MB of library per target. Build time used to as well, at roughly 1.9
+# minutes each in sequence; build-hip-dll.ps1 now runs the per-target device
+# compiles in parallel, and the whole list takes about three and a half
+# minutes on twenty-four cores.
 
 # RDNA2, RX 6000.
 gfx1030

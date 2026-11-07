@@ -18,7 +18,7 @@
 #
 # One architecture per --offload-arch, and unlike CUDA there is no PTX to
 # fall back on: a card not listed here will not run the result. Build time
-# scales with the list.
+# scales with the list, divided by -Threads.
 param(
     [switch]$NoPtx,
     # The targets come from cuda/hip/gfx-targets, which scripts/release.sh
@@ -49,7 +49,15 @@ param(
     # Named per SDK when building more than one, because the runtime a DLL
     # imports is fixed at link time: a 6.x build and a 7.x build are
     # different files rather than a choice made at run time.
-    [string]$Out = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR\hip" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild\hip" })
+    [string]$Out = $(if ($env:AVIAN_BUILD_DIR) { "$env:AVIAN_BUILD_DIR\hip" } else { Join-Path (Resolve-Path "$PSScriptRoot\..\..\..") "avian-winbuild\hip" }),
+    # clang's driver compiles the device code for each --offload-arch as a
+    # separate job and, left alone, runs them one after another, so sixteen
+    # targets took sixteen times as long as one on a machine with twenty-four
+    # idle cores. -parallel-jobs is AMD's counterpart to nvcc's --threads and
+    # lets those jobs overlap. 0 means one per logical CPU, resolved here
+    # rather than passed through, since what clang would make of a zero is
+    # not documented. Lower it if the machine runs short of memory.
+    [int]$Threads = 0
 )
 
 # The repository, derived rather than named, so a clone anywhere
@@ -94,6 +102,7 @@ Write-Output "  SDK: $Rocm"
 $list = ($cu | ForEach-Object { "`"$_`"" }) -join " "
 $extra = ($extraFiles | ForEach-Object { "`"$_`"" }) -join " "
 $archArgs = ($Arch | ForEach-Object { "--offload-arch=$_" }) -join " "
+$jobs = if ($Threads -gt 0) { $Threads } else { [Environment]::ProcessorCount }
 # Deliberately not defined. cuda/avian-ptx-portable.h sets AVIAN_NO_PTX itself
 # under __HIPCC__, and defining it on the command line overrides that: passing
 # =0 sent this build down the inline-PTX path and it failed on 'invalid output
@@ -133,7 +142,7 @@ cd /d "$W"
 $($cCmds -join "`r`n")
 "$clang" -O3 -shared -o "$OUT\avian_amd.dll" ^
   -DAVIAN_CUDA_BUILDING_DLL ^
-  $archArgs -std=c++14 -w ^
+  $archArgs -std=c++14 -w -parallel-jobs=$jobs ^
   -fms-runtime-lib=dll ^
   -I"$W\cuda\hip" -I"$W" -I"$W\cuda" -I"$W\cuda\upstream" ^
   -x hip $list ^
@@ -144,7 +153,7 @@ echo hipcc_exit=%ERRORLEVEL%
 $bat | Set-Content -Encoding ASCII "$OUT\build.bat"
 
 Write-Output ""
-Write-Output "=== compiling (one pass per architecture, so this is slow) ==="
+Write-Output "=== clang ($($cu.Count) translation units, $($Arch.Count) architectures, $jobs parallel jobs) ==="
 $log = & cmd /c "`"$OUT\build.bat`"" 2>&1
 $log | Select-String -Pattern "error|hipcc_exit" | Select-Object -First 20 |
     ForEach-Object { "  $_" }

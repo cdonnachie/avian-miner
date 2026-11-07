@@ -927,9 +927,12 @@ them different files rather than a runtime choice:
 (RDNA3) and `gfx1200`, `gfx1201` (RDNA4), as do 7.1.1's. Both also carry
 `gfx1033` through `gfx1036` and `gfx1150` through `gfx1153`, which are the
 RDNA3.5 and RDNA2 integrated parts and, in `gfx1034`'s case, the discrete
-RX 6500 XT and RX 6400. All of them are in the default list. At roughly 1.9
-minutes and 2.3 MB per architecture, those sixteen take about half an hour
-and produce a 40 MB DLL. `-Arch` takes a shorter list when that matters.
+RX 6500 XT and RX 6400. All of them are in the default list. Those sixteen
+produce a 40 MB DLL and took about half an hour when clang compiled them one
+after another; with `-parallel-jobs` they take 205 seconds on a 24-core
+machine. `-Threads` sets the job count and defaults to one per logical CPU,
+as it does for `build-cuda-dll.ps1`; lower it if the machine runs short of
+memory. `-Arch` takes a shorter list when that matters.
 
 **Whether to ship the runtime inverts between the two**, and getting it the
 wrong way round is silent both times.
