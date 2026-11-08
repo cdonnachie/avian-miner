@@ -8,7 +8,7 @@
 # cpu-miner.c names cpuminer-opt 26.1 literally.
 # AC_CONFIG_HEADERS below pins cpuminer-config.h, so renaming the
 # package does not rename the generated header.
-AC_INIT([avian-miner], [1.2.0])
+AC_INIT([avian-miner], [1.2.1])
 
 AC_PREREQ([2.59c])
 AC_CANONICAL_SYSTEM
