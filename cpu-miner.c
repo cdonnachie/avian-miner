@@ -2452,7 +2452,39 @@ static void *miner_thread( void *userdata )
    /* Set worker threads to nice 19 and then preferentially to SCHED_IDLE
     * and if that fails, then SCHED_BATCH. No need for this to be an
     * error if it fails */
-   if ( !opt_priority )
+   /* A GPU mining thread is not a hasher. It builds a job, launches a batch,
+    * sleeps while the card works, and verifies the handful of candidates that
+    * come back: 0.02 of a core, measured. What it needs is to be run
+    * *promptly* when a batch finishes, because the card is idle from then
+    * until it is.
+    *
+    * The default below is right for a CPU hasher and wrong for this one. It
+    * asks for nice 19, and on Windows compat.h turns opt_priority 0 into
+    * THREAD_PRIORITY_IDLE -- base priority 1, below everything. Alone that
+    * costs nothing, because nothing else wants the core. Beside a second
+    * miner using the CPU it means the launcher is the last thread in the
+    * system to be scheduled, so the card waits out a scheduling quantum per
+    * batch, and at this batch size a quantum is as long as a batch.
+    *
+    * Measured on a 3090 against a 12-thread MinotaurX miner on the same box:
+    * 52 MH/s alone, 5 MH/s alongside, 15 MH/s with the CPU miner dropped to
+    * BelowNormal -- which still outranks IDLE, hence only a partial recovery.
+    *
+    * Above normal rather than normal: the thread cannot starve anything at
+    * 0.02 of a core, and equal footing would still leave it waiting its turn
+    * among a dozen runnable hashing threads. --cpu-priority overrides this
+    * as it always did. */
+   if ( !opt_priority && opt_gpu )
+   {
+#if defined(WIN32)
+      SetThreadPriority( GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL );
+#else
+      setpriority( PRIO_PROCESS, 0, -5 );
+#endif
+      if ( !thr_id && opt_debug )
+         applog( LOG_INFO, "GPU launcher threads run above normal priority" );
+   }
+   else if ( !opt_priority )
    {
       setpriority(PRIO_PROCESS, 0, 19);
       if ( !thr_id && opt_debug )
