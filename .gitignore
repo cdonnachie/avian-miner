@@ -19,6 +19,9 @@ libavian_ocl.so
 avian-ocl-selftest
 avian-ocl-batchtest
 cuda/ocl/avian-ocl-kernels.h
+# webui/index.html, likewise embedded into a header at build time.
+avian-webui
+webui/avian-webui-page.h
 .dirstamp
 configure~
 cpuminer-config.h

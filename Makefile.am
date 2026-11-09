@@ -48,7 +48,37 @@ SUBDIRS = compat
 
 ALL_INCLUDES = @PTHREAD_FLAGS@ -fno-strict-aliasing $(EXTRA_INCLUDES) -I. @AVIAN_SV2_CFLAGS@
 
-bin_PROGRAMS = avian-miner
+bin_PROGRAMS = avian-miner avian-webui
+
+# The read-only web dashboard. A separate program and not part of the miner
+# on purpose: the miner's API is what holds seturl and quit behind
+# --api-remote, this is the half that gets exposed to a network, and a
+# parsing bug in it should cost a dashboard rather than a hashrate. See
+# doc/webui.md.
+#
+# Generated into the build tree, so a read-only source tree still builds, and
+# BUILT_SOURCES because the one object that embeds it needs it to exist
+# before the first compile rather than after.
+WEBUI_PAGE_H = webui/avian-webui-page.h
+BUILT_SOURCES += $(WEBUI_PAGE_H)
+CLEANFILES += $(WEBUI_PAGE_H)
+EXTRA_DIST += webui/mkpage.sh webui/index.html
+
+$(WEBUI_PAGE_H): $(top_srcdir)/webui/index.html $(top_srcdir)/webui/mkpage.sh
+	$(MKDIR_P) webui
+	$(SHELL) $(top_srcdir)/webui/mkpage.sh $@
+
+# EXTRA_INCLUDES and EXTRA_LIBS rather than a bare -ljansson: this tree
+# builds against a vendored jansson when the system has none, and those two
+# are what point at it. Same pair the miner's own flags use, so the dashboard
+# cannot end up linking a different one.
+avian_webui_SOURCES  = webui/avian-webui.c
+avian_webui_CPPFLAGS = @PTHREAD_FLAGS@ $(EXTRA_INCLUDES) \
+                       -I$(top_srcdir) -I$(top_builddir) -I$(top_builddir)/webui
+avian_webui_LDADD    = $(EXTRA_LIBS) -ljansson @PTHREAD_LIBS@ @WS2_LIBS@ -lm
+if HAVE_WINDOWS
+avian_webui_LDADD   += -lws2_32
+endif
 
 
 avian_miner_SOURCES = \

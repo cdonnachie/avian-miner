@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avian Miner</title>
+<style>
+  :root {
+    color-scheme: light;
+    --plane:          #f9f9f7;
+    --surface:        #fcfcfb;
+    --ink:            #0b0b0b;
+    --ink-2:          #52514e;
+    --muted:          #898781;
+    --grid:           #e1e0d9;
+    --axis:           #c3c2b7;
+    --border:         rgba(11, 11, 11, 0.10);
+    --series-1:       #2a78d6;
+    --series-1-faint: #86b6ef;
+    --good:           #0ca30c;
+    --critical:       #d03b3b;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --plane:          #0d0d0d;
+      --surface:        #1a1a19;
+      --ink:            #f0efec;
+      --ink-2:          #c3c2b7;
+      --muted:          #898781;
+      --grid:           #2c2c2a;
+      --axis:           #383835;
+      --border:         rgba(255, 255, 255, 0.10);
+      --series-1:       #3987e5;
+      --series-1-faint: #1c5cab;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --plane:          #0d0d0d;
+    --surface:        #1a1a19;
+    --ink:            #f0efec;
+    --ink-2:          #c3c2b7;
+    --muted:          #898781;
+    --grid:           #2c2c2a;
+    --axis:           #383835;
+    --border:         rgba(255, 255, 255, 0.10);
+    --series-1:       #3987e5;
+    --series-1-faint: #1c5cab;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 20px 16px 48px;
+    background: var(--plane);
+    color: var(--ink);
+    font: 400 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1060px; margin: 0 auto; }
+
+  /* ---- header ---- */
+
+  .top {
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    gap: 8px 16px; margin-bottom: 20px;
+  }
+  h1 {
+    font-size: 17px; font-weight: 600; letter-spacing: -0.01em;
+    margin: 0; flex: 0 0 auto;
+  }
+  .sub { color: var(--ink-2); font-size: 13px; }
+  .sub b { font-weight: 500; color: var(--ink); }
+  .spacer { flex: 1 1 auto; }
+
+  /* Status wears an icon and a word as well as a colour: on the light
+     surface two of the four status steps are deliberately sub-3:1, so hue
+     is never asked to carry the state on its own. */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 500;
+    padding: 3px 9px 3px 7px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface);
+    white-space: nowrap;
+  }
+  .pill svg { display: block; }
+  .pill.good { color: var(--good); }
+  .pill.bad  { color: var(--critical); }
+
+  button.theme {
+    font: inherit; font-size: 12px; color: var(--ink-2);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 999px; padding: 3px 11px; cursor: pointer;
+  }
+  button.theme:hover { color: var(--ink); }
+
+  /* ---- cards ---- */
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+  .card > h2 {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--muted);
+    margin: 0 0 14px;
+  }
+
+  /* ---- hero + stat tiles ---- */
+
+  .lead { display: flex; flex-wrap: wrap; gap: 24px 40px; align-items: flex-end; }
+  .hero-label {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 2px;
+  }
+  /* Proportional figures: tabular-nums gives every digit a zero's width,
+     which reads loose at display size. Columns get tabular, not this. */
+  .hero { font-size: 48px; font-weight: 600; line-height: 1; letter-spacing: -0.02em; }
+  .hero small { font-size: 20px; font-weight: 500; color: var(--ink-2); margin-left: 4px; }
+
+  .tiles {
+    display: grid; gap: 18px 28px; flex: 1 1 420px;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  }
+  .tile-label {
+    font-size: 11px; font-weight: 500; letter-spacing: 0.03em;
+    text-transform: uppercase; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tile-value { font-size: 21px; font-weight: 600; line-height: 1.25; }
+  .tile-value.found { color: var(--series-1); }
+
+  /* ---- chart ---- */
+
+  .plot { position: relative; }
+  .plot svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+  .plot:focus-visible { outline: 2px solid var(--series-1); outline-offset: 3px; border-radius: 4px; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .axisline { stroke: var(--axis); stroke-width: 1; }
+  .ticktext { fill: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .serieslin { fill: none; stroke: var(--series-1); stroke-width: 2;
+               stroke-linecap: round; stroke-linejoin: round; }
+  .seriesfill { fill: var(--series-1); opacity: 0.08; }
+  .hair { stroke: var(--axis); stroke-width: 1; }
+  .knob { fill: var(--series-1); stroke: var(--surface); stroke-width: 2; }
+
+  .tip {
+    position: absolute; pointer-events: none; z-index: 5;
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 7px;
+    padding: 7px 10px; font-size: 12px; min-width: 112px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.13);
+    opacity: 0; transition: opacity .09s;
+  }
+  .tip.on { opacity: 1; }
+  /* Value leads, label follows: here the reader already has the series. */
+  .tip .v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tip .k { color: var(--ink-2); font-size: 11px; margin-top: 1px; }
+  .tip .k i { display: inline-block; width: 10px; height: 2px; border-radius: 1px;
+              background: var(--series-1); vertical-align: middle; margin-right: 5px; }
+
+  /* ---- tables ---- */
+
+  .scroll { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th {
+    text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
+    text-transform: uppercase; color: var(--muted);
+    padding: 0 12px 7px 0; white-space: nowrap;
+    border-bottom: 1px solid var(--grid);
+  }
+  td {
+    padding: 9px 12px 9px 0; border-bottom: 1px solid var(--grid);
+    white-space: nowrap; vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: 0; }
+  /* Columns of numbers align, so these get tabular figures. */
+  th.n, td.n { text-align: right; font-variant-numeric: tabular-nums;
+               padding-left: 20px; }
+  /* Only the last column hugs the edge; a right-aligned column in the middle
+     keeps its gutter, or its value runs into the next heading. */
+  th.n:last-child, td.n:last-child { padding-right: 0; }
+  td.n { font-feature-settings: "tnum"; }
+  .cardname { font-weight: 500; }
+  .dim { color: var(--ink-2); }
+  .idx {
+    display: inline-block; min-width: 22px; padding: 1px 6px;
+    border: 1px solid var(--border); border-radius: 5px;
+    font-size: 11px; font-variant-numeric: tabular-nums;
+    text-align: center; color: var(--ink-2);
+  }
+  .found-n { font-weight: 600; color: var(--series-1); }
+  .found-0 { color: var(--muted); }
+  .spark { display: block; }
+
+  .empty { color: var(--ink-2); font-size: 13px; padding: 4px 0 2px; }
+
+  details.data { margin-top: 12px; }
+  details.data > summary {
+    cursor: pointer; font-size: 12px; color: var(--ink-2);
+    width: fit-content; list-style-position: outside;
+  }
+  details.data > summary:hover { color: var(--ink); }
+  details.data .scroll { margin-top: 10px; max-height: 260px; overflow-y: auto; }
+
+  /* When the miner stops answering the frame holds its last render rather
+     than collapsing to a skeleton -- dimmed, so nobody reads a dead rig's
+     numbers as current. The header keeps full contrast: it carries the
+     message that explains the dimming. */
+  body.stale-frame .card { opacity: 0.5; }
+  .card { transition: opacity .2s; }
+
+  .foot { color: var(--muted); font-size: 12px; margin-top: 24px; }
+  .foot code {
+    font: 500 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 2px 5px;
+  }
+
+  @media (max-width: 560px) {
+    .hero { font-size: 38px; }
+    .card { padding: 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <h1>Avian Miner</h1>
+    <div class="sub" id="ident">connecting&hellip;</div>
+    <div class="spacer"></div>
+    <span class="pill" id="status"></span>
+    <button class="theme" id="theme" type="button">Theme</button>
+  </div>
+
+  <div class="card">
+    <div class="lead">
+      <div>
+        <div class="hero-label">Hash rate</div>
+        <div class="hero" id="hero">&mdash;</div>
+      </div>
+      <div class="tiles" id="tiles"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 id="chart-title">Hash rate, this session</h2>
+    <div class="plot" id="plot" tabindex="0" role="img"
+         aria-label="Total hash rate over the session">
+      <div class="tip" id="tip"></div>
+    </div>
+    <details class="data">
+      <summary>Show the samples as a table</summary>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Time</th><th class="n">Hash rate</th></tr></thead>
+          <tbody id="samples"></tbody>
+        </table>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2 id="cards-title">Cards</h2>
+    <div class="scroll">
+      <table>
+        <thead id="cards-head"></thead>
+        <tbody id="cards-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Blocks found</h2>
+    <div id="blocks-wrap"></div>
+  </div>
+
+  <p class="foot">
+    Read-only, polling <code id="miner-api">the miner</code> and never
+    sending it anything but <code>summary</code>, <code>threads</code> and
+    <code>blocks</code>. History is held in memory and starts over when the
+    sidecar restarts.
+  </p>
+
+</div>
+
+<script>
+"use strict";
+
+/* ---------- theme ---------- */
+
+var root = document.documentElement;
+try {
+  var saved = localStorage.getItem("avian-theme");
+  if (saved === "dark" || saved === "light") root.setAttribute("data-theme", saved);
+} catch (e) { /* private window, blocked storage: the OS setting still works */ }
+
+document.getElementById("theme").addEventListener("click", function () {
+  var dark = root.getAttribute("data-theme") === "dark" ||
+             (!root.hasAttribute("data-theme") &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+  var next = dark ? "light" : "dark";
+  root.setAttribute("data-theme", next);
+  try { localStorage.setItem("avian-theme", next); } catch (e) {}
+  if (last) render(last);
+});
+
+/* ---------- formatting ---------- */
+
+var UNITS = ["H/s", "kH/s", "MH/s", "GH/s", "TH/s", "PH/s"];
+
+function splitRate(hs) {
+  if (hs === null || hs === undefined || !isFinite(hs)) return null;
+  var i = 0, v = hs;
+  while (v >= 1000 && i < UNITS.length - 1) { v /= 1000; i++; }
+  var digits = v >= 100 ? 1 : 2;
+  return { value: v.toFixed(digits), unit: UNITS[i] };
+}
+
+function rate(hs) {
+  var p = splitRate(hs);
+  return p ? p.value + " " + p.unit : "—";
+}
+
+function count(n) {
+  return (n === null || n === undefined) ? "—" : String(n);
+}
+
+function diffText(d) {
+  if (d === null || d === undefined || !isFinite(d)) return "—";
+  if (d >= 1e9) return (d / 1e9).toFixed(2) + "B";
+  if (d >= 1e6) return (d / 1e6).toFixed(2) + "M";
+  if (d >= 1e3) return (d / 1e3).toFixed(2) + "k";
+  return d >= 100 ? d.toFixed(0) : d.toPrecision(4);
+}
+
+function elapsed(seconds) {
+  if (!isFinite(seconds) || seconds < 0) return "—";
+  var s = Math.floor(seconds);
+  var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600);
+  var m = Math.floor(s % 3600 / 60);
+  if (d) return d + "d " + String(h).padStart(2, "0") + "h";
+  if (h) return h + "h " + String(m).padStart(2, "0") + "m";
+  if (m) return m + "m " + String(s % 60).padStart(2, "0") + "s";
+  return s + "s";
+}
+
+function clock(ms) {
+  return new Date(ms).toLocaleTimeString([], {
+    hour: "2-digit", minute: "2-digit", second: "2-digit"
+  });
+}
+
+function stamp(ms) {
+  var d = new Date(ms), today = new Date();
+  var sameDay = d.toDateString() === today.toDateString();
+  return sameDay ? clock(ms)
+                 : d.toLocaleString([], { month: "short", day: "numeric",
+                                          hour: "2-digit", minute: "2-digit" });
+}
+
+/* Card names and vendor strings come from a GPU driver by way of the miner's
+   API, so they are untrusted text. Everything below builds them into the DOM
+   as text nodes; nothing is ever concatenated into innerHTML. */
+function el(tag, cls, text) {
+  var node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  return node;
+}
+
+function svgEl(tag, attrs) {
+  var node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (var k in attrs) if (attrs[k] !== null) node.setAttribute(k, attrs[k]);
+  return node;
+}
+
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+/* Name a card the way the miner's logs name it, so the two agree. */
+function cardLabel(c) {
+  if (c.name) return c.name;
+  if (c.gpu !== null && c.gpu !== undefined) return "GPU #" + c.gpu;
+  return "Thread " + c.thr;
+}
+
+/* ---------- the hash rate chart ---------- */
+
+/* t leaves room for the unit caption above the topmost tick label, which
+   sits on the top gridline rather than below it. */
+var CH = { w: 1000, h: 244, l: 56, r: 14, t: 26, b: 26 };
+
+/* The chart is drawn in real CSS pixels -- one viewBox unit is one pixel and
+   the aspect ratio is honoured -- rather than in a fixed viewBox stretched to
+   fit. A stretched box scales the geometry and the type by different factors,
+   which at phone width squashed every tick label into an unreadable smear. */
+function sizeChart() {
+  CH.w = Math.max(Math.round(plot.clientWidth) || 640, 300);
+  CH.h = CH.w < 520 ? 190 : 244;
+  CH.l = CH.w < 520 ? 44 : 56;
+}
+var plot = document.getElementById("plot");
+var tip = document.getElementById("tip");
+var chartPoints = [];     /* {t, hs, x, y} in viewBox units */
+var chartHover = -1;
+
+function niceCeil(v) {
+  if (v <= 0) return 1;
+  var mag = Math.pow(10, Math.floor(Math.log10(v)));
+  var n = v / mag;
+  /* Finely enough stepped that the trace fills the plot: rounding 5.7 up to
+     10 would park a steady rig's line at half height and read as headroom
+     that means nothing. */
+  var steps = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+  for (var i = 0; i < steps.length; i++) if (n <= steps[i]) return steps[i] * mag;
+  return 10 * mag;
+}
+
+function drawChart(history) {
+  var old = plot.querySelector("svg");
+  if (old) old.remove();
+  chartPoints = [];
+  sizeChart();
+
+  var svg = svgEl("svg", {
+    viewBox: "0 0 " + CH.w + " " + CH.h,
+    width: CH.w, height: CH.h, "aria-hidden": "true"
+  });
+
+  if (!history || history.length < 2) {
+    var note = svgEl("text", {
+      x: CH.w / 2, y: CH.h / 2, "text-anchor": "middle", class: "ticktext"
+    });
+    note.textContent = "collecting samples…";
+    svg.appendChild(note);
+    plot.appendChild(svg);
+    hideTip();
+    return;
+  }
+
+  var t0 = history[0].t, t1 = history[history.length - 1].t;
+  var span = Math.max(t1 - t0, 1);
+  var peak = 0;
+  history.forEach(function (p) { if (p.hs > peak) peak = p.hs; });
+  /* Zero baseline: this is a magnitude over time, and a floating baseline
+     would turn ordinary jitter into a cliff. */
+  var top = niceCeil(peak * 1.12) || 1;
+
+  var iw = CH.w - CH.l - CH.r, ih = CH.h - CH.t - CH.b;
+  var X = function (t) { return CH.l + (t - t0) / span * iw; };
+  var Y = function (v) { return CH.t + ih - (v / top) * ih; };
+
+  var unit = splitRate(top).unit;
+  var scale = Math.pow(1000, UNITS.indexOf(unit));
+
+  /* recessive grid, then the axis */
+  var rows = 4;
+  for (var i = 0; i <= rows; i++) {
+    var v = top * i / rows, y = Y(v);
+    svg.appendChild(svgEl("line", {
+      x1: CH.l, y1: y, x2: CH.w - CH.r, y2: y,
+      class: i === 0 ? "axisline" : "gridline"
+    }));
+    var lab = svgEl("text", {
+      x: CH.l - 9, y: y + 3.5, "text-anchor": "end", class: "ticktext"
+    });
+    lab.textContent = (v / scale).toFixed(v / scale >= 100 || i === 0 ? 0 : 1);
+    svg.appendChild(lab);
+  }
+  var ylab = svgEl("text", { x: CH.l - 9, y: CH.t - 12, "text-anchor": "end", class: "ticktext" });
+  ylab.textContent = unit;
+  svg.appendChild(ylab);
+
+  var area = [], line = [];
+  history.forEach(function (p) {
+    var x = X(p.t), y = Y(p.hs);
+    line.push((line.length ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1));
+    area.push(x.toFixed(1) + " " + y.toFixed(1));
+    chartPoints.push({ t: p.t, hs: p.hs, x: x, y: y });
+  });
+  svg.appendChild(svgEl("polygon", {
+    class: "seriesfill",
+    points: CH.l + " " + Y(0) + " " + area.join(" ") + " " + (CH.w - CH.r) + " " + Y(0)
+  }));
+  svg.appendChild(svgEl("path", { class: "serieslin", d: line.join(" ") }));
+
+  /* Time ticks at the ends, plus the middle only where a clock label fits
+     three times over; at phone width the middle one lands on top of the last. */
+  var ticks = CH.w < 520 ? [0, history.length - 1]
+                         : [0, Math.floor(history.length / 2), history.length - 1];
+  ticks.forEach(function (i, n) {
+    var p = history[i];
+    var tx = svgEl("text", {
+      x: X(p.t), y: CH.h - 8, class: "ticktext",
+      "text-anchor": n === 0 ? "start"
+                   : n === ticks.length - 1 ? "end" : "middle"
+    });
+    tx.textContent = clock(p.t * 1000);
+    svg.appendChild(tx);
+  });
+
+  var hair = svgEl("line", { class: "hair", y1: CH.t, y2: CH.t + ih, x1: -99, x2: -99 });
+  hair.style.display = "none";
+  var knob = svgEl("circle", { class: "knob", r: 4.5, cx: -99, cy: -99 });
+  knob.style.display = "none";
+  svg.appendChild(hair);
+  svg.appendChild(knob);
+  svg._hair = hair;
+  svg._knob = knob;
+
+  plot.appendChild(svg);
+  if (chartHover >= chartPoints.length) chartHover = -1;
+  if (chartHover >= 0) showAt(chartHover); else hideTip();
+}
+
+/* The crosshair finds the X, so the reader aims at a moment rather than at a
+   2px line. */
+function nearestIndex(clientX) {
+  var box = plot.getBoundingClientRect();
+  if (!box.width || !chartPoints.length) return -1;
+  var vx = (clientX - box.left) / box.width * CH.w;
+  var best = 0, bestD = Infinity;
+  for (var i = 0; i < chartPoints.length; i++) {
+    var d = Math.abs(chartPoints[i].x - vx);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+function showAt(i) {
+  var svg = plot.querySelector("svg");
+  if (!svg || !svg._hair || !chartPoints[i]) return;
+  var p = chartPoints[i];
+  chartHover = i;
+
+  svg._hair.setAttribute("x1", p.x);
+  svg._hair.setAttribute("x2", p.x);
+  svg._hair.style.display = "";
+  svg._knob.setAttribute("cx", p.x);
+  svg._knob.setAttribute("cy", p.y);
+  svg._knob.style.display = "";
+
+  clear(tip);
+  tip.appendChild(el("div", "v", rate(p.hs)));
+  var k = el("div", "k");
+  k.appendChild(el("i"));
+  k.appendChild(document.createTextNode(clock(p.t * 1000)));
+  tip.appendChild(k);
+  tip.classList.add("on");
+
+  var box = plot.getBoundingClientRect();
+  var px = p.x / CH.w * box.width;
+  var py = p.y / CH.h * box.height;
+  var tw = tip.offsetWidth, th = tip.offsetHeight;
+  var left = Math.min(Math.max(px - tw / 2, 2), Math.max(box.width - tw - 2, 2));
+  var topPos = py - th - 14;
+  if (topPos < 0) topPos = py + 16;
+  tip.style.left = left + "px";
+  tip.style.top = topPos + "px";
+}
+
+function hideTip() {
+  var svg = plot.querySelector("svg");
+  if (svg && svg._hair) { svg._hair.style.display = "none"; svg._knob.style.display = "none"; }
+  tip.classList.remove("on");
+  chartHover = -1;
+}
+
+/* The geometry is sized to the element, so a width change has to redraw it. */
+var resizeTimer;
+window.addEventListener("resize", function () {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function () {
+    if (last) { hideTip(); drawChart(last.history); }
+  }, 150);
+});
+
+plot.addEventListener("pointermove", function (ev) {
+  var i = nearestIndex(ev.clientX);
+  if (i >= 0) showAt(i);
+});
+plot.addEventListener("pointerleave", hideTip);
+plot.addEventListener("blur", hideTip);
+
+/* Same readout on the keyboard as on the pointer. */
+plot.addEventListener("keydown", function (ev) {
+  if (!chartPoints.length) return;
+  var i = chartHover < 0 ? chartPoints.length - 1 : chartHover;
+  if (ev.key === "ArrowLeft") i--;
+  else if (ev.key === "ArrowRight") i++;
+  else if (ev.key === "Home") i = 0;
+  else if (ev.key === "End") i = chartPoints.length - 1;
+  else if (ev.key === "Escape") { hideTip(); return; }
+  else return;
+  ev.preventDefault();
+  showAt(Math.min(Math.max(i, 0), chartPoints.length - 1));
+});
+
+/* ---------- sparklines ---------- */
+
+/* One card's own rate, as its own small multiple. Identity comes from the
+   row it sits in, so every sparkline can share one colour: a per-card hue
+   would need a ninth on a nine-card rig, and there is no ninth. */
+function sparkline(points) {
+  var w = 104, h = 26, pad = 2;
+  var svg = svgEl("svg", {
+    class: "spark", width: w, height: h,
+    viewBox: "0 0 " + w + " " + h, "aria-hidden": "true"
+  });
+  if (!points || points.length < 2) return svg;
+
+  var t0 = points[0].t, span = Math.max(points[points.length - 1].t - t0, 1);
+  var peak = 0;
+  points.forEach(function (p) { if (p.hs > peak) peak = p.hs; });
+  if (peak <= 0) peak = 1;
+
+  var d = [], lastX = 0, lastY = 0;
+  points.forEach(function (p) {
+    var x = (p.t - t0) / span * (w - pad * 2) + pad;
+    var y = h - pad - (p.hs / (peak * 1.1)) * (h - pad * 2);
+    d.push((d.length ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1));
+    lastX = x; lastY = y;
+  });
+
+  var path = svgEl("path", { d: d.join(" "), fill: "none",
+    stroke: "var(--series-1-faint)", "stroke-width": 1.5,
+    "stroke-linecap": "round", "stroke-linejoin": "round" });
+  svg.appendChild(path);
+  /* the newest sample in the accent, so "now" is findable at a glance */
+  svg.appendChild(svgEl("circle", { cx: lastX.toFixed(1), cy: lastY.toFixed(1),
+    r: 2.4, fill: "var(--series-1)" }));
+  return svg;
+}
+
+/* ---------- rendering ---------- */
+
+var ident = document.getElementById("ident");
+var statusPill = document.getElementById("status");
+var hero = document.getElementById("hero");
+var tiles = document.getElementById("tiles");
+var cardsHead = document.getElementById("cards-head");
+var cardsBody = document.getElementById("cards-body");
+var blocksWrap = document.getElementById("blocks-wrap");
+var samplesBody = document.getElementById("samples");
+var last = null;
+
+function icon(ok) {
+  var svg = svgEl("svg", { width: 11, height: 11, viewBox: "0 0 11 11" });
+  if (ok) {
+    svg.appendChild(svgEl("circle", { cx: 5.5, cy: 5.5, r: 4.5, fill: "currentColor" }));
+  } else {
+    svg.appendChild(svgEl("path", {
+      d: "M5.5 0.6 10.6 9.8H0.4Z", fill: "currentColor"
+    }));
+    svg.appendChild(svgEl("rect", { x: 4.85, y: 3.7, width: 1.3, height: 3,
+      rx: 0.5, fill: "var(--surface)" }));
+    svg.appendChild(svgEl("rect", { x: 4.85, y: 7.4, width: 1.3, height: 1.3,
+      rx: 0.5, fill: "var(--surface)" }));
+  }
+  return svg;
+}
+
+function setStatus(ok, text) {
+  statusPill.className = "pill " + (ok ? "good" : "bad");
+  clear(statusPill);
+  statusPill.appendChild(icon(ok));
+  statusPill.appendChild(document.createTextNode(text));
+  statusPill.title = text;
+}
+
+function tile(label, value, extra) {
+  var box = el("div");
+  box.appendChild(el("div", "tile-label", label));
+  box.appendChild(el("div", "tile-value" + (extra ? " " + extra : ""), value));
+  return box;
+}
+
+var minerApiEl = document.getElementById("miner-api");
+
+function render(st) {
+  last = st;
+
+  /* Worth showing: with --miner-config the address was discovered from the
+     miner's own config rather than given, so this is where you see which
+     one was found. */
+  if (st.miner_api) minerApiEl.textContent = st.miner_api;
+
+  var m = st.miner || {}, tot = st.totals || {};
+  var age = st.polled ? st.now - st.polled : null;
+
+  if (st.ok) {
+    setStatus(true, "Mining" + (age !== null && age > st.interval * 3
+                                ? " · " + elapsed(age) + " old" : ""));
+  } else {
+    setStatus(false, st.error ? String(st.error) : "No answer from the miner");
+  }
+  document.body.classList.toggle("stale-frame", !st.ok);
+
+  clear(ident);
+  if (m.algo) {
+    ident.appendChild(el("b", null, m.algo));
+    if (m.url) {
+      ident.appendChild(document.createTextNode(" on "));
+      ident.appendChild(el("b", null, m.url));
+    }
+    var bits = [];
+    if (m.version) bits.push("v" + m.version);
+    if (m.uptime) bits.push("up " + elapsed(m.uptime));
+    if (bits.length) ident.appendChild(document.createTextNode(" · " + bits.join(" · ")));
+  } else {
+    ident.textContent = st.ok ? "—" : "waiting for the miner…";
+  }
+
+  var h = splitRate(tot.hashrate);
+  clear(hero);
+  if (h) {
+    hero.appendChild(document.createTextNode(h.value));
+    hero.appendChild(el("small", null, h.unit));
+  } else {
+    hero.textContent = "—";
+  }
+
+  clear(tiles);
+  tiles.appendChild(tile("Blocks found", count(tot.solved),
+                         tot.solved ? "found" : null));
+  tiles.appendChild(tile("Accepted", count(tot.accepted)));
+  tiles.appendChild(tile("Rejected", count(tot.rejected)));
+  if (tot.stale !== null && tot.stale !== undefined)
+    tiles.appendChild(tile("Stale", count(tot.stale)));
+  tiles.appendChild(tile("Shares/min", tot.accmn === null || tot.accmn === undefined
+                                       ? "—" : tot.accmn.toFixed(2)));
+  tiles.appendChild(tile("Difficulty", diffText(tot.diff)));
+
+  drawChart(st.history);
+
+  clear(samplesBody);
+  (st.history || []).slice().reverse().forEach(function (p) {
+    var tr = el("tr");
+    tr.appendChild(el("td", "dim", clock(p.t * 1000)));
+    tr.appendChild(el("td", "n", rate(p.hs)));
+    samplesBody.appendChild(tr);
+  });
+
+  renderCards(st);
+  renderBlocks(st);
+}
+
+function renderCards(st) {
+  var cards = st.cards || [];
+  var gpu = !!st.gpu;
+  document.getElementById("cards-title").textContent = gpu ? "Cards" : "Threads";
+
+  clear(cardsHead);
+  var hr = el("tr");
+  [gpu ? "GPU" : "Thread", gpu ? "Card" : "", gpu ? "Bus" : ""]
+    .forEach(function (label, i) {
+      if (!label && i) return;
+      hr.appendChild(el("th", null, label));
+    });
+  ["Hash rate", "Trend", "Blocks found"].forEach(function (label, i) {
+    hr.appendChild(el("th", i === 1 ? null : "n", label));
+  });
+  cardsHead.appendChild(hr);
+
+  clear(cardsBody);
+  if (!cards.length) {
+    var tr = el("tr");
+    var td = el("td", "empty", st.ok ? "No mining threads reported."
+                                     : "Waiting for the miner…");
+    td.colSpan = 6;
+    cardsBody.appendChild(tr).appendChild(td);
+    return;
+  }
+
+  cards.forEach(function (c) {
+    var tr = el("tr");
+    tr.appendChild(el("td", null))
+      .appendChild(el("span", "idx",
+        gpu && c.gpu !== null && c.gpu !== undefined ? c.gpu : c.thr));
+
+    if (gpu) {
+      var nameCell = el("td");
+      nameCell.appendChild(el("span", "cardname", cardLabel(c)));
+      if (c.vendor) {
+        nameCell.appendChild(document.createTextNode(" "));
+        nameCell.appendChild(el("span", "dim", c.vendor));
+      }
+      tr.appendChild(nameCell);
+      tr.appendChild(el("td", "dim",
+        c.bus === null || c.bus === undefined ? "—" : c.bus));
+    }
+
+    tr.appendChild(el("td", "n", rate(c.hashrate)));
+    tr.appendChild(el("td")).appendChild(sparkline(c.history));
+    tr.appendChild(el("td", "n " + (c.solved ? "found-n" : "found-0"),
+                      count(c.solved)));
+    cardsBody.appendChild(tr);
+  });
+}
+
+function renderBlocks(st) {
+  var blocks = st.blocks || [];
+  var gpu = !!st.gpu;
+  clear(blocksWrap);
+
+  if (!blocks.length) {
+    var line = el("p", "empty");
+    line.textContent = st.totals && st.totals.solved
+      ? "This run has solved " + st.totals.solved + ", but the miner is no " +
+        "longer holding their details — only the last few are kept."
+      : "None yet this run. A solve appears here the moment the pool takes it.";
+    blocksWrap.appendChild(line);
+    return;
+  }
+
+  var scroll = el("div", "scroll");
+  var table = el("table");
+  var thead = el("thead"), hr = el("tr");
+  var cols = ["", "Found", "Height"];
+  if (gpu) cols.push("By card"); else cols.push("By thread");
+  cols.push("Share diff", "Net diff");
+  cols.forEach(function (label, i) {
+    hr.appendChild(el("th", i >= 4 ? "n" : null, label));
+  });
+  thead.appendChild(hr);
+  table.appendChild(thead);
+
+  var tbody = el("tbody");
+  blocks.forEach(function (b) {
+    var tr = el("tr");
+    tr.appendChild(el("td", null)).appendChild(el("span", "idx", b.num));
+    tr.appendChild(el("td", null, b.ts ? stamp(b.ts * 1000) : "—"));
+    tr.appendChild(el("td", "dim", b.height || "—"));
+
+    var who = el("td");
+    if (b.thr === null || b.thr === undefined) {
+      /* The miner says nothing rather than guessing when a solve's thread
+         was lost, so neither does this. */
+      who.appendChild(el("span", "dim", "unrecorded"));
+    } else if (gpu) {
+      who.appendChild(el("span", "idx",
+        b.gpu !== null && b.gpu !== undefined ? b.gpu : b.thr));
+      who.appendChild(document.createTextNode(" "));
+      who.appendChild(el("span", "cardname", b.card || ("Thread " + b.thr)));
+    } else {
+      who.appendChild(el("span", "idx", b.thr));
+    }
+    tr.appendChild(who);
+
+    tr.appendChild(el("td", "n", diffText(b.diff)));
+    tr.appendChild(el("td", "n dim", diffText(b.netdiff)));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  scroll.appendChild(table);
+  blocksWrap.appendChild(scroll);
+}
+
+/* ---------- polling ---------- */
+
+var failures = 0;
+
+function poll() {
+  fetch("api/state", { cache: "no-store" })
+    .then(function (r) {
+      if (!r.ok) throw new Error("sidecar returned HTTP " + r.status);
+      return r.json();
+    })
+    .then(function (st) { failures = 0; render(st); })
+    .catch(function (err) {
+      failures++;
+      if (last) {
+        last.ok = false;
+        last.error = "Sidecar unreachable (" + err.message + ")";
+        render(last);
+      } else {
+        setStatus(false, "Sidecar unreachable");
+      }
+    });
+}
+
+poll();
+setInterval(poll, 3000);
+</script>
+</body>
+</html>

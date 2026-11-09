@@ -143,6 +143,20 @@ that and you keep everything; the miner cannot see that happen, so an
 accepted prefix and an ignored one look the same from here. Without the
 prefix nothing is taken: avian-miner has no fee of its own, and no default.
 
+## Watching it
+
+`--api-bind 127.0.0.1:4048` opens the miner's own API, a plain text protocol
+answering `summary`, `threads` and `blocks` one command per connection. It is
+off unless asked for, which on HiveOS `h-config.sh` does for you and nowhere
+else does.
+
+`avian-webui`, which ships beside the miner, is a read-only web dashboard
+that reads it and serves a page the rest of the LAN can open: hash rate and
+its trend, a row per card, and the recent blocks with the card that found
+each one. It carries its page inside itself, so it is one file with nothing
+to install, and it is a separate process by design — a miner should not also
+be an HTTP server. See [doc/webui.md](doc/webui.md).
+
 ## Verifying a release
 
 Windows binaries are Authenticode signed and timestamped. Check before
