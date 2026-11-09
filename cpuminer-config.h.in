@@ -12,6 +12,9 @@
 /* Define to 1 to build the Stratum v2 backend. */
 #undef HAVE_AVIAN_SV2
 
+/* Define to 1 to build a GPU X16RT backend. */
+#undef HAVE_CUDA
+
 /* Define to 1 if you have the declaration of `be32dec', and to 0 if you
    don't. */
 #undef HAVE_DECL_BE32DEC
