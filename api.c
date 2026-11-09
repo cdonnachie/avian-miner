@@ -37,6 +37,9 @@
 #if defined(HAVE_CUDA)
 #include "cuda/avian-gpu-backend.h"
 #endif
+#ifdef HAVE_AVIAN_SV2
+#include "avian/sv2.h"
+#endif
 #ifndef WIN32
 # include <errno.h>
 # include <sys/socket.h>
@@ -100,6 +103,9 @@ extern char *opt_api_allow;
 extern int opt_api_listen; /* port */
 extern int opt_api_remote;
 extern double global_hashrate;
+/* Counted apart from rejects by share_result, so a summary without it reads
+ * as if the missing shares simply vanished. */
+extern uint32_t stale_share_count;
 //extern uint32_t accepted_count;
 //extern uint32_t rejected_count;
 //extern uint32_t solved_count;
@@ -174,6 +180,20 @@ static char *getsummary( char *params )
 
    get_currentalgo(algo, sizeof(algo));
 
+   /* -o is what sets short_url, and an SV2 session never has one, so URL was
+    * a null pointer handed to %s on every SV2 run. report_summary_log names
+    * each way of getting work for the same reason; this is that fix, in the
+    * one other place that prints the pool.
+    *
+    * The SV2 arm is guarded and the others are not: have_sv2 is declared
+    * whether or not the backend was built, while opt_sv2_url belongs to the
+    * backend, so reading have_sv2 says nothing about the address beside it. */
+   const char *endpoint = short_url     ? short_url
+                        : opt_benchmark ? "benchmark" : "no pool";
+#ifdef HAVE_AVIAN_SV2
+   if ( have_sv2 ) endpoint = opt_sv2_url ? opt_sv2_url : "sv2";
+#endif
+
    // if diff is integer don't display decimals
    if ( diff == trunc( diff ) )
        sprintf( diff_str, "%.0f", diff);
@@ -184,13 +204,13 @@ static char *getsummary( char *params )
    sprintf( buffer,
 	  "NAME=%s;VER=%s;API=%s;"
           "ALGO=%s;CPUS=%d;URL=%s;"
-          "HS=%.2f;KHS=%.2f;ACC=%d;REJ=%d;SOL=%d;"
+          "HS=%.2f;KHS=%.2f;ACC=%d;REJ=%d;STALE=%d;SOL=%d;"
           "ACCMN=%.3f;DIFF=%s;TEMP=%.1f;FAN=%d;FREQ=%d;"
           "UPTIME=%.0f;TS=%u|",
            PACKAGE_NAME, PACKAGE_VERSION, APIVERSION,
-           algo, opt_n_threads, short_url,
+           algo, opt_n_threads, endpoint,
 	   hrate, hrate/1000.0, accepted_share_count, rejected_share_count,
-		                                      solved_block_count,
+		                      stale_share_count, solved_block_count,
            accps, diff_str, cpu.cpu_temp, cpu.cpu_fan, cpu.cpu_clock,
 	   uptime, (uint32_t) ts);
    return buffer;
