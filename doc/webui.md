@@ -30,11 +30,6 @@ is an existing option rather than one this dashboard added. Start it, stop it
 or restart it without touching the miner, and if it dies the miner does not
 notice — which is the point of keeping the hashing process out of it.
 
-`webui/avian-webui.py` in the source tree is the same dashboard as a Python
-script, serving the same page and the same JSON. It is kept for the moment as
-a second opinion while the C one proves itself on real rigs, and is not part
-of any release.
-
 ## Turning the miner's API on first
 
 The dashboard has nothing to read until the miner opens its API, and the
