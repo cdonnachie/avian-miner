@@ -708,6 +708,16 @@ extern uint32_t *thr_solved_blocks;
  * were written. Only the last few are kept; solved_block_count remains the
  * total. Takes stats_lock, so do not call it holding that. */
 int solved_blocks_recent( struct solved_block *out, int max );
+
+/* --webui: where the dashboard is served, or NULL for not at all. */
+extern char *opt_webui;
+
+/* Runs avian-webui from beside this binary and keeps it running. bind is
+ * what the dashboard listens on, miner_api the address it polls. Returns
+ * once the supervisor is started; failures are logged, not fatal, because a
+ * miner that will not mine without its dashboard is the wrong trade. */
+void webui_start( const char *bind, const char *miner_api );
+
 extern pthread_mutex_t applog_lock;
 extern pthread_mutex_t stats_lock;
 extern bool opt_sapling;
@@ -790,6 +800,11 @@ Options:\n\
                                 often shares are submitted and nothing else\n\
   -b, --api-bind=address[:port]   IP address for the miner API, default port is 4048)\n\
       --api-remote      allow remote control\n\
+      --webui[=address[:port]]  also run avian-webui, the read-only dashboard, from\n\
+                                beside this binary, and restart it if it stops. The\n\
+                                default is 0.0.0.0:4049, which the rest of the network\n\
+                                can reach and nothing authenticates. Turns the miner's\n\
+                                own API on, on loopback, if it is not on already\n\
       --max-temp=N      only mine if cpu temp is less than specified value (linux)\n\
       --max-rate=N[KMG] only mine if net hashrate is less than specified value\n\
       --max-diff=N      only mine if net difficulty is less than specified value\n\
@@ -877,6 +892,7 @@ static struct option const options[] = {
         { "gpu-backend", 1, NULL, 1210 },
         { "list-devices", 0, NULL, 1211 },
         { "sv2-hashrate", 1, NULL, 1208 },
+        { "webui", 2, NULL, 1063 },
         { 0, 0, 0, 0 }
 };
 

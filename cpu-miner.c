@@ -219,7 +219,13 @@ char *opt_api_allow = NULL;
 int opt_api_listen = 0;
 int opt_api_remote = 0;
 const char *default_api_allow = "127.0.0.1";
-int default_api_listen = 4048; 
+int default_api_listen = 4048;
+
+// The read-only dashboard, run as a child process. Every interface by
+// default, because a dashboard only this machine can open is of no use to
+// the rig it is watching; the miner's own API stays on loopback.
+char *opt_webui = NULL;
+static const char *default_webui_bind = "0.0.0.0:4049";
 
   pthread_mutex_t applog_lock;
   pthread_mutex_t stats_lock;
@@ -3674,6 +3680,13 @@ void parse_arg(int key, char *arg )
 	case 1030: // api-remote
 		opt_api_remote = 1;
 		break;
+   case 1063: // webui
+      /* Optional argument, so --webui alone takes the default. getopt only
+       * binds an optional argument written as --webui=ADDR; a config file
+       * passes the string either way. */
+      free( opt_webui );
+      opt_webui = strdup( arg && *arg ? arg : default_webui_bind );
+      break;
 	case 'B':  // background
 		opt_background = true;
 		use_colors = false;
@@ -4012,6 +4025,15 @@ void parse_config(json_t *config, char *ref)
 			char buf[16];
 			sprintf(buf, "%f", json_real_value(val));
 			parse_arg(options[i].val, buf);
+		}
+		else if (options[i].has_arg == 2 && json_is_boolean(val)) {
+			/* An option whose argument is optional can be asked for
+			   without one, and true is how a config file says that --
+			   "webui": true rather than a repeat of the default. false
+			   leaves it off, which is what anyone turning one off by
+			   editing a flight sheet will write. */
+			if (json_is_true(val))
+				parse_arg(options[i].val, "");
 		}
 		else if (!options[i].has_arg) {
 			if (json_is_true(val))
@@ -4528,6 +4550,22 @@ int main(int argc, char *argv[])
    }
 #endif
 
+   /* The dashboard reads the miner through that API, so asking for one
+    * without the other is a request for a page that can only report the
+    * miner as unreachable. Turned on here rather than refused, on loopback
+    * and never --api-remote: the half meant to face a network is the
+    * dashboard, and this keeps the control socket where it belongs. */
+   if ( opt_webui && !opt_api_enabled )
+   {
+      free( opt_api_allow );
+      opt_api_allow   = strdup( default_api_allow );
+      opt_api_listen  = default_api_listen;
+      opt_api_enabled = ( opt_api_allow != NULL );
+      if ( !opt_quiet )
+         applog( LOG_INFO, "--webui, so the miner's API is on at %s:%d for it "
+                           "to read", default_api_allow, default_api_listen );
+   }
+
 	if ( opt_api_enabled )
    {
       if ( opt_debug )
@@ -4549,6 +4587,20 @@ int main(int argc, char *argv[])
       if ( !opt_quiet )
          applog( LOG_INFO,"API listening to %s:%d", opt_api_allow,
                                                      opt_api_listen );
+   }
+
+   if ( opt_webui && opt_api_enabled )
+   {
+      char miner_api[ 80 ];
+
+      /* A wildcard bind is not an address anything can connect to, so the
+       * child is pointed at loopback instead; any other address it is given
+       * is the one it was actually bound to. */
+      snprintf( miner_api, sizeof miner_api, "%s:%d",
+                ( !opt_api_allow || !strcmp( opt_api_allow, "0.0.0.0" ) )
+                   ? "127.0.0.1" : opt_api_allow,
+                opt_api_listen );
+      webui_start( opt_webui, miner_api );
    }
 
    // hold the stats lock while starting miner threads

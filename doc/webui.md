@@ -2,9 +2,7 @@
 
 `avian-webui` is a small read-only web dashboard for a running miner. It is a
 sidecar: a separate process that polls the miner's own API over loopback and
-serves a page the rest of the network can open. The miner is not an HTTP
-server and does not become one — a process whose job is to hash should not
-also be parsing requests from the LAN.
+serves a page the rest of the network can open.
 
 It shows the hash rate and its trend, a row per card with that card's own
 rate and the blocks it has found, and the recent solves with the card that
@@ -16,6 +14,12 @@ found each one.
 That serves `http://<this machine>:4049/` and reads the miner on
 `127.0.0.1:4048`. Both ends are configurable; `--help` lists everything.
 
+Or let the miner run it, which is usually easier:
+
+    avian-miner --webui ...
+
+See [Letting the miner run it](#letting-the-miner-run-it) below.
+
 It ships in every release beside `avian-miner`, needs no runtime installed
 and no files beside it: the page is compiled into the binary, so there is one
 file and it either runs or is not there. On Windows it is code-signed with
@@ -23,12 +27,59 @@ the same certificate as the miner, which is the main reason it is a C program
 rather than the Python script it began as — the one file in a release that
 opens a listening socket should not also be the one nobody can verify.
 
-It is a separate process, started separately, and **there is no miner flag
-that turns it on**. The miner does not launch it, supervise it or know it
-exists; the only miner-side setting involved is `--api-bind`, below, and that
-is an existing option rather than one this dashboard added. Start it, stop it
-or restart it without touching the miner, and if it dies the miner does not
-notice — which is the point of keeping the hashing process out of it.
+## Why a separate process
+
+Not because a miner cannot serve HTTP. It already opens a listening socket
+and parses requests on it, so serving a page would be a difference of degree
+rather than of kind. The reason is what the two sockets are *for*. The
+miner's API is a loopback control socket with `seturl` and `quit` on it
+behind `--api-remote`; the dashboard is meant to be reachable from the LAN.
+Keeping them in separate address spaces means a parsing bug in the half that
+faces a network costs a dashboard rather than hours of hashing — and that
+stays a property of the arrangement rather than a rule somebody has to keep
+remembering.
+
+Two useful things fall out of it. The dashboard can be restarted without
+touching the miner, which matters more than it sounds: restarting the miner
+costs a re-benchmark and a share target renegotiated with the pool. And one
+dashboard can watch several miners, which is the normal case on a machine
+mining both algorithms at once.
+
+What the arrangement was missing was somebody to start the second process,
+which is what `--webui` is for.
+
+## Letting the miner run it
+
+`--webui` runs the dashboard as a child process and keeps it running:
+
+    avian-miner --webui ...                  # 0.0.0.0:4049, the default
+    avian-miner --webui=127.0.0.1:4049 ...   # this machine only
+
+The miner finds `avian-webui` beside its own binary, the same way it finds
+the GPU backends, so a release directory copied somewhere else still works
+and a stray `avian-webui` elsewhere on the system is never the one that runs.
+It hands over its own API address, so the two ends cannot disagree about a
+port.
+
+If the dashboard stops, it is started again, with a doubling backoff to
+thirty seconds — so the failure that repeats, a port already taken, names
+itself in the log instead of spinning. It does not outlive the miner either
+way the miner goes away: a job object on Windows, `PR_SET_PDEATHSIG` on
+Linux.
+
+`--webui` also turns the miner's own API on, on loopback, if it is not on
+already, since a dashboard with nothing to read can only report the miner as
+unreachable. It never implies `--api-remote`.
+
+In a config file, which is how HiveOS passes options:
+
+    "webui": true                  # the default address
+    "webui": "127.0.0.1:4049"      # or a particular one
+
+On HiveOS that goes in the extra config box and needs no change to the `h-`
+scripts: the miner stays the one process HiveOS supervises, and it
+supervises the dashboard itself. Started this way or by hand it is the same
+program, with the same options and the same read-only guarantees.
 
 ## Turning the miner's API on first
 

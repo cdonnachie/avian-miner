@@ -86,6 +86,7 @@ avian_miner_SOURCES = \
   cpu-miner.c \
   util.c \
   api.c \
+  webui-spawn.c \
   sysinfos.c \
   algo-gate-api.c\
   malloc-huge.c \

@@ -154,8 +154,19 @@ else does.
 that reads it and serves a page the rest of the LAN can open: hash rate and
 its trend, a row per card, and the recent blocks with the card that found
 each one. It carries its page inside itself, so it is one file with nothing
-to install, and it is a separate process by design — a miner should not also
-be an HTTP server. See [doc/webui.md](doc/webui.md).
+to install.
+
+```sh
+avian-miner --webui ...        # the miner runs it and restarts it if it stops
+./avian-webui                  # or run it yourself, against any miner
+```
+
+`--webui` serves on `0.0.0.0:4049` and turns the miner's API on for it. The
+dashboard stays a separate process either way, so a parsing bug in the half
+facing the network costs a dashboard rather than hours of hashing, and one
+dashboard can watch several miners. There is no password on it; bind it
+where you would be comfortable publishing the numbers. See
+[doc/webui.md](doc/webui.md).
 
 ## Verifying a release
 
