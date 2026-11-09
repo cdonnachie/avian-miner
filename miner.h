@@ -686,6 +686,28 @@ extern bool opt_hash_meter;
 extern uint32_t accepted_share_count;
 extern uint32_t rejected_share_count;
 extern uint32_t solved_block_count;
+
+/* One block this run solved. Kept so the API can name the card that found
+ * it, which the counters alone cannot: a rig's question after a solve is
+ * which slot earned it. */
+struct solved_block
+{
+   time_t   when;
+   uint32_t number;      /* its place in solved_block_count, 1 based */
+   uint32_t height;
+   int      thr_id;      /* the thread, so the card, or -1 if it was lost */
+   double   share_diff;
+   double   net_diff;
+};
+
+/* Blocks solved per mining thread, opt_n_threads long. On a GPU run a
+ * thread is a card, so this is the per-card tally. */
+extern uint32_t *thr_solved_blocks;
+
+/* The most recent solves, newest first, up to max of them. Returns how many
+ * were written. Only the last few are kept; solved_block_count remains the
+ * total. Takes stats_lock, so do not call it holding that. */
+int solved_blocks_recent( struct solved_block *out, int max );
 extern pthread_mutex_t applog_lock;
 extern pthread_mutex_t stats_lock;
 extern bool opt_sapling;

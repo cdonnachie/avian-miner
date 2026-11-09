@@ -194,6 +194,7 @@ uint32_t rejected_share_count = 0;
 uint32_t stale_share_count = 0;
 uint32_t solved_block_count = 0;
 uint32_t stratum_errors = 0;
+uint32_t *thr_solved_blocks;
 double *thr_hashrates;
 double global_hashrate = 0.;
 double total_hashes = 0.;
@@ -1011,7 +1012,10 @@ static void card_tag( char *out, size_t n, int thr_id )
 {
    out[0] = '\0';
 #if defined(HAVE_CUDA)
-   if ( opt_gpu )
+   /* Nothing at all for a share with no thread behind it, rather than
+    * "GPU #-1": the share stats queue can overflow, and naming no card is
+    * the honest answer when the one that found it was not recorded. */
+   if ( opt_gpu && thr_id >= 0 )
       snprintf( out, n, "GPU #%d ", avian_gpu_device_index( thr_id ) );
 #else
    (void) thr_id;
@@ -1036,6 +1040,57 @@ struct share_stats_t
 static struct share_stats_t share_stats[ s_stats_size ] = {{0}};
 static int s_get_ptr = 0, s_put_ptr = 0;
 static struct timeval last_submit_time = {0};
+
+/* The last few solves, oldest overwritten first. A rig wants the list, not
+ * just the count, and a solve is rare enough that a handful of them covers
+ * any session an operator is actually watching. solved_block_count stays
+ * the total, so a full ring never hides one. */
+#define solved_log_size 16
+static struct solved_block solved_log[ solved_log_size ] = {{0}};
+static int solved_log_put = 0;
+
+/* Called with stats_lock held. */
+static void record_solved_block( const struct share_stats_t *s )
+{
+   struct solved_block *b = &solved_log[ solved_log_put ];
+
+   b->when       = time( NULL );
+   b->number     = solved_block_count;
+   b->height     = s->height;
+   b->thr_id     = s->thr_id;
+   b->share_diff = s->share_diff;
+   b->net_diff   = s->net_diff;
+   solved_log_put = ( solved_log_put + 1 ) % solved_log_size;
+
+   /* A share whose stats were lost to an overflowed queue has no thread to
+    * credit. Counting it against thread 0 would be a quiet lie about which
+    * card is earning, so leave the per-card tally alone and let the totals
+    * disagree with their sum by exactly the solves nobody can place. */
+   if ( thr_solved_blocks && s->thr_id >= 0 && s->thr_id < opt_n_threads )
+      thr_solved_blocks[ s->thr_id ]++;
+}
+
+int solved_blocks_recent( struct solved_block *out, int max )
+{
+   int n = 0;
+
+   pthread_mutex_lock( &stats_lock );
+
+   /* Walk back from the newest, so a caller taking fewer than it holds gets
+    * the recent ones rather than whatever the ring starts with. */
+   for ( int i = 1; i <= solved_log_size && n < max; i++ )
+   {
+      const struct solved_block *b =
+              &solved_log[ ( solved_log_put - i + solved_log_size )
+                           % solved_log_size ];
+
+      if ( !b->number ) continue;   // never written
+      out[ n++ ] = *b;
+   }
+
+   pthread_mutex_unlock( &stats_lock );
+   return n;
+}
 
 static inline int stats_ptr_incr( int p )
 {
@@ -1248,7 +1303,10 @@ static int share_result( int result, struct work *work,
    double share_time = 0.; 
    double hashrate = 0.;
    int latency = 0;
-   struct share_stats_t my_stats = {0};
+   /* thr_id rather than the zero the rest gets: a share whose stats were
+    * lost to an overflowed queue has no thread behind it, and 0 is a real
+    * card that would then be credited with another card's block. */
+   struct share_stats_t my_stats = { .thr_id = -1 };
    struct timeval ack_time, latency_tv, et;
    char ares[48];
    char sres[48];
@@ -1351,7 +1409,11 @@ static int share_result( int result, struct work *work,
    {
       accept_sum++;
       norm_diff_sum += my_stats.target_diff;
-      if ( solved ) solved_sum++;
+      if ( solved )
+      {
+         solved_sum++;
+         record_solved_block( &my_stats );
+      }
    }
    else
    {
@@ -4318,6 +4380,9 @@ int main(int argc, char *argv[])
 		return 1;
 	thr_hashrates = (double *) calloc(opt_n_threads, sizeof(double));
 	if (!thr_hashrates)
+		return 1;
+	thr_solved_blocks = (uint32_t *) calloc(opt_n_threads, sizeof(uint32_t));
+	if (!thr_solved_blocks)
 		return 1;
 
 	/* init workio thread info */

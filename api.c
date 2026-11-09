@@ -119,6 +119,22 @@ extern uint32_t cpu_clock(int);
 
 /***************************************************************/
 
+/* A value for a KEY=value field, with the record's own delimiters taken out.
+ * Card names come from a driver, so they are not this file's to trust: one
+ * stray | in one would split a record and silently shift every field after
+ * it into the wrong column of whatever is reading. */
+static void clean_field( char *out, size_t n, const char *in )
+{
+   size_t i = 0;
+
+   if ( !n ) return;
+   if ( in )
+      for ( ; in[i] && i < n - 1; i++ )
+         out[i] = ( in[i] == ';' || in[i] == '|' || in[i] == '\n' ) ? ' '
+                                                                   : in[i];
+   out[i] = '\0';
+}
+
 static void cpustatus(int thr_id)
 {
    if ( thr_id >= 0 && thr_id < opt_n_threads )
@@ -148,8 +164,27 @@ static void cpustatus(int thr_id)
             snprintf( slot, sizeof(slot), ";BUS=%d", bus );
             strncat( buf, slot, sizeof(buf) - strlen(buf) - 1 );
          }
+
+         /* Numbered as every GPU log line numbers them, so --devices 1
+          * reports GPU=1 here too rather than renumbering to zero. */
+         char card[256], name[128], vendor[32];
+
+         clean_field( name, sizeof(name), avian_gpu_device_name( thr_id ) );
+         clean_field( vendor, sizeof(vendor), avian_gpu_vendor( thr_id ) );
+         snprintf( card, sizeof(card), ";GPU=%d;CARD=%s;VENDOR=%s",
+                   avian_gpu_device_index( thr_id ), name, vendor );
+         strncat( buf, card, sizeof(buf) - strlen(buf) - 1 );
       }
 #endif
+      /* Blocks this thread found. On a GPU run that is per card, which is
+       * the one thing a rig cannot work out from the totals. */
+      if ( thr_solved_blocks )
+      {
+         char sol[32];
+
+         snprintf( sol, sizeof(sol), ";SOL=%u", thr_solved_blocks[ thr_id ] );
+         strncat( buf, sol, sizeof(buf) - strlen(buf) - 1 );
+      }
       strncat( buf, "|", sizeof(buf) - strlen(buf) - 1 );
       // append to buffer
       strcat( buffer, buf );
@@ -228,6 +263,66 @@ static char *getthreads(char *params)
 }
 
 /**
+ * Returns the blocks this run solved, newest first, a record each.
+ *
+ * Names the card as well as numbering it, because "which card found it" is
+ * the question a multi-card rig asks after a solve and the only one the
+ * counters cannot answer. A solve whose thread was lost to an overflowed
+ * stats queue carries no card fields at all, the same way an unknown bus is
+ * absent rather than -1; SOL in the threads record is the running tally.
+ */
+static char *getblocks(char *params)
+{
+	struct solved_block blocks[16];
+	int n = solved_blocks_recent(blocks, (int) ARRAY_SIZE(blocks));
+
+	*buffer = '\0';
+	for (int i = 0; i < n; i++) {
+		const struct solved_block *b = &blocks[i];
+		char rec[512];
+		size_t used = strlen(buffer);
+		int len;
+
+		snprintf(rec, sizeof(rec),
+			"NUM=%u;TS=%u;HEIGHT=%u;DIFF=%.6f;NETDIFF=%.6f",
+			b->number, (uint32_t) b->when, b->height,
+			b->share_diff, b->net_diff);
+
+		if (b->thr_id >= 0) {
+			char who[320];
+
+			snprintf(who, sizeof(who), ";CPU=%d", b->thr_id);
+			strncat(rec, who, sizeof(rec) - strlen(rec) - 1);
+#if defined(HAVE_CUDA)
+			if (opt_gpu) {
+				char name[128], vendor[32];
+				int bus = avian_gpu_device_pci_bus(b->thr_id);
+
+				clean_field(name, sizeof(name),
+				            avian_gpu_device_name(b->thr_id));
+				clean_field(vendor, sizeof(vendor),
+				            avian_gpu_vendor(b->thr_id));
+				snprintf(who, sizeof(who), ";GPU=%d;CARD=%s;VENDOR=%s",
+				         avian_gpu_device_index(b->thr_id), name, vendor);
+				strncat(rec, who, sizeof(rec) - strlen(rec) - 1);
+				if (bus >= 0) {
+					snprintf(who, sizeof(who), ";BUS=%d", bus);
+					strncat(rec, who, sizeof(rec) - strlen(rec) - 1);
+				}
+			}
+#endif
+		}
+		strncat(rec, "|", sizeof(rec) - strlen(rec) - 1);
+
+		len = (int) strlen(rec);
+		if (used + len + 1 > MYBUFSIZ)
+			break;
+		memcpy(buffer + used, rec, len + 1);
+	}
+	return buffer;
+}
+
+/**
  * Is remote control allowed ?
  */
 static bool check_remote_access(void)
@@ -272,6 +367,7 @@ struct CMDS {
 } cmds[] = {
 	{ "summary", getsummary },
 	{ "threads", getthreads },
+	{ "blocks",  getblocks },
 	/* remote functions */
 	{ "seturl", remote_seturl },
 	{ "quit",    remote_quit },
