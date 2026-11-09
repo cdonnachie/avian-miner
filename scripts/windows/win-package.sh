@@ -17,6 +17,14 @@ REL=${REL:-$BUILD_ROOT/release}
 rm -rf "$REL"; mkdir -p "$REL"
 cp "$B/avian-miner.exe" "$REL/" || exit 1
 
+# The read-only web dashboard, a separate program that polls the miner's own
+# API. Built by the same make with the same compiler, so its imports go
+# through the same walk below rather than being assumed to match the miner's.
+if [ -f "$B/avian-webui.exe" ]; then
+    cp "$B/avian-webui.exe" "$REL/"
+    echo "  + avian-webui.exe (read-only web dashboard)"
+fi
+
 # The OpenCL backend before the walk rather than after it, unlike the other
 # two: make builds this one with the same MinGW compiler as the miner, so it
 # has MinGW runtime imports of its own that have to be walked as well. The
@@ -41,7 +49,8 @@ fi
 # ours to ship; anything else is a Windows system DLL and must not be copied.
 declare -A seen
 queue=("$REL/avian-miner.exe")
-for f in avian_ocl.dll avian-ocl-selftest.exe avian-ocl-batchtest.exe; do
+for f in avian_ocl.dll avian-ocl-selftest.exe avian-ocl-batchtest.exe \
+         avian-webui.exe; do
     [ -f "$REL/$f" ] && queue+=("$REL/$f")
 done
 while [ ${#queue[@]} -gt 0 ]; do

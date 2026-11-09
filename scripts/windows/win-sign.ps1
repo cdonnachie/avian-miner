@@ -61,7 +61,7 @@ if ($cert) { Write-Host ("expires:     {0:yyyy-MM-dd}" -f $cert.NotAfter) }
 # has tried yet. The vendor backends come out of build-cuda-dll.ps1 and
 # build-hip-dll.ps1 and are ours as well.
 $ours = 'avian-miner.exe', 'avian_cuda.dll', 'avian_amd.dll', 'avian_ocl.dll',
-        'avian-ocl-selftest.exe', 'avian-ocl-batchtest.exe'
+        'avian-ocl-selftest.exe', 'avian-ocl-batchtest.exe', 'avian-webui.exe'
 
 # A package legitimately carries only some of these: a CUDA-only build has no
 # avian_amd.dll, and a build without --with-opencl has no avian_ocl.dll. So a

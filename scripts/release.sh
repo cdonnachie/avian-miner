@@ -121,6 +121,11 @@ elif [ "$STAGE" = windows ]; then
     rm -rf "$D"; mkdir -p "$D"
     cp "$REL"/* "$D/"
     cp "$REPO/README.md" "$REPO/LICENSE" "$REPO/COPYING" "$REPO/doc/licensing.md" "$D/"
+    # avian-webui.exe is already in $REL, copied with everything else above:
+    # win-package.sh collects it beside the miner and walks its imports, and
+    # win-sign.ps1 signs it, which is the whole reason the dashboard is a C
+    # program rather than the script it started as. Only its manual is extra.
+    cp "$REPO/doc/webui.md" "$D/"
     # Signed in the output directory, after the copy, so nothing rewrites a
     # binary once it carries a signature.
     powershell.exe -ExecutionPolicy Bypass -File \

@@ -155,6 +155,13 @@ cp avian-miner "$D/"
 for so in libavian_cuda.so libavian_amd.so libavian_ocl.so; do [ -f "$so" ] && cp "$so" "$D/"; done
 for t in avian-ocl-selftest avian-ocl-batchtest; do [ -f "$t" ] && cp "$t" "$D/"; done
 cp README.md LICENSE COPYING doc/licensing.md "$D/"
+# The read-only web dashboard, built by the same make as the miner and
+# carrying its page inside itself, so this is one file and not a directory.
+# A rig with the miner and not the dashboard is one where watching it begins
+# with finding this repository. This is also how it reaches HiveOS, whose
+# package is a repack of this tarball rather than a build of its own.
+[ -f avian-webui ] && cp avian-webui "$D/"
+cp doc/webui.md "$D/"
 tar -C "$OUT" -czf "$OUT/$PKG-linux-x86_64.tar.gz" "$PKG-linux-x86_64"
 rm -rf "$D"
 # The host runs docker as root, so without this the tarball is root-owned on a
