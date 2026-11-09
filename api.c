@@ -562,7 +562,10 @@ static void api()
 	int i;
 
 	SOCKETTYPE *apisock;
-	if (!opt_api_listen && opt_debug) {
+	/* Not "&& opt_debug", which is what this said: the guard then fired only
+	 * on a debug run, and every other run fell through to bind port 0. The
+	 * applog is already LOG_DEBUG, so the quiet case stays quiet. */
+	if (!opt_api_listen) {
 		applog(LOG_DEBUG, "API disabled");
 		return;
 	}

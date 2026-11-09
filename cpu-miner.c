@@ -3531,32 +3531,52 @@ void parse_arg(int key, char *arg )
 #endif
       break;
 	case 'b':  // api-bind
-      opt_api_enabled = true;
-      p = strstr(arg, ":");
-		if ( p )
+   {
+      /* Three forms: ip:port, an ip alone, or a bare port. Rebuilt rather
+       * than patched, because the shape this replaces had three faults that
+       * only appeared at its edges:
+       *
+       *   -b :4048 left opt_api_allow NULL, and api() hands that straight to
+       *   inet_addr;
+       *
+       *   -b 0 is documented here and in the help as disabling the API, but
+       *   only ever set the port to zero, which bind() grants as an
+       *   arbitrary ephemeral port -- so asking for it off opened it
+       *   somewhere unpredictable instead;
+       *
+       *   the bare-port form pointed opt_api_allow at a static string while
+       *   the ip form free()d it, so "api-bind" in a config file followed by
+       *   -b on the command line freed something that was never malloc'd.
+       *
+       * Hence: always a copy of our own, every form reaching the same two
+       * variables, and the address never left unset.
+       */
+      char *allow = NULL;
+      int   port  = default_api_listen;
+
+      p = strchr( arg, ':' );
+      if ( p )
       {
-			/* ip:port */
-			if ( p - arg > 0 )
+         if ( p != arg )               /* an empty host means the default */
          {
-				opt_api_allow = strdup(arg);
-				opt_api_allow[p - arg] = '\0';
-			}
-			opt_api_listen = atoi(p + 1);
-		}
-		else if ( arg && strstr( arg, "." ) )
-      {
-			/* ip only */
-			free(opt_api_allow);
-			opt_api_allow = strdup(arg);
-         opt_api_listen = default_api_listen;
+            allow = strdup( arg );
+            if ( allow ) allow[ p - arg ] = '\0';
+         }
+         port = atoi( p + 1 );
       }
-		else if ( arg )
-      {
-			/* port or 0 to disable */
-         opt_api_allow = (char*)default_api_allow;      
-         opt_api_listen = atoi(arg);
-		}
+      else if ( strchr( arg, '.' ) )
+         allow = strdup( arg );        /* an ip alone keeps the default port */
+      else
+         port = atoi( arg );           /* a bare port, or 0 to disable */
+
+      if ( !allow ) allow = strdup( default_api_allow );
+
+      free( opt_api_allow );
+      opt_api_allow  = allow;
+      opt_api_listen = port;
+      opt_api_enabled = ( port > 0 ) && ( allow != NULL );
       break;
+   }
 	case 1030: // api-remote
 		opt_api_remote = 1;
 		break;
