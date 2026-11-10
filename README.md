@@ -178,7 +178,9 @@ its trend, a row per card with its temperature, fan, power and clocks where
 the driver gives them, a row per CPU thread with its clock and the share of
 its CPU it is getting, and the recent blocks with the card that found each
 one. It carries its page inside itself, so it is one file with nothing to
-install.
+install. CPU temperature and power on Windows need the `avian-sensors`
+service from the same zip, or LibreHardwareMonitor; [doc/webui.md](doc/webui.md)
+says how.
 
 ```sh
 avian-miner --webui ...        # the miner runs it and restarts it if it stops

@@ -221,10 +221,10 @@ window onto a running miner, not a record of one.
 
 The readings have gaps, each for a reason given in the next section: no AMD
 card readings on Windows, no memory temperature from consumer Nvidia boards,
-and no CPU temperature or power on Windows unless LibreHardwareMonitor is
-running with its web server on. Where a reading is missing the page leaves
-the column out rather than showing a zero, and says underneath what it
-looked for.
+and no CPU temperature or power on Windows without the `avian-sensors`
+service or LibreHardwareMonitor beside the miner. Where a reading is missing
+the page leaves the column out rather than showing a zero, and says
+underneath what it looked for.
 
 ## Temperatures, power and clocks
 
@@ -252,18 +252,59 @@ API. Where they come from:
   desktop. Per-CPU clocks from cpufreq.
 * **CPU on Windows**: the effective clock of each logical CPU from the
   `Processor Information` performance counters, which is the kernel's own
-  APERF/MPERF ratio and includes boost. Temperature and power only from
-  **LibreHardwareMonitor**, read from the JSON its web server publishes on
-  port 8085 while it is running: in that program, Options > Remote Web
-  Server > Run. Windows gives user mode no way to read either; every tool
-  that shows them — HWMonitor, HWiNFO, LibreHardwareMonitor itself — ships
-  a kernel driver to read the MSRs and SMN registers. A miner carrying a
-  ring-0 driver is a different kind of program, and exactly the one
-  antivirus is right to flag, so this one does not. Switch the web server
-  on and the readings appear within half a minute; stop the program and
-  they go. Its WMI namespace, which older tools read, is not used because
-  LibreHardwareMonitor 0.9.5 dropped it. On some AMD platforms Windows
-  reports the same clock for every core on a CCD.
+  APERF/MPERF ratio and includes boost. Temperature and power need help,
+  because Windows gives user mode no way to read either: every tool that
+  shows them — HWMonitor, HWiNFO, LibreHardwareMonitor — ships a kernel
+  driver to read the MSRs and SMN registers, and a miner carrying a ring-0
+  driver is a different kind of program, exactly the one antivirus is
+  right to flag. So the miner reads them from one of two neighbours, tried
+  in this order, each picked up within half a minute of appearing:
+  the **`avian-sensors` service** from this zip, described next, or
+  **LibreHardwareMonitor** with Options > Remote Web Server > Run switched
+  on, read from the JSON its web server publishes on port 8085. (Its WMI
+  namespace, which older tools read, went in 0.9.5.) On some AMD platforms
+  Windows reports the same clock for every core on a CCD.
+
+### The avian-sensors service
+
+`avian-sensors.exe` is a small Windows service that reads the CPU's package
+temperature, the per-CCD temperatures on the AMD parts that have them, and
+package power, once a second, and hands the latest reading to whatever
+opens its named pipe. The miner opens it as an ordinary file, so the miner
+itself is never elevated; only the service is, and only to read. It is
+optional, and a miner without it mines exactly as before.
+
+It reads the registers through **PawnIO** (<https://pawnio.eu>), the signed
+driver LibreHardwareMonitor is built on, which runs small signed modules
+that each know one family of hardware. Nothing in this package is a driver.
+To set it up:
+
+1. Install PawnIO from its site, if LibreHardwareMonitor has not already
+   done so.
+2. Put the two module files beside `avian-sensors.exe`: `AMDFamily17.bin`
+   and `IntelMSR.bin`, the signed builds published at
+   <https://github.com/namazso/PawnIO.Modules/releases> (LGPL). The driver
+   refuses an altered one, so use them as published. A release zip that
+   was built with them already has them; see `windows/pawnio/README.md`.
+3. From an administrator prompt, in the miner's folder:
+   `avian-sensors --install`. It starts at once and at every boot.
+   `avian-sensors --uninstall` removes it.
+
+The miner's log then says `the CPU reports through the avian-sensors
+service (pawnio/amd)` and the dashboard's CPU tiles fill in. If something is
+missing the service says what in `avian-sensors.log` beside the exe, serves
+"unknown", and tries again every thirty seconds; `avian-sensors --console`
+runs it in a window instead, for a look, and `--fake` with either invents
+readings so the pipe can be tested without PawnIO.
+
+What it decodes comes from LibreHardwareMonitor's `Amd17Cpu.cs` and
+`IntelCpu.cs`, which follow the Linux `k10temp` and `coretemp` drivers:
+Zen (family 17h to 1Ah) with per-CCD temperatures on Zen 2 through Zen 5
+desktop and server parts, and Intel Core (family 6) package temperature
+and power. A CPU outside that is left unknown rather than guessed at; a
+confident wrong temperature is worse than none. It has been checked against
+LibreHardwareMonitor on a Ryzen 9 9900X; readings on anything else are
+worth comparing with it once, and a disagreement is a bug report.
 
 `BUSY` needs no driver and is the one that answers the question the rest
 cannot: whether a slow thread is hashing slowly or not being run. It is the

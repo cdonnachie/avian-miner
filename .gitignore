@@ -33,3 +33,7 @@ autom4te.cache/
 __pycache__/
 *.pyc
 avian-version.h
+
+# Signed PawnIO modules, fetched or extracted per windows/pawnio/README.md,
+# never committed: they are other people's signed binaries.
+windows/pawnio/*.bin

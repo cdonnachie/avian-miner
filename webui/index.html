@@ -957,8 +957,9 @@ function renderCards(st) {
     } else {
       text = "No CPU temperature or power: the miner found no source. On Linux " +
              "that is the k10temp, zenpower or coretemp driver; on Windows it is " +
-             "LibreHardwareMonitor running alongside, since Windows itself gives " +
-             "none without a kernel driver.";
+             "the avian-sensors service from the miner's zip, or LibreHardwareMonitor " +
+             "with its web server on, since Windows itself gives none without a " +
+             "kernel driver.";
     }
   }
   note.textContent = text;

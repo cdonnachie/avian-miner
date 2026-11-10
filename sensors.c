@@ -51,6 +51,7 @@
 #  include <pdhmsg.h>
 #  include <curl/curl.h>
 #  include <jansson.h>
+#  include "avian-sensors.h"
 #else
 #  include <dlfcn.h>
 #  include <dirent.h>
@@ -803,9 +804,10 @@ static size_t lhm_sink( char *p, size_t size, size_t n, void *unused )
 static void lhm_down( const char *why )
 {
    if ( lhm.state != LHM_DOWN )
-      note( SENSORS_LOG_INFO, "sensors: LibreHardwareMonitor is not answering "
-            "at " LHM_URL " (%s), so no CPU temperature or power. Start it, "
-            "turn on Options > Remote Web Server > Run, and they appear", why );
+      note( SENSORS_LOG_INFO, "sensors: no CPU temperature or power yet. "
+            "Install the avian-sensors service from this package, or run "
+            "LibreHardwareMonitor with Options > Remote Web Server > Run; "
+            "either is picked up within half a minute (" LHM_URL ": %s)", why );
    lhm.state = LHM_DOWN;
    lhm.retry_at = now_ms() + 30000;
 }
@@ -906,6 +908,86 @@ static void lhm_read( struct cpu_sensors *c )
    if ( any ) c->source = "LibreHardwareMonitor";
 }
 
+/* avian-sensors, the service in this package: it reads the registers
+ * through PawnIO as LocalSystem and serves one snapshot per connection on
+ * a named pipe, so the miner never needs to be elevated. Tried before
+ * LibreHardwareMonitor because it is ours and costs one file open. Absent,
+ * it is looked for again every thirty seconds, since installing it needs
+ * no miner restart. */
+static struct
+{
+   uint64_t retry_at;
+   enum { SVC_UNKNOWN, SVC_UP, SVC_EMPTY, SVC_DOWN } state;
+} svc;
+
+static bool service_read( struct cpu_sensors *c )
+{
+   struct avsens_snapshot s;
+   HANDLE h;
+   DWORD got = 0;
+   uint32_t i;
+   bool ok, any = false;
+
+   if ( svc.state == SVC_DOWN && now_ms() < svc.retry_at ) return false;
+
+   h = CreateFileA( AVSENS_PIPE, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL );
+   if ( h == INVALID_HANDLE_VALUE && GetLastError() == ERROR_PIPE_BUSY
+        && WaitNamedPipeA( AVSENS_PIPE, 500 ) )
+      h = CreateFileA( AVSENS_PIPE, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL );
+   if ( h == INVALID_HANDLE_VALUE )
+   {
+      if ( svc.state != SVC_DOWN )
+         note( SENSORS_LOG_DEBUG, "sensors: no avian-sensors service (0x%08lx)",
+               (unsigned long) GetLastError() );
+      svc.state = SVC_DOWN;
+      svc.retry_at = now_ms() + 30000;
+      return false;
+   }
+   ok = ReadFile( h, &s, sizeof s, &got, NULL );
+   CloseHandle( h );
+
+   if ( !ok || got != sizeof s || s.magic != AVSENS_MAGIC
+        || s.version != AVSENS_VERSION || s.size != sizeof s )
+   {
+      if ( svc.state != SVC_DOWN )
+         note( SENSORS_LOG_INFO, "sensors: avian-sensors answered with something "
+               "this miner does not understand (%lu bytes, version %lu); one of "
+               "the two is from another release", (unsigned long) got,
+               (unsigned long) ( got >= 8 ? s.version : 0 ) );
+      svc.state = SVC_DOWN;
+      svc.retry_at = now_ms() + 30000;
+      return false;
+   }
+
+   /* The service is up. Whether it has anything is another matter: no
+    * PawnIO, no module, an unknown CPU, or a sampler that has stalled all
+    * arrive here as an empty or stale snapshot, and fall through to the
+    * next source. Its own log says which. */
+   if ( !s.source[0] || GetTickCount64() - s.sampled_ms > 5000 )
+   {
+      if ( svc.state != SVC_EMPTY )
+         note( SENSORS_LOG_INFO, "sensors: the avian-sensors service is running "
+               "but has no readings%s; its avian-sensors.log says why",
+               s.source[0] ? " this moment" : " yet" );
+      svc.state = SVC_EMPTY;
+      return false;
+   }
+   if ( svc.state != SVC_UP )
+      note( SENSORS_LOG_INFO, "sensors: the CPU reports through the avian-sensors "
+            "service (%s)", s.source );
+   svc.state = SVC_UP;
+
+   if ( s.temp > 0 )  { c->temp = s.temp;   any = true; }
+   if ( s.power > 0 ) { c->power = s.power; any = true; }
+   for ( i = 0; i < s.nzones && i < AVSENS_ZONES; i++ )
+   {
+      s.zone[i].label[ sizeof s.zone[i].label - 1 ] = '\0';
+      if ( s.zone[i].temp > 0 ) { zone_add( c, s.zone[i].label, s.zone[i].temp ); any = true; }
+   }
+   if ( any ) c->source = "avian-sensors";
+   return any;
+}
+
 #endif /* _WIN32 */
 
 /* ------------------------------------------------------------------ */
@@ -963,7 +1045,7 @@ void sensors_cpu( struct cpu_sensors *out )
    {
       cpu_clear( &cpu_cache.c );
 #if defined(_WIN32)
-      lhm_read( &cpu_cache.c );
+      if ( !service_read( &cpu_cache.c ) ) lhm_read( &cpu_cache.c );
 #else
       linux_cpu_read( &cpu_cache.c );
 #endif

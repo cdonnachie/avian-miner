@@ -80,6 +80,16 @@ if HAVE_WINDOWS
 avian_webui_LDADD   += -lws2_32
 endif
 
+# The CPU sensors service, Windows only: a service and PawnIO are both
+# Windows things, and on Linux the miner reads hwmon itself. It shares one
+# header with sensors.c and nothing else.
+if HAVE_WINDOWS
+bin_PROGRAMS += avian-sensors
+avian_sensors_SOURCES = avian-sensors.c
+avian_sensors_CPPFLAGS = -I$(top_srcdir)
+avian_sensors_LDADD = -ladvapi32
+endif
+
 
 avian_miner_SOURCES = \
   dummy.cpp \

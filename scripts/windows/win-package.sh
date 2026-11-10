@@ -25,6 +25,18 @@ if [ -f "$B/avian-webui.exe" ]; then
     echo "  + avian-webui.exe (read-only web dashboard)"
 fi
 
+# The CPU sensors service, and the signed PawnIO modules it loads when they
+# have been fetched into windows/pawnio (see doc/webui.md). The modules are
+# other people's signed work, copied as published; the driver refuses an
+# altered one, so there is nothing to do to them here.
+if [ -f "$B/avian-sensors.exe" ]; then
+    cp "$B/avian-sensors.exe" "$REL/"
+    echo "  + avian-sensors.exe (CPU temperature and power service)"
+    for m in "$(dirname "${BASH_SOURCE[0]}")"/../../windows/pawnio/*.bin; do
+        [ -f "$m" ] && cp "$m" "$REL/" && echo "  + $(basename "$m") (PawnIO module)"
+    done
+fi
+
 # The OpenCL backend before the walk rather than after it, unlike the other
 # two: make builds this one with the same MinGW compiler as the miner, so it
 # has MinGW runtime imports of its own that have to be walked as well. The
@@ -50,7 +62,7 @@ fi
 declare -A seen
 queue=("$REL/avian-miner.exe")
 for f in avian_ocl.dll avian-ocl-selftest.exe avian-ocl-batchtest.exe \
-         avian-webui.exe; do
+         avian-webui.exe avian-sensors.exe; do
     [ -f "$REL/$f" ] && queue+=("$REL/$f")
 done
 while [ ${#queue[@]} -gt 0 ]; do
