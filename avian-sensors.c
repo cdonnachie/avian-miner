@@ -807,18 +807,42 @@ static int install( void )
 
    scm = open_scm();
    if ( !scm ) return 1;
-   svc = CreateServiceA( scm, SERVICE_NAME, SERVICE_DISPLAY, SERVICE_ALL_ACCESS,
-                         SERVICE_WIN32_OWN_PROCESS, SERVICE_AUTO_START,
-                         SERVICE_ERROR_NORMAL, cmd, NULL, NULL, NULL, NULL, NULL );
+
+   /* An earlier registration, pointing at wherever the exe was last time,
+    * is replaced rather than refused: the installer upgrading, and anyone
+    * who moved the folder, both arrive here. Deletion is asynchronous, so
+    * creating again is tried for a few seconds. */
+   svc = OpenServiceA( scm, SERVICE_NAME, SERVICE_STOP | DELETE | SERVICE_QUERY_STATUS );
+   if ( svc )
+   {
+      SERVICE_STATUS st;
+      int i;
+
+      ControlService( svc, SERVICE_CONTROL_STOP, &st );
+      for ( i = 0; i < 50 && QueryServiceStatus( svc, &st )
+                   && st.dwCurrentState != SERVICE_STOPPED; i++ )
+         Sleep( 100 );
+      DeleteService( svc );
+      CloseServiceHandle( svc );
+      printf( "Replacing the %s already registered.\n", SERVICE_NAME );
+   }
+   {
+      int i;
+
+      for ( i = 0; ; i++ )
+      {
+         svc = CreateServiceA( scm, SERVICE_NAME, SERVICE_DISPLAY, SERVICE_ALL_ACCESS,
+                               SERVICE_WIN32_OWN_PROCESS, SERVICE_AUTO_START,
+                               SERVICE_ERROR_NORMAL, cmd, NULL, NULL, NULL, NULL, NULL );
+         if ( svc || i >= 50 ) break;
+         if ( GetLastError() != ERROR_SERVICE_MARKED_FOR_DELETE
+              && GetLastError() != ERROR_SERVICE_EXISTS ) break;
+         Sleep( 100 );
+      }
+   }
    if ( !svc )
    {
-      DWORD e = GetLastError();
-
-      if ( e == ERROR_SERVICE_EXISTS )
-         fprintf( stderr, "%s is already installed; --uninstall first to move "
-                  "or change it.\n", SERVICE_NAME );
-      else
-         fprintf( stderr, "Could not install: %s\n", win_err( e ) );
+      fprintf( stderr, "Could not install: %s\n", win_err( GetLastError() ) );
       CloseServiceHandle( scm );
       return 1;
    }

@@ -146,13 +146,21 @@ elif [ "$STAGE" = windows ]; then
     # binaries inside it, so what people download carries the signature,
     # not only what it unpacks. Skipped with a line rather than failing,
     # so a machine without Inno still produces the zip.
-    ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
-    if [ -x "$ISCC" ]; then
+    # Per-user is where winget puts it; per-machine is the installer's
+    # default. Either serves.
+    ISCC=
+    for c in "$(cygpath -u "${LOCALAPPDATA:-}")/Programs/Inno Setup 6/ISCC.exe"              "/c/Program Files (x86)/Inno Setup 6/ISCC.exe"; do
+        [ -x "$c" ] && { ISCC=$c; break; }
+    done
+    if [ -n "$ISCC" ]; then
         # VersionInfoVersion takes digits and dots only, so a pre-release
         # tag such as 1.3.0-rc1 is cut back to 1.3.0 for that field alone.
         NUMERIC=$(printf '%s' "$VERSION" | sed -E 's/[^0-9.].*$//')
         rm -f "$OUT/$NAME-windows-x64-setup.exe"
-        "$ISCC" /Q "/DAppVersion=$VERSION" "/DNumericVersion=$NUMERIC" \
+        # MSYS2 rewrites arguments that start with a slash into Windows
+        # paths, which turns /DAppVersion into D:\AppVersion; the variable
+        # turns that off for this one command.
+        MSYS2_ARG_CONV_EXCL='*' "$ISCC" /Q "/DAppVersion=$VERSION" "/DNumericVersion=$NUMERIC" \
             "/DSourceDir=$(cygpath -w "$D")" "/DOutputDir=$(cygpath -w "$OUT")" \
             "$(cygpath -w "$REPO/scripts/windows/avian-miner.iss")"
         powershell.exe -ExecutionPolicy Bypass -File \
@@ -160,7 +168,7 @@ elif [ "$STAGE" = windows ]; then
             -Files "$(cygpath -w "$OUT/$NAME-windows-x64-setup.exe")"
         echo "  $OUT/$NAME-windows-x64-setup.exe"
     else
-        echo "  (no Inno Setup at $ISCC, so no setup.exe; winget install JRSoftware.InnoSetup)"
+        echo "  (no Inno Setup, so no setup.exe; winget install JRSoftware.InnoSetup)"
     fi
     rm -rf "$D"
 

@@ -4,6 +4,8 @@
 ;   ISCC /DAppVersion=1.2.2 /DNumericVersion=1.2.2 ^
 ;        /DSourceDir=<release dir> /DOutputDir=<out dir> avian-miner.iss
 ;
+; Silent: setup.exe /VERYSILENT /WALLET=avn1... [/WORKER=name] [/TASKS=sensors]
+;
 ; What it adds over the zip: it asks for the Avian address once and writes
 ; it where the mine-*.bat files look, installs the CPU sensors service with
 ; the elevation it already has and removes it again on uninstall, puts the
@@ -99,7 +101,12 @@ begin
     '\avian-miner\settings.cmd and can be changed there later.');
   WalletPage.Add('Avian address (avn1...):', False);
   WalletPage.Add('Worker name:', False);
-  WalletPage.Values[1] := GetComputerNameString;
+  { /WALLET=... and /WORKER=... on the command line fill the page in, which
+    is what a silent install (/VERYSILENT) has instead of a wizard. }
+  WalletPage.Values[0] := ExpandConstant('{param:WALLET|}');
+  WalletPage.Values[1] := ExpandConstant('{param:WORKER|}');
+  if WalletPage.Values[1] = '' then
+    WalletPage.Values[1] := GetComputerNameString;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
