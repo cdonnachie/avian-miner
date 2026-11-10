@@ -302,9 +302,12 @@ What it decodes comes from LibreHardwareMonitor's `Amd17Cpu.cs` and
 Zen (family 17h to 1Ah) with per-CCD temperatures on Zen 2 through Zen 5
 desktop and server parts, and Intel Core (family 6) package temperature
 and power. A CPU outside that is left unknown rather than guessed at; a
-confident wrong temperature is worse than none. It was written against a
-Ryzen 9 9900X; on any CPU the readings are worth comparing with
-LibreHardwareMonitor's once, and a disagreement is a bug report.
+confident wrong temperature is worse than none. On the Ryzen 9 9900X it
+was written against, its readings were taken beside LibreHardwareMonitor's
+at the same moments: Tctl agreed to a tenth of a degree, CCD1 within one
+step, and CCD2 and package power within the second between the two
+samples. On any other CPU that comparison is worth making once, and a
+disagreement is a bug report.
 
 `BUSY` needs no driver and is the one that answers the question the rest
 cannot: whether a slow thread is hashing slowly or not being run. It is the
