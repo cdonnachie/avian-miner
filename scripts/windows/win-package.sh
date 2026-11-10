@@ -32,7 +32,13 @@ fi
 if [ -f "$B/avian-sensors.exe" ]; then
     cp "$B/avian-sensors.exe" "$REL/"
     echo "  + avian-sensors.exe (CPU temperature and power service)"
-    for m in "$(dirname "${BASH_SOURCE[0]}")"/../../windows/pawnio/*.bin; do
+    HERE=$(dirname "${BASH_SOURCE[0]}")
+    # Fetched if absent, pinned by release and checksum in that script. A
+    # package without them installs a service that reads nothing, and says
+    # so to every user, which is the wrong place for that message.
+    [ -f "$HERE/../../windows/pawnio/AMDFamily17.bin" ] && [ -f "$HERE/../../windows/pawnio/IntelMSR.bin" ] ||
+        "$HERE/fetch-pawnio-modules.sh" || echo "  !! PawnIO modules not fetched; the sensors service will have nothing to load"
+    for m in "$HERE"/../../windows/pawnio/*.bin; do
         [ -f "$m" ] && cp "$m" "$REL/" && echo "  + $(basename "$m") (PawnIO module)"
     done
 fi

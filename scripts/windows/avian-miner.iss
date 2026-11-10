@@ -155,9 +155,12 @@ begin
                mbInformation, MB_OK);
       if not FileExists(ExpandConstant('{app}\AMDFamily17.bin')) or
          not FileExists(ExpandConstant('{app}\IntelMSR.bin')) then
-        MsgBox('This package carries no PawnIO modules. The service needs ' +
-               'AMDFamily17.bin and IntelMSR.bin beside it, the signed builds ' +
-               'from https://github.com/namazso/PawnIO.Modules/releases.',
+        MsgBox('Installed, but this package came without the two PawnIO ' +
+               'modules the sensors service loads, so it has nothing to read ' +
+               'yet. Copy AMDFamily17.bin and IntelMSR.bin, from the zip at ' +
+               'https://github.com/namazso/PawnIO.Modules/releases, into ' +
+               ExpandConstant('{app}') + '. The service looks for them every ' +
+               'thirty seconds and needs no restart; everything else works now.',
                mbInformation, MB_OK);
     end;
   end;

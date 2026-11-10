@@ -281,11 +281,14 @@ To set it up:
 
 1. Install PawnIO from its site, if LibreHardwareMonitor has not already
    done so.
-2. Put the two module files beside `avian-sensors.exe`: `AMDFamily17.bin`
+2. Have the two module files beside `avian-sensors.exe`: `AMDFamily17.bin`
    and `IntelMSR.bin`, the signed builds published at
-   <https://github.com/namazso/PawnIO.Modules/releases> (LGPL). The driver
-   refuses an altered one, so use them as published. A release zip that
-   was built with them already has them; see `windows/pawnio/README.md`.
+   <https://github.com/namazso/PawnIO.Modules/releases> (LGPL). A release
+   built normally already carries them, fetched and checksummed by
+   `scripts/windows/fetch-pawnio-modules.sh`; if the installer says they
+   are missing, copy them in from that release's zip and the service picks
+   them up within thirty seconds. The driver refuses an altered one, so use
+   them as published.
 3. Tick "Install the CPU temperature and power service" in the installer,
    or from an administrator prompt in the miner's folder run
    `avian-sensors --install`. Either way it starts at once and at every
