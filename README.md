@@ -109,11 +109,15 @@ avian-miner -a x16rt --gpu --sv2=POOL:PORT --sv2-user=ADDRESS.worker \
             --sv2-authority=POOL_AUTHORITY_KEY
 ```
 
-The Windows zip carries `mine-minotaurx.bat` and `mine-x16rt.bat`, which run
-the first two of these against the Avian pool at `sv2-yyz.avn.network` once
-your address is typed into them, and keep the window open afterwards so an
-error can be read. Double-click one, or edit it to taste: every option the
-miner takes can go on its command line.
+**On Windows there is an installer**, `avian-miner-<version>-windows-x64-setup.exe`,
+signed like everything in it. It asks for your Avian address once, puts
+three entries in the Start menu — MinotaurX on the CPU, X16RT on the GPU,
+and both at once with the CPU split made — plus the dashboard, can start
+one of them at login, and installs the CPU sensors service if you tick it.
+The zip has the same files for anyone who prefers a folder: double-click
+`mine-minotaurx.bat`, `mine-x16rt.bat` or `mine-both.bat`, and the first run
+asks for the address and keeps it in `%APPDATA%\avian-miner\settings.cmd`.
+Every option the miner takes can go on the command lines inside them.
 
 **Both at once on one machine.** The CPU miner takes every CPU unless told
 otherwise, and a GPU miner's one thread then waits its turn behind twenty

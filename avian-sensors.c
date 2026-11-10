@@ -830,7 +830,7 @@ static int install( void )
    else
       printf( "Installed and started %s, running %s at every boot.\n"
               "The miner finds it within half a minute; its log is "
-              "avian-sensors.log beside the exe.\n", SERVICE_NAME, cmd );
+              "%%ProgramData%%\\avian-miner\\avian-sensors.log.\n", SERVICE_NAME, cmd );
    CloseServiceHandle( svc );
    CloseServiceHandle( scm );
    return 0;
@@ -908,9 +908,23 @@ int main( int argc, char **argv )
       static SERVICE_TABLE_ENTRYA table[] = {
          { (LPSTR) SERVICE_NAME, service_main }, { NULL, NULL } };
       char path[ MAX_PATH + 32 ];
+      const char *pd = getenv( "ProgramData" );
 
-      snprintf( path, sizeof path, "%savian-sensors.log", exe_dir );
-      log_file = fopen( path, "a" );
+      /* ProgramData, because Program Files is read-only to the person who
+       * wants to read the log; beside the exe when that fails, which is a
+       * folder someone unzipped. */
+      if ( pd )
+      {
+         snprintf( path, sizeof path, "%.200s\\avian-miner", pd );
+         CreateDirectoryA( path, NULL );
+         snprintf( path, sizeof path, "%.200s\\avian-miner\\avian-sensors.log", pd );
+         log_file = fopen( path, "a" );
+      }
+      if ( !log_file )
+      {
+         snprintf( path, sizeof path, "%savian-sensors.log", exe_dir );
+         log_file = fopen( path, "a" );
+      }
       if ( !StartServiceCtrlDispatcherA( table ) )
       {
          if ( GetLastError() == ERROR_FAILED_SERVICE_CONTROLLER_CONNECT )

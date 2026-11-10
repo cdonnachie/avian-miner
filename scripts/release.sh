@@ -139,8 +139,30 @@ elif [ "$STAGE" = windows ]; then
     # already needs PowerShell for the signing above.
     rm -f "$OUT/$NAME-windows-x64.zip"
     powershell.exe -NoProfile -Command "Compress-Archive -Path '$(cygpath -w "$D")' -DestinationPath '$(cygpath -w "$OUT/$NAME-windows-x64.zip")'"
-    rm -rf "$D"
     echo "  $OUT/$NAME-windows-x64.zip"
+
+    # The installer, from the same directory, when Inno Setup is installed
+    # (winget install JRSoftware.InnoSetup). Signed afterwards like the
+    # binaries inside it, so what people download carries the signature,
+    # not only what it unpacks. Skipped with a line rather than failing,
+    # so a machine without Inno still produces the zip.
+    ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+    if [ -x "$ISCC" ]; then
+        # VersionInfoVersion takes digits and dots only, so a pre-release
+        # tag such as 1.3.0-rc1 is cut back to 1.3.0 for that field alone.
+        NUMERIC=$(printf '%s' "$VERSION" | sed -E 's/[^0-9.].*$//')
+        rm -f "$OUT/$NAME-windows-x64-setup.exe"
+        "$ISCC" /Q "/DAppVersion=$VERSION" "/DNumericVersion=$NUMERIC" \
+            "/DSourceDir=$(cygpath -w "$D")" "/DOutputDir=$(cygpath -w "$OUT")" \
+            "$(cygpath -w "$REPO/scripts/windows/avian-miner.iss")"
+        powershell.exe -ExecutionPolicy Bypass -File \
+            "$(cygpath -w "$REPO/scripts/windows/win-sign.ps1")" \
+            -Files "$(cygpath -w "$OUT/$NAME-windows-x64-setup.exe")"
+        echo "  $OUT/$NAME-windows-x64-setup.exe"
+    else
+        echo "  (no Inno Setup at $ISCC, so no setup.exe; winget install JRSoftware.InnoSetup)"
+    fi
+    rm -rf "$D"
 
 else
     cd "$OUT"
@@ -155,7 +177,11 @@ else
     # there, so a release without it still finishes.
     HIVE=
     [ -f "$NAME.tar.gz" ] && HIVE=$NAME.tar.gz
-    sha256sum $HIVE "$NAME"-*.tar.gz "$NAME"-*.zip > SHA256SUMS
+    # The installer is optional in the same way: built only where Inno
+    # Setup is, and named here only when it is there.
+    SETUP=
+    [ -f "$NAME-windows-x64-setup.exe" ] && SETUP=$NAME-windows-x64-setup.exe
+    sha256sum $HIVE "$NAME"-*.tar.gz "$NAME"-*.zip $SETUP > SHA256SUMS
     # Detached and armoured. Authenticode covers the Windows binaries and
     # nothing covers the tarball, so this is what makes the Linux half
     # verifiable at all.
@@ -210,5 +236,5 @@ else
     # every glob here is "$NAME-*" and the HiveOS package has nothing
     # after the version. Leaving it out would publish a SHA256SUMS that
     # lists a file the release does not contain.
-    echo "    $(ls -1 $HIVE "$NAME"-*.tar.gz "$NAME"-*.zip SHA256SUMS SHA256SUMS.asc | tr '\n' ' ')"
+    echo "    $(ls -1 $HIVE "$NAME"-*.tar.gz "$NAME"-*.zip $SETUP SHA256SUMS SHA256SUMS.asc | tr '\n' ' ')"
 fi

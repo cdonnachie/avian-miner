@@ -967,7 +967,7 @@ static bool service_read( struct cpu_sensors *c )
    {
       if ( svc.state != SVC_EMPTY )
          note( SENSORS_LOG_INFO, "sensors: the avian-sensors service is running "
-               "but has no readings%s; its avian-sensors.log says why",
+               "but has no readings%s; its log in ProgramData\\avian-miner says why",
                s.source[0] ? " this moment" : " yet" );
       svc.state = SVC_EMPTY;
       return false;

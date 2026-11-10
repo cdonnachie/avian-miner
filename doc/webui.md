@@ -286,16 +286,17 @@ To set it up:
    <https://github.com/namazso/PawnIO.Modules/releases> (LGPL). The driver
    refuses an altered one, so use them as published. A release zip that
    was built with them already has them; see `windows/pawnio/README.md`.
-3. From an administrator prompt, in the miner's folder:
-   `avian-sensors --install`. It starts at once and at every boot.
-   `avian-sensors --uninstall` removes it.
+3. Tick "Install the CPU temperature and power service" in the installer,
+   or from an administrator prompt in the miner's folder run
+   `avian-sensors --install`. Either way it starts at once and at every
+   boot; the uninstaller removes it, as does `avian-sensors --uninstall`.
 
 The miner's log then says `the CPU reports through the avian-sensors
 service (pawnio/amd)` and the dashboard's CPU tiles fill in. If something is
-missing the service says what in `avian-sensors.log` beside the exe, serves
-"unknown", and tries again every thirty seconds; `avian-sensors --console`
-runs it in a window instead, for a look, and `--fake` with either invents
-readings so the pipe can be tested without PawnIO.
+missing the service says what in `%ProgramData%\avian-miner\avian-sensors.log`,
+serves "unknown", and tries again every thirty seconds; `avian-sensors
+--console` runs it in a window instead, for a look, and `--fake` with either
+invents readings so the pipe can be tested without PawnIO.
 
 What it decodes comes from LibreHardwareMonitor's `Amd17Cpu.cs` and
 `IntelCpu.cs`, which follow the Linux `k10temp` and `coretemp` drivers:

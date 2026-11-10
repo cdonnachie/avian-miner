@@ -23,16 +23,22 @@ param(
     [string] $TimestampUrl = 'http://time.certum.pl',
     # The package directory. Derived like the other stages, so the
     # PowerShell and MSYS2 halves agree on where each other's output went.
-    [string] $Dir
+    [string] $Dir,
+    # Instead of the package: exactly these files, by path. release.sh
+    # uses it for the installer, which lives outside the package directory
+    # and is built after the package has already been signed.
+    [string[]] $Files
 )
 
 $ErrorActionPreference = 'Stop'
 
-if (-not $Dir) {
-    $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $Dir = Join-Path (Split-Path -Parent $root) 'avian-winbuild\package'
+if (-not $Files) {
+    if (-not $Dir) {
+        $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $Dir = Join-Path (Split-Path -Parent $root) 'avian-winbuild\package'
+    }
+    if (-not (Test-Path $Dir)) { throw "no package directory at $Dir; run win-package.sh first" }
 }
-if (-not (Test-Path $Dir)) { throw "no package directory at $Dir; run win-package.sh first" }
 
 # The newest SDK, not whichever one is first on PATH. signtool is not on PATH
 # at all on a normal install, which is why this looks rather than assuming.
@@ -71,11 +77,18 @@ $ours = 'avian-miner.exe', 'avian_cuda.dll', 'avian_amd.dll', 'avian_ocl.dll',
 # verified: 3 file(s)", which looks like success. Named on screen instead.
 $targets = @()
 $missing = @()
-foreach ($n in $ours) {
-    $p = Join-Path $Dir $n
-    if (Test-Path $p) { $targets += $p } else { $missing += $n }
+if ($Files) {
+    foreach ($f in $Files) {
+        if (Test-Path $f) { $targets += (Resolve-Path $f).Path } else { throw "no file at $f" }
+    }
+    $Dir = Split-Path -Parent $targets[0]
+} else {
+    foreach ($n in $ours) {
+        $p = Join-Path $Dir $n
+        if (Test-Path $p) { $targets += $p } else { $missing += $n }
+    }
+    if (-not $targets) { throw "none of $($ours -join ', ') found in $Dir" }
 }
-if (-not $targets) { throw "none of $($ours -join ', ') found in $Dir" }
 
 Write-Host "`n=== signing ==="
 foreach ($t in $targets) { Write-Host "  $(Split-Path -Leaf $t)" }
