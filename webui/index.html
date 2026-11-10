@@ -75,6 +75,7 @@
   }
   .sub { color: var(--ink-2); font-size: 13px; }
   .sub b { font-weight: 500; color: var(--ink); }
+  .host { margin: -6px 0 12px; }
   .spacer { flex: 1 1 auto; }
 
   /* Status wears an icon and a word as well as a colour: on the light
@@ -282,6 +283,7 @@
 
   <div class="card">
     <h2 id="cards-title">Cards</h2>
+    <div class="sub host" id="host" hidden></div>
     <div class="scroll">
       <table>
         <thead id="cards-head"></thead>
@@ -846,6 +848,7 @@ function renderCards(st) {
   var gpu = !!st.gpu;
   var cpu = st.cpu || {};
   document.getElementById("cards-title").textContent = gpu ? "Cards" : "Threads";
+  renderHost(st, gpu);
 
   /* A column appears when any row has something for it, so an older miner,
      or a card whose driver gives no readings, gets the table it always had. */
@@ -964,6 +967,36 @@ function renderCards(st) {
   }
   note.textContent = text;
   note.hidden = !text;
+}
+
+/* The machine, under the heading: what the CPU calls itself, its cores and
+   CPUs, which of them this miner is kept to, and the instruction sets it
+   has. The set matters most to anyone running the CPU and GPU miners side
+   by side, since it is the answer to "which one is on which cores". An
+   older miner sends none of this and the line stays hidden. */
+function renderHost(st, gpu) {
+  var host = document.getElementById("host");
+  var h = st.host || {}, m = st.miner || {}, parts = [];
+
+  clear(host);
+  host.hidden = !h.cpu;
+  if (!h.cpu) return;
+
+  host.appendChild(el("b", null, h.cpu.replace(/\s+/g, " ")));
+  if (has(h.cores) && has(h.cpus))
+    parts.push(h.cores === h.cpus ? h.cores + " cores"
+                                  : h.cores + " cores, " + h.cpus + " CPUs");
+  else if (has(h.cpus))
+    parts.push(h.cpus + " CPUs");
+  if (gpu) {
+    if (h.set) parts.push("on CPUs " + h.set);
+  } else if (m.cpus) {
+    parts.push(m.cpus + (m.cpus === 1 ? " thread" : " threads") +
+               (h.set ? " on CPUs " + h.set : ""));
+  }
+  if (h.features) parts.push(h.features.split(" ").join(", "));
+  if (parts.length)
+    host.appendChild(document.createTextNode(" · " + parts.join(" · ")));
 }
 
 function renderBlocks(st) {

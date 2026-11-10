@@ -265,6 +265,44 @@ static void read_layout( int num_cpus )
 
 #endif
 
+/* core_of filled in, once, with each core named after its lowest CPU
+ * whatever the platform called it, so "the first CPU of a core" means
+ * core_of[i] == i from here on. The layout does not change while the miner
+ * runs, and the API asks about it every few seconds, so it is read once.
+ * Returns true when every CPU's core is known. */
+static bool layout( int num_cpus )
+{
+   static int raw[ CPUS_MAX ];
+   static bool done, complete;
+   int i, j;
+
+   if ( done ) return complete;
+   done = true;
+   if ( num_cpus > CPUS_MAX ) num_cpus = CPUS_MAX;
+   for ( i = 0; i < CPUS_MAX; i++ ) core_of[i] = -1;
+   read_layout( num_cpus );
+
+   memcpy( raw, core_of, sizeof raw );
+   complete = true;
+   for ( i = 0; i < num_cpus; i++ )
+   {
+      if ( raw[i] < 0 ) { complete = false; continue; }
+      for ( j = 0; j < i && raw[j] != raw[i]; j++ ) ;
+      core_of[i] = j;
+   }
+   return complete;
+}
+
+int cpus_cores( int num_cpus )
+{
+   int i, cores = 0;
+
+   if ( num_cpus > CPUS_MAX ) num_cpus = CPUS_MAX;
+   if ( !layout( num_cpus ) ) return 0;
+   for ( i = 0; i < num_cpus; i++ ) cores += core_of[i] == i;
+   return cores;
+}
+
 /* Write a set of CPUs as the shortest list: 0-21, or 0-11,16-23. */
 static void format_ranges( char *out, size_t n, const unsigned char *in,
                            int num_cpus )
@@ -289,6 +327,16 @@ static void format_ranges( char *out, size_t n, const unsigned char *in,
    }
 }
 
+void cpus_ranges( char *out, size_t n, int num_cpus )
+{
+   unsigned char set[ CPUS_MAX ];
+   int i;
+
+   if ( num_cpus > CPUS_MAX ) num_cpus = CPUS_MAX;
+   for ( i = 0; i < num_cpus; i++ ) set[i] = cpus_allowed( i );
+   format_ranges( out, n, set, num_cpus );
+}
+
 int cpus_list( int num_cpus )
 {
    unsigned char gpu_side[ CPUS_MAX ], cpu_side[ CPUS_MAX ];
@@ -296,23 +344,7 @@ int cpus_list( int num_cpus )
    int i, cores = 0, known = 0, last_core, per_core = 0;
 
    if ( num_cpus > CPUS_MAX ) num_cpus = CPUS_MAX;
-   for ( i = 0; i < CPUS_MAX; i++ ) core_of[i] = -1;
-   read_layout( num_cpus );
-
-   /* Name each core after its lowest CPU, whatever the platform called it,
-    * so "the first CPU of a core" means core_of[i] == i from here on. */
-   {
-      static int raw[ CPUS_MAX ];
-      int j;
-
-      memcpy( raw, core_of, sizeof raw );
-      for ( i = 0; i < num_cpus; i++ )
-      {
-         if ( raw[i] < 0 ) continue;
-         for ( j = 0; j < i && raw[j] != raw[i]; j++ ) ;
-         core_of[i] = j;
-      }
-   }
+   layout( num_cpus );
 
    /* Count cores by their first CPU, and check whether every core has the
     * same number of siblings, which is what lets the summary say "two per

@@ -44,6 +44,15 @@ int cpus_count( int num_cpus );
  * the start-up line has always shown it. out gets at most n - 1 of them. */
 void cpus_format( char *out, size_t n, int num_cpus );
 
+/* The set as the shortest list, "0-20" or "0-11,16-23", the form
+ * --cpu-affinity takes, so what the API reports can be pasted straight
+ * back into a flight sheet. */
+void cpus_ranges( char *out, size_t n, int num_cpus );
+
+/* How many cores the first num_cpus logical CPUs are on, or 0 when how
+ * they pair could not be read. */
+int cpus_cores( int num_cpus );
+
 /* --list-cpus: print how the CPUs group into cores and the --cpu-affinity
  * pair that runs a CPU miner and a GPU miner side by side on this machine.
  * Returns the process exit status. */

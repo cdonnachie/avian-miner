@@ -35,6 +35,7 @@
 #include "miner.h"
 #include "sysinfos.c"
 #include "sensors.h"
+#include "cpus.h"
 #if defined(HAVE_CUDA)
 #include "cuda/avian-gpu-backend.h"
 #endif
@@ -134,6 +135,83 @@ static void clean_field( char *out, size_t n, const char *in )
          out[i] = ( in[i] == ';' || in[i] == '|' || in[i] == '\n' ) ? ' '
                                                                    : in[i];
    out[i] = '\0';
+}
+
+/* The instruction sets this CPU has that the hashing can use, best first:
+ * the list the miner prints at start-up, without the padding and separated
+ * by single spaces, so a reader can split it. */
+static void cpu_features( char *out, size_t n )
+{
+   const char *f[ 8 ];
+   char avx10[ 16 ];
+   int k = 0, i;
+
+   out[0] = '\0';
+#if defined(__x86_64__)
+   if ( has_avx10() )
+   {
+      snprintf( avx10, sizeof avx10, "AVX10.%d", avx10_version() );
+      f[ k++ ] = avx10;
+   }
+   else if ( has_avx512() ) f[ k++ ] = "AVX512";
+   else if ( has_avx2()   ) f[ k++ ] = "AVX2";
+   else if ( has_avx()    ) f[ k++ ] = "AVX";
+   else if ( has_sse42()  ) f[ k++ ] = "SSE4.2";
+   else if ( has_sse41()  ) f[ k++ ] = "SSE4.1";
+   else if ( has_ssse3()  ) f[ k++ ] = "SSSE3";
+   else if ( has_sse2()   ) f[ k++ ] = "SSE2";
+   if ( has_amx()   ) f[ k++ ] = "AMX";
+   if ( has_apx_f() ) f[ k++ ] = "APX";
+#elif defined(__aarch64__)
+   if ( has_neon() ) f[ k++ ] = "NEON";
+   if      ( has_sve2() ) f[ k++ ] = "SVE2";
+   else if ( has_sve()  ) f[ k++ ] = "SVE";
+   if      ( has_sme2() ) f[ k++ ] = "SME2";
+   else if ( has_sme()  ) f[ k++ ] = "SME";
+#endif
+   if      ( has_vaes()   ) f[ k++ ] = "VAES";
+   else if ( has_aes()    ) f[ k++ ] = "AES";
+   if      ( has_sha512() ) f[ k++ ] = "SHA512";
+   else if ( has_sha256() ) f[ k++ ] = "SHA256";
+
+   for ( i = 0; i < k; i++ )
+      snprintf( out + strlen(out), n - strlen(out), "%s%s", i ? " " : "",
+                f[i] );
+}
+
+/* The machine, for the line the dashboard puts under its thread table:
+ * what the CPU calls itself, how many logical CPUs and cores it has, which
+ * CPUs this miner is kept to when --cpu-affinity confines it, and the
+ * instruction sets it has. CORES is left out when how the CPUs pair could
+ * not be read, CPUSET when every CPU is allowed, so neither reads as a
+ * number when it is a guess. */
+static void host_fields( char *buf, size_t n )
+{
+   char brand[ 0x40 ] = { 0 }, name[ 0x40 ], feat[ 96 ], set[ 1024 ];
+   const char *b = brand;
+   int cores, i;
+
+   cpu_brand_string( brand );
+   brand[ sizeof brand - 1 ] = '\0';
+   while ( *b == ' ' ) b++;             /* Intel pads it at the front, */
+   clean_field( name, sizeof name, b ); /* AMD at the back */
+   for ( i = (int) strlen( name ); i > 0 && name[ i - 1 ] == ' '; i-- )
+      name[ i - 1 ] = '\0';
+   snprintf( buf, n, "CPU=%s;LCPUS=%d;", name, num_cpus );
+
+   cores = cpus_cores( num_cpus );
+   if ( cores > 0 )
+      snprintf( buf + strlen(buf), n - strlen(buf), "CORES=%d;", cores );
+
+   if ( opt_affinity && cpus_count( num_cpus ) < num_cpus )
+   {
+      cpus_ranges( set, sizeof set, num_cpus );
+      snprintf( buf + strlen(buf), n - strlen(buf), "CPUSET=%s;", set );
+   }
+
+   cpu_features( feat, sizeof feat );
+   if ( feat[0] )
+      snprintf( buf + strlen(buf), n - strlen(buf), "FEATURES=%s;", feat );
 }
 
 /* Appends ;KEY=value when there is a value. A sensor that is not there is
@@ -333,7 +411,7 @@ static char *getsummary( char *params )
    double hrate = (double)global_hashrate;
    struct cpu_info cpu = { 0 };
    struct cpu_sensors cs;
-   char sens[512] = "";
+   char sens[512] = "", host[2048];
    int mhz_sum = 0, mhz_n = 0, i;
 
    /* TEMP, FAN and FREQ predate the sensors and keep their places, 0 when
@@ -377,6 +455,7 @@ static char *getsummary( char *params )
                 "TEMP_%s=%.1f;", cs.zone[i].label, cs.zone[i].temp );
 
    get_currentalgo(algo, sizeof(algo));
+   host_fields( host, sizeof(host) );
 
    /* -o is what sets short_url, and an SV2 session never has one, so URL was
     * a null pointer handed to %s on every SV2 run. report_summary_log names
@@ -401,12 +480,12 @@ static char *getsummary( char *params )
    *buffer = '\0';
    sprintf( buffer,
 	  "NAME=%s;VER=%s;API=%s;"
-          "ALGO=%s;CPUS=%d;URL=%s;"
+          "ALGO=%s;CPUS=%d;%sURL=%s;"
           "HS=%.2f;KHS=%.2f;ACC=%d;REJ=%d;STALE=%d;SOL=%d;"
           "ACCMN=%.3f;DIFF=%s;TEMP=%.1f;FAN=%d;FREQ=%d;%s"
           "UPTIME=%.0f;TS=%u|",
            PACKAGE_NAME, PACKAGE_VERSION, APIVERSION,
-           algo, opt_n_threads, endpoint,
+           algo, opt_n_threads, host, endpoint,
 	   hrate, hrate/1000.0, accepted_share_count, rejected_share_count,
 		                      stale_share_count, solved_block_count,
            accps, diff_str, cpu.cpu_temp, cpu.cpu_fan, cpu.cpu_clock, sens,

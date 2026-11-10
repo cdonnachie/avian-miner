@@ -930,6 +930,36 @@ static bool poll_once( struct poller *p, char *err, size_t errlen )
    json_long_field( &body, rec, len, "TS" );
    buf_puts( &body, "}" );
 
+   /* ---- the machine ---- */
+
+   /* All of it postdates the first dashboards, so an older miner gives a
+    * host with every field null and the page shows no line. CPUSET is the
+    * --cpu-affinity list, long on a big machine with a patchy set. */
+   buf_puts( &body, ",\"host\":{\"cpu\":" );
+   if ( field_str( rec, len, "CPU", tmp, sizeof tmp ) && tmp[0] )
+      buf_json_str( &body, tmp );
+   else
+      buf_puts( &body, "null" );
+   buf_puts( &body, ",\"cores\":" );
+   json_long_field( &body, rec, len, "CORES" );
+   buf_puts( &body, ",\"cpus\":" );
+   json_long_field( &body, rec, len, "LCPUS" );
+   buf_puts( &body, ",\"set\":" );
+   {
+      char set[ 1100 ];
+
+      if ( field_str( rec, len, "CPUSET", set, sizeof set ) && set[0] )
+         buf_json_str( &body, set );
+      else
+         buf_puts( &body, "null" );
+   }
+   buf_puts( &body, ",\"features\":" );
+   if ( field_str( rec, len, "FEATURES", tmp, sizeof tmp ) && tmp[0] )
+      buf_json_str( &body, tmp );
+   else
+      buf_puts( &body, "null" );
+   buf_puts( &body, "}" );
+
    buf_puts( &body, ",\"totals\":{" );
    buf_puts( &body, "\"hashrate\":" ); buf_json_num( &body, total, true );
    buf_puts( &body, ",\"accepted\":" );
