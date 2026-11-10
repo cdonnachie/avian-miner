@@ -126,6 +126,11 @@ elif [ "$STAGE" = windows ]; then
     # win-sign.ps1 signs it, which is the whole reason the dashboard is a C
     # program rather than the script it started as. Only its manual is extra.
     cp "$REPO/doc/webui.md" "$D/"
+    # Two batch files that run the miner against the Avian pool once an
+    # address is typed into them, for the Windows user who has never
+    # opened a terminal. Unsigned: win-sign.ps1 signs binaries, and a
+    # batch file is text anyone can read before running it.
+    cp "$REPO"/windows/*.bat "$D/"
     # Signed in the output directory, after the copy, so nothing rewrites a
     # binary once it carries a signature.
     powershell.exe -ExecutionPolicy Bypass -File \

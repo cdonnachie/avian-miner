@@ -109,6 +109,12 @@ avian-miner -a x16rt --gpu --sv2=POOL:PORT --sv2-user=ADDRESS.worker \
             --sv2-authority=POOL_AUTHORITY_KEY
 ```
 
+The Windows zip carries `mine-minotaurx.bat` and `mine-x16rt.bat`, which run
+the first two of these against the Avian pool at `sv2-yyz.avn.network` once
+your address is typed into them, and keep the window open afterwards so an
+error can be read. Double-click one, or edit it to taste: every option the
+miner takes can go on its command line.
+
 Every GPU device is numbered in one list, Nvidia first, so `GPU #2` means the
 same thing whether this machine has Nvidia cards, AMD cards or both.
 `--devices 0,2` or `--devices 0-2` mines on a subset of them, numbered by that
