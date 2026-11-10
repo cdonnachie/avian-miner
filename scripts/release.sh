@@ -130,7 +130,7 @@ elif [ "$STAGE" = windows ]; then
     # address is typed into them, for the Windows user who has never
     # opened a terminal. Unsigned: win-sign.ps1 signs binaries, and a
     # batch file is text anyone can read before running it.
-    cp "$REPO"/windows/*.bat "$D/"
+    cp "$REPO"/windows/*.bat "$REPO"/windows/*.cmd "$D/"
     # Signed in the output directory, after the copy, so nothing rewrites a
     # binary once it carries a signature.
     powershell.exe -ExecutionPolicy Bypass -File \
