@@ -125,10 +125,16 @@
   .hero { font-size: 48px; font-weight: 600; line-height: 1; letter-spacing: -0.02em; }
   .hero small { font-size: 20px; font-weight: 500; color: var(--ink-2); margin-left: 4px; }
 
+  /* Four to a row, fixed, rather than as many as fit: with auto-fit the
+     same miner showed one long line of tiles on a wide window and two on a
+     slightly narrower one, and the two-line form reads better at every
+     width, so it is the only form. Seven tiles make 4 + 3, eleven 4 + 4 + 3. */
   .tiles {
     display: grid; gap: 18px 28px; flex: 1 1 420px;
-    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+  @media (max-width: 760px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 480px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .tile-label {
     font-size: 11px; font-weight: 500; letter-spacing: 0.03em;
     text-transform: uppercase; color: var(--muted);
