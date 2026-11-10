@@ -21,9 +21,8 @@ rem subset, numbered as --list-devices prints them. The dashboard is
 rem readable by anything on your network at http://THIS-PC:4049/ and has no
 rem password; drop the --webui line if you do not want it.
 rem
-rem Beside mine-minotaurx.bat, give this one a core of its own: on a
-rem 24-thread CPU that is --cpu-affinity 0xc00000 here and -t 22
-rem --cpu-affinity 0x3fffff in the other file.
+rem To run this and the CPU miner together, use mine-both.bat, which gives
+rem this one the last core and the CPU miner the rest.
 cd /d "%~dp0"
 avian-miner.exe -a x16rt --gpu ^
     --sv2=sv2-yyz.avn.network:3333 ^

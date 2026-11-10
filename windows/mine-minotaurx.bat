@@ -21,9 +21,8 @@ rem this runs beside mine-x16rt.bat on the same machine. The dashboard is
 rem readable by anything on your network at http://THIS-PC:4051/ and has no
 rem password; drop the --webui line if you do not want it.
 rem
-rem Beside a GPU miner, leave its launcher a core of its own: on a 24-thread
-rem CPU that is -t 22 --cpu-affinity 0x3fffff here and --cpu-affinity
-rem 0xc00000 in the other file.
+rem To run this and the GPU miner together, use mine-both.bat, which gives
+rem the GPU miner the last core and this one the rest.
 cd /d "%~dp0"
 avian-miner.exe -a minotaurx ^
     --sv2=sv2-yyz.avn.network:3333 ^

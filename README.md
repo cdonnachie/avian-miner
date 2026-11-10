@@ -115,6 +115,22 @@ your address is typed into them, and keep the window open afterwards so an
 error can be read. Double-click one, or edit it to taste: every option the
 miner takes can go on its command line.
 
+**Both at once on one machine.** The CPU miner takes every CPU unless told
+otherwise, and a GPU miner's one thread then waits its turn behind twenty
+hashing threads, which costs the card far more than it costs the CPU. Give
+it a core of its own. `--cpu-affinity` takes a list, `0-21` or
+`0-11,16-23`, as well as the old hex mask, and without `-t` the miner starts
+one thread per CPU listed, so on a 24-thread CPU the whole split is
+
+```sh
+avian-miner -a minotaurx --cpu-affinity 0-21 ...
+avian-miner -a x16rt --gpu --cpu-affinity 22-23 ...
+```
+
+`avian-miner --list-cpus` prints how this machine's CPUs pair into cores
+and the two values for it, and on Windows `mine-both.bat` works them out
+and starts both.
+
 Every GPU device is numbered in one list, Nvidia first, so `GPU #2` means the
 same thing whether this machine has Nvidia cards, AMD cards or both.
 `--devices 0,2` or `--devices 0-2` mines on a subset of them, numbered by that
