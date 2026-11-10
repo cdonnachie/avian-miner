@@ -89,39 +89,48 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 target_triplet = @target@
-bin_PROGRAMS = avian-miner$(EXEEXT) avian-webui$(EXEEXT)
+bin_PROGRAMS = avian-miner$(EXEEXT) avian-webui$(EXEEXT) \
+	$(am__EXEEXT_1)
 @HAVE_WINDOWS_TRUE@am__append_1 = -lws2_32
-@HAVE_WINDOWS_TRUE@am__append_2 = compat/winansi.c
-@HAVE_AVIAN_SV2_TRUE@am__append_3 = avian/sv2.c avian/selftest.c avian/ntime.c
+
+# The CPU sensors service, Windows only: a service and PawnIO are both
+# Windows things, and on Linux the miner reads hwmon itself. It shares one
+# header with sensors.c and nothing else.
+@HAVE_WINDOWS_TRUE@am__append_2 = avian-sensors
+@HAVE_WINDOWS_TRUE@am__append_3 = compat/winansi.c
+@HAVE_AVIAN_SV2_TRUE@am__append_4 = avian/sv2.c avian/selftest.c avian/ntime.c
 
 # No libdl on Windows: dynamic loading there is LoadLibrary. These are what
 # the Rust static library's std needs, and they come after it because ld
 # resolves static archives in the order given, so the -lws2_32 earlier on
 # the line has already been passed over by the time it is asked for.
-@HAVE_WINDOWS_TRUE@am__append_4 = -lws2_32 -lbcrypt -luserenv -lntdll -ladvapi32 -lsecur32
+# sensors.c reads the Processor Information counters. LibreHardwareMonitor
+# is read over HTTP, with the libcurl and jansson already on the line above.
+@HAVE_WINDOWS_TRUE@am__append_5 = -lws2_32 -lbcrypt -luserenv -lntdll \
+@HAVE_WINDOWS_TRUE@	-ladvapi32 -lsecur32 -lpdh
 # Rust's std uses dlopen on Linux.
-@HAVE_WINDOWS_FALSE@am__append_5 = -ldl
-@ARCH_ARM64_TRUE@am__append_6 = -flax-vector-conversions
-@HAVE_CUDA_TRUE@@HAVE_GPU_NV_TRUE@am__append_7 = libavian_cuda.so
-@HAVE_CUDA_TRUE@@HAVE_GPU_AMD_TRUE@am__append_8 = libavian_amd.so
+@HAVE_WINDOWS_FALSE@am__append_6 = -ldl
+@ARCH_ARM64_TRUE@am__append_7 = -flax-vector-conversions
+@HAVE_CUDA_TRUE@@HAVE_GPU_NV_TRUE@am__append_8 = libavian_cuda.so
+@HAVE_CUDA_TRUE@@HAVE_GPU_AMD_TRUE@am__append_9 = libavian_amd.so
 # @OCL_LIB@ rather than a literal: this backend is the one of the three that
 # `make` builds on Windows too, since it needs no vendor compiler, and there
 # it has to come out as avian_ocl.dll. configure decides the name.
-@HAVE_CUDA_TRUE@@HAVE_GPU_OCL_TRUE@am__append_9 = @OCL_LIB@
-@HAVE_CUDA_TRUE@@HAVE_GPU_OCL_TRUE@am__append_10 = $(OCL_KERNELS_H)
+@HAVE_CUDA_TRUE@@HAVE_GPU_OCL_TRUE@am__append_10 = @OCL_LIB@
+@HAVE_CUDA_TRUE@@HAVE_GPU_OCL_TRUE@am__append_11 = $(OCL_KERNELS_H)
 @HAVE_CUDA_TRUE@@HAVE_GPU_OCL_TRUE@check_PROGRAMS = avian-ocl-selftest$(EXEEXT) \
 @HAVE_CUDA_TRUE@@HAVE_GPU_OCL_TRUE@	avian-ocl-batchtest$(EXEEXT)
-@HAVE_CUDA_TRUE@am__append_11 = algo/x16/x16rt-cuda-gate.c \
+@HAVE_CUDA_TRUE@am__append_12 = algo/x16/x16rt-cuda-gate.c \
 @HAVE_CUDA_TRUE@                       algo/x16/x16rt-cuda-host.c \
 @HAVE_CUDA_TRUE@                       cuda/avian-gpu-backend.c
 
 # += rather than =, which silently dropped example-cfg.json and nomacro.pl
 # from a `make dist` of any GPU build.
-@HAVE_CUDA_TRUE@am__append_12 = $(CUDA_SOURCES) cuda/avian-cuda-api.h \
+@HAVE_CUDA_TRUE@am__append_13 = $(CUDA_SOURCES) cuda/avian-cuda-api.h \
 @HAVE_CUDA_TRUE@	cuda/avian-gpu-backend.h cuda/ocl/mkkernels.sh \
 @HAVE_CUDA_TRUE@	cuda/ocl/amd-compile-check.sh \
 @HAVE_CUDA_TRUE@	$(OCL_KERNEL_SOURCES)
-@HAVE_CUDA_TRUE@am__append_13 = $(NV_OBJECTS) $(AMD_OBJECTS) $(GPU_BACKENDS) \
+@HAVE_CUDA_TRUE@am__append_14 = $(NV_OBJECTS) $(AMD_OBJECTS) $(GPU_BACKENDS) \
 @HAVE_CUDA_TRUE@             $(OCL_OBJECTS) $(OCL_KERNELS_H)
 
 subdir = .
@@ -137,23 +146,24 @@ mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = cpuminer-config.h
 CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
+@HAVE_WINDOWS_TRUE@am__EXEEXT_1 = avian-sensors$(EXEEXT)
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am__avian_miner_SOURCES_DIST = dummy.cpp cpu-miner.c util.c api.c \
-	sysinfos.c algo-gate-api.c malloc-huge.c \
-	simd-utils/simd-constants.c algo/blake/sph_blake.c \
-	algo/blake/blake256-hash.c algo/blake/blake512-hash.c \
-	algo/blake/blake-gate.c algo/blake/blake.c \
-	algo/blake/blake-4way.c algo/blake/sph_blake2b.c \
-	algo/blake/sph-blake2s.c algo/blake/blake2s-hash.c \
-	algo/blake/blake2s.c algo/blake/blake2b-hash.c \
-	algo/blake/blake2b.c algo/blake/blakecoin-gate.c \
-	algo/blake/mod_blakecoin.c algo/blake/blakecoin.c \
-	algo/blake/blakecoin-4way.c algo/blake/pentablake-gate.c \
-	algo/blake/pentablake-4way.c algo/blake/pentablake.c \
-	algo/bmw/sph_bmw.c algo/bmw/bmw256-hash-4way.c \
-	algo/bmw/bmw512-hash-4way.c algo/bmw/bmw256.c \
-	algo/bmw/bmw512-gate.c algo/bmw/bmw512.c \
+	webui-spawn.c sensors.c cpus.c sysinfos.c algo-gate-api.c \
+	malloc-huge.c simd-utils/simd-constants.c \
+	algo/blake/sph_blake.c algo/blake/blake256-hash.c \
+	algo/blake/blake512-hash.c algo/blake/blake-gate.c \
+	algo/blake/blake.c algo/blake/blake-4way.c \
+	algo/blake/sph_blake2b.c algo/blake/sph-blake2s.c \
+	algo/blake/blake2s-hash.c algo/blake/blake2s.c \
+	algo/blake/blake2b-hash.c algo/blake/blake2b.c \
+	algo/blake/blakecoin-gate.c algo/blake/mod_blakecoin.c \
+	algo/blake/blakecoin.c algo/blake/blakecoin-4way.c \
+	algo/blake/pentablake-gate.c algo/blake/pentablake-4way.c \
+	algo/blake/pentablake.c algo/bmw/sph_bmw.c \
+	algo/bmw/bmw256-hash-4way.c algo/bmw/bmw512-hash-4way.c \
+	algo/bmw/bmw256.c algo/bmw/bmw512-gate.c algo/bmw/bmw512.c \
 	algo/bmw/bmw512-4way.c algo/cubehash/cubehash_sse2.c \
 	algo/cubehash/cube-hash-2way.c algo/cubehash/sph_cubehash.c \
 	algo/echo/sph_echo.c algo/echo/echo-hash-4way.c \
@@ -211,7 +221,9 @@ am__dirstamp = $(am__leading_dot)dirstamp
 @HAVE_CUDA_TRUE@	cuda/avian_miner-avian-gpu-backend.$(OBJEXT)
 am_avian_miner_OBJECTS = avian_miner-dummy.$(OBJEXT) \
 	avian_miner-cpu-miner.$(OBJEXT) avian_miner-util.$(OBJEXT) \
-	avian_miner-api.$(OBJEXT) avian_miner-sysinfos.$(OBJEXT) \
+	avian_miner-api.$(OBJEXT) avian_miner-webui-spawn.$(OBJEXT) \
+	avian_miner-sensors.$(OBJEXT) avian_miner-cpus.$(OBJEXT) \
+	avian_miner-sysinfos.$(OBJEXT) \
 	avian_miner-algo-gate-api.$(OBJEXT) \
 	avian_miner-malloc-huge.$(OBJEXT) \
 	simd-utils/avian_miner-simd-constants.$(OBJEXT) \
@@ -397,6 +409,11 @@ avian_ocl_selftest_OBJECTS = $(am_avian_ocl_selftest_OBJECTS)
 avian_ocl_selftest_DEPENDENCIES =
 avian_ocl_selftest_LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
 	$(avian_ocl_selftest_LDFLAGS) $(LDFLAGS) -o $@
+am__avian_sensors_SOURCES_DIST = avian-sensors.c
+@HAVE_WINDOWS_TRUE@am_avian_sensors_OBJECTS =  \
+@HAVE_WINDOWS_TRUE@	avian_sensors-avian-sensors.$(OBJEXT)
+avian_sensors_OBJECTS = $(am_avian_sensors_OBJECTS)
+avian_sensors_DEPENDENCIES =
 am_avian_webui_OBJECTS = webui/avian_webui-avian-webui.$(OBJEXT)
 avian_webui_OBJECTS = $(am_avian_webui_OBJECTS)
 avian_webui_DEPENDENCIES = $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
@@ -418,10 +435,14 @@ am__maybe_remake_depfiles = depfiles
 am__depfiles_remade = ./$(DEPDIR)/avian_miner-algo-gate-api.Po \
 	./$(DEPDIR)/avian_miner-api.Po \
 	./$(DEPDIR)/avian_miner-cpu-miner.Po \
+	./$(DEPDIR)/avian_miner-cpus.Po \
 	./$(DEPDIR)/avian_miner-dummy.Po \
 	./$(DEPDIR)/avian_miner-malloc-huge.Po \
+	./$(DEPDIR)/avian_miner-sensors.Po \
 	./$(DEPDIR)/avian_miner-sysinfos.Po \
 	./$(DEPDIR)/avian_miner-util.Po \
+	./$(DEPDIR)/avian_miner-webui-spawn.Po \
+	./$(DEPDIR)/avian_sensors-avian-sensors.Po \
 	algo/blake/$(DEPDIR)/avian_miner-blake-4way.Po \
 	algo/blake/$(DEPDIR)/avian_miner-blake-gate.Po \
 	algo/blake/$(DEPDIR)/avian_miner-blake.Po \
@@ -608,10 +629,12 @@ am__v_CXXLD_ = $(am__v_CXXLD_@AM_DEFAULT_V@)
 am__v_CXXLD_0 = @echo "  CXXLD   " $@;
 am__v_CXXLD_1 = 
 SOURCES = $(avian_miner_SOURCES) $(avian_ocl_batchtest_SOURCES) \
-	$(avian_ocl_selftest_SOURCES) $(avian_webui_SOURCES)
+	$(avian_ocl_selftest_SOURCES) $(avian_sensors_SOURCES) \
+	$(avian_webui_SOURCES)
 DIST_SOURCES = $(am__avian_miner_SOURCES_DIST) \
 	$(am__avian_ocl_batchtest_SOURCES_DIST) \
-	$(am__avian_ocl_selftest_SOURCES_DIST) $(avian_webui_SOURCES)
+	$(am__avian_ocl_selftest_SOURCES_DIST) \
+	$(am__avian_sensors_SOURCES_DIST) $(avian_webui_SOURCES)
 RECURSIVE_TARGETS = all-recursive check-recursive cscopelist-recursive \
 	ctags-recursive dvi-recursive html-recursive info-recursive \
 	install-data-recursive install-dvi-recursive \
@@ -851,7 +874,7 @@ top_srcdir = @top_srcdir@
 @HAVE_APPLE_FALSE@@WANT_JANSSON_TRUE@EXTRA_LIBS = -L$(top_srcdir)/compat/jansson
 EXTRA_DIST = config-template.json cuda/sm-targets cuda/hip/gfx-targets \
 	scripts/mkversion.sh webui/mkpage.sh webui/index.html \
-	$(am__append_12)
+	$(am__append_13)
 SUFFIXES = .cu
 
 # The commit, generated into the build tree so a read-only source tree
@@ -861,8 +884,8 @@ SUFFIXES = .cu
 # the value changes, so this costs one recompile per commit and nothing
 # otherwise.
 AVIAN_VERSION_H = avian-version.h
-BUILT_SOURCES = $(AVIAN_VERSION_H) $(WEBUI_PAGE_H) $(am__append_10)
-CLEANFILES = $(AVIAN_VERSION_H) $(WEBUI_PAGE_H) $(am__append_13)
+BUILT_SOURCES = $(AVIAN_VERSION_H) $(WEBUI_PAGE_H) $(am__append_11)
+CLEANFILES = $(AVIAN_VERSION_H) $(WEBUI_PAGE_H) $(am__append_14)
 SUBDIRS = compat
 ALL_INCLUDES = @PTHREAD_FLAGS@ -fno-strict-aliasing $(EXTRA_INCLUDES) -I. @AVIAN_SV2_CFLAGS@
 
@@ -887,20 +910,24 @@ avian_webui_CPPFLAGS = @PTHREAD_FLAGS@ $(EXTRA_INCLUDES) \
 
 avian_webui_LDADD = $(EXTRA_LIBS) -ljansson @PTHREAD_LIBS@ @WS2_LIBS@ \
 	-lm $(am__append_1)
-avian_miner_SOURCES = dummy.cpp cpu-miner.c util.c api.c sysinfos.c \
-	algo-gate-api.c malloc-huge.c simd-utils/simd-constants.c \
-	algo/blake/sph_blake.c algo/blake/blake256-hash.c \
-	algo/blake/blake512-hash.c algo/blake/blake-gate.c \
-	algo/blake/blake.c algo/blake/blake-4way.c \
-	algo/blake/sph_blake2b.c algo/blake/sph-blake2s.c \
-	algo/blake/blake2s-hash.c algo/blake/blake2s.c \
-	algo/blake/blake2b-hash.c algo/blake/blake2b.c \
-	algo/blake/blakecoin-gate.c algo/blake/mod_blakecoin.c \
-	algo/blake/blakecoin.c algo/blake/blakecoin-4way.c \
-	algo/blake/pentablake-gate.c algo/blake/pentablake-4way.c \
-	algo/blake/pentablake.c algo/bmw/sph_bmw.c \
-	algo/bmw/bmw256-hash-4way.c algo/bmw/bmw512-hash-4way.c \
-	algo/bmw/bmw256.c algo/bmw/bmw512-gate.c algo/bmw/bmw512.c \
+@HAVE_WINDOWS_TRUE@avian_sensors_SOURCES = avian-sensors.c
+@HAVE_WINDOWS_TRUE@avian_sensors_CPPFLAGS = -I$(top_srcdir)
+@HAVE_WINDOWS_TRUE@avian_sensors_LDADD = -ladvapi32
+avian_miner_SOURCES = dummy.cpp cpu-miner.c util.c api.c webui-spawn.c \
+	sensors.c cpus.c sysinfos.c algo-gate-api.c malloc-huge.c \
+	simd-utils/simd-constants.c algo/blake/sph_blake.c \
+	algo/blake/blake256-hash.c algo/blake/blake512-hash.c \
+	algo/blake/blake-gate.c algo/blake/blake.c \
+	algo/blake/blake-4way.c algo/blake/sph_blake2b.c \
+	algo/blake/sph-blake2s.c algo/blake/blake2s-hash.c \
+	algo/blake/blake2s.c algo/blake/blake2b-hash.c \
+	algo/blake/blake2b.c algo/blake/blakecoin-gate.c \
+	algo/blake/mod_blakecoin.c algo/blake/blakecoin.c \
+	algo/blake/blakecoin-4way.c algo/blake/pentablake-gate.c \
+	algo/blake/pentablake-4way.c algo/blake/pentablake.c \
+	algo/bmw/sph_bmw.c algo/bmw/bmw256-hash-4way.c \
+	algo/bmw/bmw512-hash-4way.c algo/bmw/bmw256.c \
+	algo/bmw/bmw512-gate.c algo/bmw/bmw512.c \
 	algo/bmw/bmw512-4way.c algo/cubehash/cubehash_sse2.c \
 	algo/cubehash/cube-hash-2way.c algo/cubehash/sph_cubehash.c \
 	algo/echo/sph_echo.c algo/echo/echo-hash-4way.c \
@@ -943,17 +970,17 @@ avian_miner_SOURCES = dummy.cpp cpu-miner.c util.c api.c sysinfos.c \
 	algo/yespower/crypto/hmac-blake2b.c \
 	algo/yespower/yescrypt-r8g.c algo/yespower/yespower-opt.c \
 	algo/yespower/yespower-ref.c \
-	algo/yespower/yespower-blake2b-ref.c $(am__append_2) \
-	$(am__append_3) $(am__append_11)
+	algo/yespower/yespower-blake2b-ref.c $(am__append_3) \
+	$(am__append_4) $(am__append_12)
 @USE_ASM_FALSE@disable_flags = -DNOASM
 @USE_ASM_TRUE@disable_flags = 
 avian_miner_LDFLAGS = @LDFLAGS@
 avian_miner_LDADD = $(EXTRA_LIBS) @LIBCURL@ -ljansson @PTHREAD_LIBS@ \
-	@WS2_LIBS@ -lgmp @AVIAN_SV2_LIBS@ $(am__append_4) \
-	$(am__append_5)
+	@WS2_LIBS@ -lgmp @AVIAN_SV2_LIBS@ $(am__append_5) \
+	$(am__append_6)
 avian_miner_CPPFLAGS = @LIBCURL_CPPFLAGS@ $(ALL_INCLUDES)
 avian_miner_CFLAGS = -Wno-pointer-sign -Wno-pointer-to-int-cast \
-	$(disable_flags) $(am__append_6)
+	$(disable_flags) $(am__append_7)
 
 # use to profile an object
 # gprof_cflags = -pg -g3
@@ -1055,8 +1082,8 @@ avian_miner_CFLAGS = -Wno-pointer-sign -Wno-pointer-to-int-cast \
 # scripts/windows/build-cuda-dll.ps1. Through the GPU compiler, not $(CC),
 # so their linkage matches the C++ kernels that call them.
 @HAVE_CUDA_TRUE@GPU_CPU_SOURCES = algo/whirlpool/sph_whirlpool.c algo/jh/sph_jh.c
-@HAVE_CUDA_TRUE@GPU_BACKENDS = $(am__append_7) $(am__append_8) \
-@HAVE_CUDA_TRUE@	$(am__append_9)
+@HAVE_CUDA_TRUE@GPU_BACKENDS = $(am__append_8) $(am__append_9) \
+@HAVE_CUDA_TRUE@	$(am__append_10)
 @HAVE_CUDA_TRUE@@HAVE_GPU_NV_TRUE@NV_OBJECTS = $(CUDA_SOURCES:.cu=.nv.o) $(GPU_CPU_SOURCES:.c=.nv.o)
 @HAVE_CUDA_TRUE@@HAVE_GPU_AMD_TRUE@AMD_OBJECTS = $(CUDA_SOURCES:.cu=.amd.o) $(GPU_CPU_SOURCES:.c=.amd.o)
 
@@ -1826,6 +1853,10 @@ algo/hamsi/avian_ocl_selftest-sph_hamsi.$(OBJEXT):  \
 avian-ocl-selftest$(EXEEXT): $(avian_ocl_selftest_OBJECTS) $(avian_ocl_selftest_DEPENDENCIES) $(EXTRA_avian_ocl_selftest_DEPENDENCIES) 
 	@rm -f avian-ocl-selftest$(EXEEXT)
 	$(AM_V_CCLD)$(avian_ocl_selftest_LINK) $(avian_ocl_selftest_OBJECTS) $(avian_ocl_selftest_LDADD) $(LIBS)
+
+avian-sensors$(EXEEXT): $(avian_sensors_OBJECTS) $(avian_sensors_DEPENDENCIES) $(EXTRA_avian_sensors_DEPENDENCIES) 
+	@rm -f avian-sensors$(EXEEXT)
+	$(AM_V_CCLD)$(LINK) $(avian_sensors_OBJECTS) $(avian_sensors_LDADD) $(LIBS)
 webui/$(am__dirstamp):
 	@$(MKDIR_P) webui
 	@: > webui/$(am__dirstamp)
@@ -1875,10 +1906,14 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/avian_miner-algo-gate-api.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/avian_miner-api.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/avian_miner-cpu-miner.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/avian_miner-cpus.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/avian_miner-dummy.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/avian_miner-malloc-huge.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/avian_miner-sensors.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/avian_miner-sysinfos.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/avian_miner-util.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/avian_miner-webui-spawn.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/avian_sensors-avian-sensors.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@algo/blake/$(DEPDIR)/avian_miner-blake-4way.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@algo/blake/$(DEPDIR)/avian_miner-blake-gate.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@algo/blake/$(DEPDIR)/avian_miner-blake.Po@am__quote@ # am--include-marker
@@ -2099,6 +2134,48 @@ avian_miner-api.obj: api.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='api.c' object='avian_miner-api.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -c -o avian_miner-api.obj `if test -f 'api.c'; then $(CYGPATH_W) 'api.c'; else $(CYGPATH_W) '$(srcdir)/api.c'; fi`
+
+avian_miner-webui-spawn.o: webui-spawn.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -MT avian_miner-webui-spawn.o -MD -MP -MF $(DEPDIR)/avian_miner-webui-spawn.Tpo -c -o avian_miner-webui-spawn.o `test -f 'webui-spawn.c' || echo '$(srcdir)/'`webui-spawn.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/avian_miner-webui-spawn.Tpo $(DEPDIR)/avian_miner-webui-spawn.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='webui-spawn.c' object='avian_miner-webui-spawn.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -c -o avian_miner-webui-spawn.o `test -f 'webui-spawn.c' || echo '$(srcdir)/'`webui-spawn.c
+
+avian_miner-webui-spawn.obj: webui-spawn.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -MT avian_miner-webui-spawn.obj -MD -MP -MF $(DEPDIR)/avian_miner-webui-spawn.Tpo -c -o avian_miner-webui-spawn.obj `if test -f 'webui-spawn.c'; then $(CYGPATH_W) 'webui-spawn.c'; else $(CYGPATH_W) '$(srcdir)/webui-spawn.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/avian_miner-webui-spawn.Tpo $(DEPDIR)/avian_miner-webui-spawn.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='webui-spawn.c' object='avian_miner-webui-spawn.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -c -o avian_miner-webui-spawn.obj `if test -f 'webui-spawn.c'; then $(CYGPATH_W) 'webui-spawn.c'; else $(CYGPATH_W) '$(srcdir)/webui-spawn.c'; fi`
+
+avian_miner-sensors.o: sensors.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -MT avian_miner-sensors.o -MD -MP -MF $(DEPDIR)/avian_miner-sensors.Tpo -c -o avian_miner-sensors.o `test -f 'sensors.c' || echo '$(srcdir)/'`sensors.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/avian_miner-sensors.Tpo $(DEPDIR)/avian_miner-sensors.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='sensors.c' object='avian_miner-sensors.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -c -o avian_miner-sensors.o `test -f 'sensors.c' || echo '$(srcdir)/'`sensors.c
+
+avian_miner-sensors.obj: sensors.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -MT avian_miner-sensors.obj -MD -MP -MF $(DEPDIR)/avian_miner-sensors.Tpo -c -o avian_miner-sensors.obj `if test -f 'sensors.c'; then $(CYGPATH_W) 'sensors.c'; else $(CYGPATH_W) '$(srcdir)/sensors.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/avian_miner-sensors.Tpo $(DEPDIR)/avian_miner-sensors.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='sensors.c' object='avian_miner-sensors.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -c -o avian_miner-sensors.obj `if test -f 'sensors.c'; then $(CYGPATH_W) 'sensors.c'; else $(CYGPATH_W) '$(srcdir)/sensors.c'; fi`
+
+avian_miner-cpus.o: cpus.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -MT avian_miner-cpus.o -MD -MP -MF $(DEPDIR)/avian_miner-cpus.Tpo -c -o avian_miner-cpus.o `test -f 'cpus.c' || echo '$(srcdir)/'`cpus.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/avian_miner-cpus.Tpo $(DEPDIR)/avian_miner-cpus.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cpus.c' object='avian_miner-cpus.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -c -o avian_miner-cpus.o `test -f 'cpus.c' || echo '$(srcdir)/'`cpus.c
+
+avian_miner-cpus.obj: cpus.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -MT avian_miner-cpus.obj -MD -MP -MF $(DEPDIR)/avian_miner-cpus.Tpo -c -o avian_miner-cpus.obj `if test -f 'cpus.c'; then $(CYGPATH_W) 'cpus.c'; else $(CYGPATH_W) '$(srcdir)/cpus.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/avian_miner-cpus.Tpo $(DEPDIR)/avian_miner-cpus.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='cpus.c' object='avian_miner-cpus.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -c -o avian_miner-cpus.obj `if test -f 'cpus.c'; then $(CYGPATH_W) 'cpus.c'; else $(CYGPATH_W) '$(srcdir)/cpus.c'; fi`
 
 avian_miner-sysinfos.o: sysinfos.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_miner_CPPFLAGS) $(CPPFLAGS) $(avian_miner_CFLAGS) $(CFLAGS) -MT avian_miner-sysinfos.o -MD -MP -MF $(DEPDIR)/avian_miner-sysinfos.Tpo -c -o avian_miner-sysinfos.o `test -f 'sysinfos.c' || echo '$(srcdir)/'`sysinfos.c
@@ -4312,6 +4389,20 @@ algo/hamsi/avian_ocl_selftest-sph_hamsi.obj: algo/hamsi/sph_hamsi.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_ocl_selftest_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o algo/hamsi/avian_ocl_selftest-sph_hamsi.obj `if test -f 'algo/hamsi/sph_hamsi.c'; then $(CYGPATH_W) 'algo/hamsi/sph_hamsi.c'; else $(CYGPATH_W) '$(srcdir)/algo/hamsi/sph_hamsi.c'; fi`
 
+avian_sensors-avian-sensors.o: avian-sensors.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_sensors_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT avian_sensors-avian-sensors.o -MD -MP -MF $(DEPDIR)/avian_sensors-avian-sensors.Tpo -c -o avian_sensors-avian-sensors.o `test -f 'avian-sensors.c' || echo '$(srcdir)/'`avian-sensors.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/avian_sensors-avian-sensors.Tpo $(DEPDIR)/avian_sensors-avian-sensors.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='avian-sensors.c' object='avian_sensors-avian-sensors.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_sensors_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o avian_sensors-avian-sensors.o `test -f 'avian-sensors.c' || echo '$(srcdir)/'`avian-sensors.c
+
+avian_sensors-avian-sensors.obj: avian-sensors.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_sensors_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT avian_sensors-avian-sensors.obj -MD -MP -MF $(DEPDIR)/avian_sensors-avian-sensors.Tpo -c -o avian_sensors-avian-sensors.obj `if test -f 'avian-sensors.c'; then $(CYGPATH_W) 'avian-sensors.c'; else $(CYGPATH_W) '$(srcdir)/avian-sensors.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/avian_sensors-avian-sensors.Tpo $(DEPDIR)/avian_sensors-avian-sensors.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='avian-sensors.c' object='avian_sensors-avian-sensors.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_sensors_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o avian_sensors-avian-sensors.obj `if test -f 'avian-sensors.c'; then $(CYGPATH_W) 'avian-sensors.c'; else $(CYGPATH_W) '$(srcdir)/avian-sensors.c'; fi`
+
 webui/avian_webui-avian-webui.o: webui/avian-webui.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(avian_webui_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT webui/avian_webui-avian-webui.o -MD -MP -MF webui/$(DEPDIR)/avian_webui-avian-webui.Tpo -c -o webui/avian_webui-avian-webui.o `test -f 'webui/avian-webui.c' || echo '$(srcdir)/'`webui/avian-webui.c
 @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) webui/$(DEPDIR)/avian_webui-avian-webui.Tpo webui/$(DEPDIR)/avian_webui-avian-webui.Po
@@ -4770,10 +4861,14 @@ distclean: distclean-recursive
 		-rm -f ./$(DEPDIR)/avian_miner-algo-gate-api.Po
 	-rm -f ./$(DEPDIR)/avian_miner-api.Po
 	-rm -f ./$(DEPDIR)/avian_miner-cpu-miner.Po
+	-rm -f ./$(DEPDIR)/avian_miner-cpus.Po
 	-rm -f ./$(DEPDIR)/avian_miner-dummy.Po
 	-rm -f ./$(DEPDIR)/avian_miner-malloc-huge.Po
+	-rm -f ./$(DEPDIR)/avian_miner-sensors.Po
 	-rm -f ./$(DEPDIR)/avian_miner-sysinfos.Po
 	-rm -f ./$(DEPDIR)/avian_miner-util.Po
+	-rm -f ./$(DEPDIR)/avian_miner-webui-spawn.Po
+	-rm -f ./$(DEPDIR)/avian_sensors-avian-sensors.Po
 	-rm -f algo/blake/$(DEPDIR)/avian_miner-blake-4way.Po
 	-rm -f algo/blake/$(DEPDIR)/avian_miner-blake-gate.Po
 	-rm -f algo/blake/$(DEPDIR)/avian_miner-blake.Po
@@ -4980,10 +5075,14 @@ maintainer-clean: maintainer-clean-recursive
 		-rm -f ./$(DEPDIR)/avian_miner-algo-gate-api.Po
 	-rm -f ./$(DEPDIR)/avian_miner-api.Po
 	-rm -f ./$(DEPDIR)/avian_miner-cpu-miner.Po
+	-rm -f ./$(DEPDIR)/avian_miner-cpus.Po
 	-rm -f ./$(DEPDIR)/avian_miner-dummy.Po
 	-rm -f ./$(DEPDIR)/avian_miner-malloc-huge.Po
+	-rm -f ./$(DEPDIR)/avian_miner-sensors.Po
 	-rm -f ./$(DEPDIR)/avian_miner-sysinfos.Po
 	-rm -f ./$(DEPDIR)/avian_miner-util.Po
+	-rm -f ./$(DEPDIR)/avian_miner-webui-spawn.Po
+	-rm -f ./$(DEPDIR)/avian_sensors-avian-sensors.Po
 	-rm -f algo/blake/$(DEPDIR)/avian_miner-blake-4way.Po
 	-rm -f algo/blake/$(DEPDIR)/avian_miner-blake-gate.Po
 	-rm -f algo/blake/$(DEPDIR)/avian_miner-blake.Po
