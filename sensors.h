@@ -53,9 +53,9 @@ bool sensors_gpu( int pci_bus, struct gpu_sensors *out );
 
 /* The CPU package. Linux reads the k10temp, zenpower or coretemp driver and
  * RAPL for power. Windows has no user-mode source for either and this does
- * not install a driver to make one, so there it reads LibreHardwareMonitor's
- * WMI namespace when that program is running and reports nothing when it is
- * not. */
+ * not install a driver to make one, so there it reads what LibreHardwareMonitor
+ * publishes over its web server (Options > Remote Web Server) while that
+ * program is running with it on, and reports nothing when it is not. */
 void sensors_cpu( struct cpu_sensors *out );
 
 /* The effective clock of one logical CPU in MHz, or -1. On Windows this is

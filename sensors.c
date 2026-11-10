@@ -20,8 +20,9 @@
  *                    boots. Package power from RAPL when it is readable.
  *   CPU on Windows   The effective clock from the performance counters,
  *                    which is real. Temperature and power only from
- *                    LibreHardwareMonitor's WMI namespace while that program
- *                    is running: Windows gives user mode nothing for either,
+ *                    LibreHardwareMonitor's web server while that program
+ *                    is running with it switched on: Windows gives user
+ *                    mode nothing for either,
  *                    and the tools that show them each ship a kernel driver
  *                    to read the MSRs and SMN. A miner carrying a ring-0
  *                    driver is a different kind of program, and the one that
@@ -44,14 +45,12 @@
 #include <pthread.h>
 
 #if defined(_WIN32)
-#  define COBJMACROS
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
 #  include <pdh.h>
 #  include <pdhmsg.h>
-#  include <objbase.h>
-#  include <wbemidl.h>
-#  include <oleauto.h>
+#  include <curl/curl.h>
+#  include <jansson.h>
 #else
 #  include <dlfcn.h>
 #  include <dirent.h>
@@ -756,195 +755,155 @@ static void pdh_sample( void )
    free( perf );
 }
 
-/* LibreHardwareMonitor publishes every sensor it reads as a WMI Sensor
- * object under ROOT\LibreHardwareMonitor while it runs; OpenHardwareMonitor
- * did the same under its own name and the schema is identical. Connecting
- * fails at once when neither is running, and is tried again every thirty
- * seconds so starting one later is enough. */
+/* LibreHardwareMonitor serves everything it reads as one JSON tree at
+ * http://127.0.0.1:8085/data.json once its web server is switched on, under
+ * Options > Remote Web Server > Run. That is the only way out of it now: the
+ * WMI namespace this used to read went with 0.9.5, and a copy downloaded
+ * today has no provider in it at all. A refused connection is the program
+ * not running or the server not switched on, and both are tried again every
+ * thirty seconds so doing either later is enough. */
+#define LHM_URL "http://127.0.0.1:8085/data.json"
+#define LHM_MAX (4u << 20)
+
 static struct
 {
-   IWbemServices *svc;
-   const char    *name;
-   uint64_t       retry_at;
-   bool           com;
+   CURL    *curl;
+   char    *buf;
+   size_t   len, cap;
+   uint64_t retry_at;
+   enum { LHM_UNKNOWN, LHM_UP, LHM_DOWN } state;
 } lhm;
 
-static bool lhm_connect( void )
+static size_t lhm_sink( char *p, size_t size, size_t n, void *unused )
 {
-   static const struct { const wchar_t *ns; const char *name; } spaces[] = {
-      { L"ROOT\\LibreHardwareMonitor", "LibreHardwareMonitor" },
-      { L"ROOT\\OpenHardwareMonitor",  "OpenHardwareMonitor"  },
-   };
-   static bool said = false;
-   IWbemLocator *loc = NULL;
-   HRESULT hr = S_OK;
-   size_t i;
+   size_t add = size * n;
 
-   if ( lhm.svc ) return true;
-   if ( lhm.retry_at && now_ms() < lhm.retry_at ) return false;
+   (void) unused;
+   if ( lhm.len + add + 1 > lhm.cap )
+   {
+      size_t cap = lhm.cap ? lhm.cap : 65536;
+      char *grown;
+
+      while ( cap < lhm.len + add + 1 ) cap *= 2;
+      /* Megabytes from port 8085 is something other than the document
+       * expected, and refusing it makes the transfer fail rather than
+       * grow. */
+      if ( cap > LHM_MAX ) return 0;
+      grown = realloc( lhm.buf, cap );
+      if ( !grown ) return 0;
+      lhm.buf = grown;
+      lhm.cap = cap;
+   }
+   memcpy( lhm.buf + lhm.len, p, add );
+   lhm.len += add;
+   lhm.buf[ lhm.len ] = '\0';
+   return add;
+}
+
+static void lhm_down( const char *why )
+{
+   if ( lhm.state != LHM_DOWN )
+      note( SENSORS_LOG_INFO, "sensors: LibreHardwareMonitor is not answering "
+            "at " LHM_URL " (%s), so no CPU temperature or power. Start it, "
+            "turn on Options > Remote Web Server > Run, and they appear", why );
+   lhm.state = LHM_DOWN;
    lhm.retry_at = now_ms() + 30000;
-
-   if ( !lhm.com )
-   {
-      /* S_FALSE and RPC_E_CHANGED_MODE both mean COM is already up on this
-       * thread, which is fine. The security call fails with RPC_E_TOO_LATE
-       * if something else set it first, which is also fine. */
-      CoInitializeEx( NULL, COINIT_MULTITHREADED );
-      CoInitializeSecurity( NULL, -1, NULL, NULL, RPC_C_AUTHN_LEVEL_DEFAULT,
-                            RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE,
-                            NULL );
-      lhm.com = true;
-   }
-
-   hr = CoCreateInstance( &CLSID_WbemLocator, NULL, CLSCTX_INPROC_SERVER,
-                          &IID_IWbemLocator, (void **) &loc );
-   if ( FAILED( hr ) || !loc )
-   {
-      note( SENSORS_LOG_INFO, "sensors: WMI is not available (0x%08lx), so no "
-            "CPU temperature or power", (unsigned long) hr );
-      return false;
-   }
-
-   for ( i = 0; i < sizeof spaces / sizeof spaces[0] && !lhm.svc; i++ )
-   {
-      BSTR ns = SysAllocString( spaces[i].ns );
-
-      hr = IWbemLocator_ConnectServer( loc, ns, NULL, NULL, NULL, 0, NULL,
-                                       NULL, &lhm.svc );
-      SysFreeString( ns );
-      if ( FAILED( hr ) ) lhm.svc = NULL;
-      else lhm.name = spaces[i].name;
-   }
-   IWbemLocator_Release( loc );
-   if ( !lhm.svc )
-   {
-      if ( !said )
-         note( SENSORS_LOG_INFO, "sensors: LibreHardwareMonitor is not running, "
-               "so no CPU temperature or power; start it and they appear "
-               "(0x%08lx)", (unsigned long) hr );
-      said = true;
-      return false;
-   }
-
-   CoSetProxyBlanket( (IUnknown *) lhm.svc, RPC_C_AUTHN_WINNT,
-                      RPC_C_AUTHZ_NONE, NULL, RPC_C_AUTHN_LEVEL_CALL,
-                      RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE );
-   note( SENSORS_LOG_INFO, "sensors: the CPU reports through %s", lhm.name );
-   said = false;
-   return true;
 }
 
-static void lhm_drop( void )
+/* The whole tree, or NULL. The miner calls curl_global_init before any
+ * thread starts, as libcurl requires; a standalone build of this file has
+ * to do the same. */
+static json_t *lhm_fetch( void )
 {
-   if ( lhm.svc ) IWbemServices_Release( lhm.svc );
-   lhm.svc = NULL;
-   lhm.name = NULL;
-}
+   json_error_t err;
+   json_t *root;
+   CURLcode res;
 
-static bool var_str( IWbemClassObject *o, const wchar_t *prop, char *out,
-                     size_t n )
-{
-   VARIANT v;
-   bool ok = false;
-
-   VariantInit( &v );
-   if ( SUCCEEDED( IWbemClassObject_Get( o, prop, 0, &v, NULL, NULL ) )
-        && V_VT( &v ) == VT_BSTR && V_BSTR( &v ) )
+   if ( lhm.state == LHM_DOWN && now_ms() < lhm.retry_at ) return NULL;
+   if ( !lhm.curl )
    {
-      /* Truncated rather than refused when long: a name is for matching
-       * its start, and the converter fails outright on a short buffer. */
-      char wide[ 256 ];
-
-      ok = WideCharToMultiByte( CP_UTF8, 0, V_BSTR( &v ), -1, wide,
-                                sizeof wide, NULL, NULL ) > 0;
-      if ( ok ) snprintf( out, n, "%s", wide );
+      lhm.curl = curl_easy_init();
+      if ( !lhm.curl ) return NULL;
+      curl_easy_setopt( lhm.curl, CURLOPT_URL, LHM_URL );
+      curl_easy_setopt( lhm.curl, CURLOPT_WRITEFUNCTION, lhm_sink );
+      curl_easy_setopt( lhm.curl, CURLOPT_CONNECTTIMEOUT_MS, 500L );
+      curl_easy_setopt( lhm.curl, CURLOPT_TIMEOUT_MS, 2000L );
+      curl_easy_setopt( lhm.curl, CURLOPT_FAILONERROR, 1L );
+      curl_easy_setopt( lhm.curl, CURLOPT_NOSIGNAL, 1L );
+      curl_easy_setopt( lhm.curl, CURLOPT_NOPROXY, "*" );
    }
-   VariantClear( &v );
-   if ( !ok && n ) out[0] = '\0';
-   return ok;
-}
-
-static bool var_num( IWbemClassObject *o, const wchar_t *prop, double *out )
-{
-   VARIANT v;
-   bool ok = false;
-
-   VariantInit( &v );
-   if ( SUCCEEDED( IWbemClassObject_Get( o, prop, 0, &v, NULL, NULL ) )
-        && SUCCEEDED( VariantChangeType( &v, &v, 0, VT_R8 ) ) )
+   lhm.len = 0;
+   res = curl_easy_perform( lhm.curl );
+   if ( res != CURLE_OK )
    {
-      *out = V_R8( &v );
-      ok = true;
+      lhm_down( curl_easy_strerror( res ) );
+      return NULL;
    }
-   VariantClear( &v );
-   return ok;
+   root = json_loadb( lhm.buf ? lhm.buf : "", lhm.len, 0, &err );
+   if ( !root )
+   {
+      lhm_down( "not the JSON expected" );
+      return NULL;
+   }
+   if ( lhm.state != LHM_UP )
+      note( SENSORS_LOG_INFO,
+            "sensors: the CPU reports through LibreHardwareMonitor" );
+   lhm.state = LHM_UP;
+   return root;
 }
 
 /* LibreHardwareMonitor's names for the CPU, AMD and Intel:
  *   temperature  "Core (Tctl/Tdie)"  "CCD1 (Tdie)"  "CPU Package"
  *   power        "Package"           "CPU Package"
- * The per-core ones and the CCD averages are left out. */
-static void lhm_read( struct cpu_sensors *c )
+ * The per-core ones and the CCD averages are left out. A sensor node
+ * carries SensorId, Type and RawValue, the last a number where the Value
+ * beside it is the formatted string the window shows. */
+static void lhm_walk( json_t *node, struct cpu_sensors *c, bool *any )
 {
-   static const wchar_t *wql =
-      L"SELECT Name, SensorType, Value FROM Sensor WHERE "
-      L"(SensorType='Temperature' OR SensorType='Power') AND "
-      L"(Identifier LIKE '/amdcpu/%' OR Identifier LIKE '/intelcpu/%')";
-   IEnumWbemClassObject *en = NULL;
-   BSTR lang, query;
-   HRESULT hr;
-   bool any = false;
+   const char *id = json_string_value( json_object_get( node, "SensorId" ) );
+   json_t *kids, *kid;
+   size_t i;
 
-   if ( !lhm_connect() ) return;
-
-   lang  = SysAllocString( L"WQL" );
-   query = SysAllocString( wql );
-   hr = IWbemServices_ExecQuery( lhm.svc, lang, query,
-                                 WBEM_FLAG_FORWARD_ONLY
-                                 | WBEM_FLAG_RETURN_IMMEDIATELY,
-                                 NULL, &en );
-   SysFreeString( lang );
-   SysFreeString( query );
-   if ( FAILED( hr ) || !en )
+   if ( id && ( !strncmp( id, "/amdcpu/", 8 )
+                || !strncmp( id, "/intelcpu/", 10 ) ) )
    {
-      /* The program went away and took its namespace with it. */
-      note( SENSORS_LOG_INFO, "sensors: %s stopped answering (0x%08lx)",
-            lhm.name, (unsigned long) hr );
-      lhm_drop();
-      return;
-   }
+      const char *type = json_string_value( json_object_get( node, "Type" ) );
+      const char *name = json_string_value( json_object_get( node, "Text" ) );
+      json_t *raw = json_object_get( node, "RawValue" );
+      double val = json_is_number( raw ) ? json_number_value( raw ) : 0;
 
-   for ( ;; )
-   {
-      IWbemClassObject *o = NULL;
-      ULONG got = 0;
-      char name[ 64 ], type[ 32 ];
-      double val;
-
-      hr = IEnumWbemClassObject_Next( en, WBEM_INFINITE, 1, &o, &got );
-      if ( FAILED( hr ) || !got || !o ) break;
-
-      if ( var_str( o, L"Name", name, sizeof name )
-           && var_str( o, L"SensorType", type, sizeof type )
-           && var_num( o, L"Value", &val ) && val > 0 )
+      if ( type && name && val > 0 )
       {
-         any = true;
+         *any = true;
          if ( !strcmp( type, "Temperature" ) )
          {
-            if ( !strncmp( name, "Core (Tctl", 10 ) || !strcmp( name, "CPU Package" ) )
+            if ( !strncmp( name, "Core (Tctl", 10 )
+                 || !strcmp( name, "CPU Package" ) )
                c->temp = (float) val;
             else if ( !strncmp( name, "CCD", 3 ) && !strstr( name, "Average" )
                       && !strstr( name, "Max" ) )
                zone_add( c, name, (float) val );
          }
-         else if ( !strcmp( name, "Package" ) || !strcmp( name, "CPU Package" ) )
+         else if ( !strcmp( type, "Power" )
+                   && ( !strcmp( name, "Package" )
+                        || !strcmp( name, "CPU Package" ) ) )
             c->power = (float) val;
       }
-      IWbemClassObject_Release( o );
    }
-   IEnumWbemClassObject_Release( en );
+   kids = json_object_get( node, "Children" );
+   json_array_foreach( kids, i, kid )
+      if ( json_is_object( kid ) ) lhm_walk( kid, c, any );
+}
 
-   if ( any ) c->source = lhm.name;
+static void lhm_read( struct cpu_sensors *c )
+{
+   json_t *root = lhm_fetch();
+   bool any = false;
+
+   if ( !root ) return;
+   lhm_walk( root, c, &any );
+   json_decref( root );
+   if ( any ) c->source = "LibreHardwareMonitor";
 }
 
 #endif /* _WIN32 */

@@ -222,8 +222,9 @@ window onto a running miner, not a record of one.
 The readings have gaps, each for a reason given in the next section: no AMD
 card readings on Windows, no memory temperature from consumer Nvidia boards,
 and no CPU temperature or power on Windows unless LibreHardwareMonitor is
-running. Where a reading is missing the page leaves the column out rather
-than showing a zero, and says underneath what it looked for.
+running with its web server on. Where a reading is missing the page leaves
+the column out rather than showing a zero, and says underneath what it
+looked for.
 
 ## Temperatures, power and clocks
 
@@ -252,13 +253,16 @@ API. Where they come from:
 * **CPU on Windows**: the effective clock of each logical CPU from the
   `Processor Information` performance counters, which is the kernel's own
   APERF/MPERF ratio and includes boost. Temperature and power only from
-  **LibreHardwareMonitor**, read over its WMI namespace while it is running.
-  Windows gives user mode no way to read either; every tool that shows them
-  — HWMonitor, HWiNFO, LibreHardwareMonitor itself — ships a kernel driver
-  to read the MSRs and SMN registers. A miner carrying a ring-0 driver is a
-  different kind of program, and exactly the one antivirus is right to
-  flag, so this one does not. Start LibreHardwareMonitor and the readings
-  appear within a poll; stop it and they go. On some AMD platforms Windows
+  **LibreHardwareMonitor**, read from the JSON its web server publishes on
+  port 8085 while it is running: in that program, Options > Remote Web
+  Server > Run. Windows gives user mode no way to read either; every tool
+  that shows them — HWMonitor, HWiNFO, LibreHardwareMonitor itself — ships
+  a kernel driver to read the MSRs and SMN registers. A miner carrying a
+  ring-0 driver is a different kind of program, and exactly the one
+  antivirus is right to flag, so this one does not. Switch the web server
+  on and the readings appear within half a minute; stop the program and
+  they go. Its WMI namespace, which older tools read, is not used because
+  LibreHardwareMonitor 0.9.5 dropped it. On some AMD platforms Windows
   reports the same clock for every core on a CCD.
 
 `BUSY` needs no driver and is the one that answers the question the rest
