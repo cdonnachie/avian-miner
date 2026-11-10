@@ -820,7 +820,26 @@ function render(st) {
 
   renderCards(st);
   renderBlocks(st);
+
+  /* A reload used to land at the top. The page is empty until the first
+     poll answers, so when the browser tries to put the scroll position
+     back there is nothing that tall to put it in, and by the time the
+     tables exist it has given up. So the position is kept across the
+     reload here and put back once there is a page to put it in. */
+  if (savedScroll > 0) {
+    window.scrollTo(0, savedScroll);
+    savedScroll = 0;
+  }
 }
+
+var savedScroll = 0;
+try {
+  if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+  savedScroll = Number(sessionStorage.getItem("avian-scroll")) || 0;
+  window.addEventListener("pagehide", function () {
+    try { sessionStorage.setItem("avian-scroll", String(window.scrollY)); } catch (e) {}
+  });
+} catch (e) {}
 
 function renderCards(st) {
   var cards = st.cards || [];
