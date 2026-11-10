@@ -71,6 +71,7 @@
 #endif
 
 #include "miner.h"
+#include "cpus.h"
 #if defined(HAVE_CUDA)
 #include "cuda/avian-gpu-backend.h"
 #endif
@@ -150,7 +151,10 @@ int opt_param_n = 0;
 int opt_param_r = 0;
 int opt_n_threads = 0;
 bool opt_sapling = false;
-uint64_t opt_affinity = 0xFFFFFFFFFFFFFFFFULL;  // default, use all cores
+bool opt_affinity = true;        // pin each thread to a CPU; which CPUs is cpus.c's
+static bool opt_affinity_given;  // --cpu-affinity was on the command line
+static bool opt_threads_given;   // -t was
+static bool opt_list_cpus;
 int opt_priority = 0;  // deprecated
 int num_cpus = 1;
 int num_cpugroups = 1;  // For Windows
@@ -264,24 +268,6 @@ char*  lp_id;
 static void   workio_cmd_free(struct workio_cmd *wc);
 
 int *thread_affinity_map;
-
-// display affinity mask graphically
-static void format_affinity_mask( char *mask_str, uint64_t mask )
-{
-#if defined(WINDOWS_CPU_GROUPS_ENABLED)
-   int n = num_cpus / num_cpugroups;
-#else
-   int n = num_cpus < 64 ? num_cpus : 64;
-#endif
-   int i;
-   for ( i = 0; i < n; i++ )
-   {
-      if ( mask & 1 )  mask_str[i] = '!';
-      else             mask_str[i] = '.';
-      mask >>= 1;
-   }
-   memset( &mask_str[i], 0, 64 - i );
-}
 
 #ifdef __linux /* Linux specific policy and affinity management */
 #include <sched.h>
@@ -3760,6 +3746,7 @@ void parse_arg(int key, char *arg )
 		if (v < 0 || v > 9999) /* sanity check */
 			show_usage_and_exit(1);
 		opt_n_threads = v;
+		opt_threads_given = v > 0;
 		break;
 	case 'u':  // user
 		free(rpc_user);
@@ -3938,9 +3925,18 @@ void parse_arg(int key, char *arg )
 		break;
 #endif
 	case 1020:  // cpu-affinity
-      p = strstr( arg, "0x" );
-      opt_affinity = p ? strtoull( p, NULL, 16 )
-                       : atoll( arg );
+   {
+      char err[ 256 ];
+      if ( !cpus_parse( arg, num_cpus, err, sizeof err ) )
+      {
+         applog( LOG_ERR, "%s", err );
+         show_usage_and_exit( 1 );
+      }
+      opt_affinity_given = true;
+      break;
+   }
+   case 1212:  // list-cpus
+      opt_list_cpus = true;
       break;
 	case 1021:  // cpu-priority
 		v = atoi(arg);
@@ -4189,6 +4185,10 @@ int main(int argc, char *argv[])
       return x16rt_cuda_list_devices() ? 0 : 1;
 #endif
 
+   /* The same for the CPUs. */
+   if ( opt_list_cpus )
+      return cpus_list( num_cpus );
+
    if ( opt_algo == ALGO_NULL )
    {
       fprintf( stderr, "%s: No algo parameter specified\n", argv[0] );
@@ -4385,24 +4385,32 @@ int main(int argc, char *argv[])
 
 #endif
 
+   /* -t beside --cpu-affinity, and not matching it, was the trap: the extra
+    * threads wrapped round onto CPUs already taken, with only a warning. So
+    * without -t the thread count is the CPUs listed. With both, the mismatch
+    * is said and the threads cycle through the list as before, since four
+    * threads on two CPUs can be meant. A GPU run is one thread per card
+    * whatever the list says; the list is where that thread goes. */
+   if ( opt_affinity_given && !opt_threads_given && !opt_gpu )
+      opt_n_threads = cpus_count( num_cpus );
+
    conditional_state = malloc( opt_n_threads * ((sizeof(bool)) ) );
    memset( conditional_state, 0, opt_n_threads * ((sizeof(bool)) ) );
-   
-   const int map_size = opt_n_threads < num_cpus ? num_cpus : opt_n_threads;   
+
+   const int map_size = opt_n_threads < num_cpus ? num_cpus : opt_n_threads;
    thread_affinity_map = malloc( map_size * (sizeof (int)) );
    if ( !thread_affinity_map )
    {
       applog( LOG_ERR, "CPU Affinity disabled, memory allocation failed" );
-      opt_affinity = 0ULL;
-   }   
+      opt_affinity = false;
+   }
    if ( opt_affinity )
    {
-      int active_cpus = 0; // total CPUs available using rolling affinity mask
+      int active_cpus = cpus_count( num_cpus );
       for ( int thr = 0, cpu = 0; thr < map_size; thr++, cpu++ )
       {
-         while ( !( ( opt_affinity >> ( cpu & 63 ) ) & 1ULL ) ) cpu++;   
+         while ( !cpus_allowed( cpu % num_cpus ) ) cpu++;
          thread_affinity_map[ thr ] = cpu % num_cpus;
-         if ( cpu < num_cpus ) active_cpus++;
       }
       // Neither of these under --gpu, for the same reason. One host thread
       // per card is right however few cores there are, so the warning reads
@@ -4411,12 +4419,16 @@ int main(int argc, char *argv[])
       // threads, one per GPU" it reads as though the CPU is about to start
       // hashing as well. A three-card rig on a dual-core host is the case.
       if ( opt_n_threads > active_cpus && !opt_gpu )
-         applog( LOG_WARNING, "More miner threads (%d) than active CPUs in affinity mask (%d)", opt_n_threads, active_cpus );
+         applog( LOG_WARNING, "More miner threads (%d) than CPUs in --cpu-affinity (%d), so some share a CPU", opt_n_threads, active_cpus );
       if ( !opt_quiet && !opt_gpu )
       {
-         char affinity_mask[64];
-         format_affinity_mask( affinity_mask, opt_affinity );
-         applog( LOG_INFO, "CPU affinity [%s]", affinity_mask );
+         char *pic = malloc( num_cpus + 1 );
+         if ( pic )
+         {
+            cpus_format( pic, num_cpus + 1, num_cpus );
+            applog( LOG_INFO, "CPU affinity [%s]", pic );
+            free( pic );
+         }
       }
    }
     

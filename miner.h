@@ -684,7 +684,7 @@ extern int num_cpugroups;
 /* Which logical CPU each mining thread is pinned to, by thread, when
  * opt_affinity is set and there is more than one CPU to pin to. */
 extern int *thread_affinity_map;
-extern uint64_t opt_affinity;
+extern bool opt_affinity;
 extern int opt_priority;
 extern bool opt_hash_meter;
 extern uint32_t accepted_share_count;
@@ -747,7 +747,8 @@ Options:\n\
   -p, --pass=PASSWORD   password for mining server\n\
       --cert=FILE       certificate for mining server using SSL\n\
   -x, --proxy=[PROTOCOL://]HOST[:PORT]  connect through a proxy\n\
-  -t, --threads=N       number of miner threads (default: number of processors)\n\
+  -t, --threads=N       number of miner threads (default: the CPUs in --cpu-affinity,\n\
+                        or all of them)\n\
   -r, --retries=N       number of times to retry if a network call fails\n\
                           (default: retry indefinitely)\n\
       --retry-pause=N   time to pause between retries, in seconds (default: 30)\n\
@@ -778,7 +779,10 @@ Options:\n\
 "\
   -B, --background      run the miner in the background\n\
       --benchmark       run in offline benchmark mode\n\
-      --cpu-affinity    set process affinity to cpu core(s), mask 0x3 for cores 0 and 1\n\
+      --cpu-affinity=L  the CPUs to mine on: a list, 0-21 or 0-11,16-23, or a hex\n\
+                        mask such as 0x3fffff. Without -t, one thread per CPU listed\n\
+      --list-cpus       print how the CPUs pair into cores, and the --cpu-affinity\n\
+                        pair for running a CPU and a GPU miner together, then exit\n\
       --cpu-priority    set process priority (default: 0 idle, 2 normal to 5 highest) (deprecated)\n\
       --sv2=HOST:PORT           mine over Stratum v2 against an Avian pool\n\
       --sv2-authority=KEY       the pool's authority public key, base58 or 64 hex\n\
@@ -842,6 +846,7 @@ static struct option const options[] = {
         { "coinbase-sig", 1, NULL, 1015 },
         { "config", 1, NULL, 'c' },
         { "cpu-affinity", 1, NULL, 1020 },
+        { "list-cpus", 0, NULL, 1212 },
         { "cpu-priority", 1, NULL, 1021 },
         { "no-color", 0, NULL, 1002 },
         { "debug", 0, NULL, 'D' },
