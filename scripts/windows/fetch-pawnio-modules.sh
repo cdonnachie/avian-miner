@@ -41,10 +41,24 @@ echo "$SHA256  $WORK/$ZIP" | sha256sum -c - >/dev/null || {
     exit 1
 }
 
-# PowerShell's Expand-Archive rather than unzip, which MSYS2 does not install
-# by default; this script only ever runs on the Windows build host.
-powershell.exe -NoProfile -Command \
-    "Expand-Archive -LiteralPath '$(cygpath -w "$WORK/$ZIP")' -DestinationPath '$(cygpath -w "$WORK/x")' -Force"
+# Whichever unzipper this shell has: unzip on most Linux boxes and WSL,
+# python nearly everywhere, PowerShell on the MSYS2 build host where unzip
+# is not installed by default. The release is built from MSYS2, but the
+# modules get fetched from wherever someone happens to be sitting.
+mkdir -p "$WORK/x"
+if command -v unzip >/dev/null 2>&1; then
+    unzip -q "$WORK/$ZIP" -d "$WORK/x"
+elif command -v python3 >/dev/null 2>&1; then
+    python3 -m zipfile -e "$WORK/$ZIP" "$WORK/x"
+elif command -v python >/dev/null 2>&1; then
+    python -m zipfile -e "$WORK/$ZIP" "$WORK/x"
+elif command -v powershell.exe >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1; then
+    powershell.exe -NoProfile -Command \
+        "Expand-Archive -LiteralPath '$(cygpath -w "$WORK/$ZIP")' -DestinationPath '$(cygpath -w "$WORK/x")' -Force"
+else
+    echo "no unzip, python or PowerShell here to open $ZIP with" >&2
+    exit 1
+fi
 
 for f in $WANT; do
     found=$(find "$WORK/x" -type f -name "$f" | head -n 1)
