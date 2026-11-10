@@ -195,8 +195,13 @@ does not already report, so anything here can be scripted without it:
 | | `SOL` | blocks solved this run |
 | | `ALGO`, `VER`, `URL`, `UPTIME` | what is running, where, and for how long |
 | | `DIFF`, `ACCMN` | network difficulty, accepted shares per minute |
+| | `TEMP`, `FREQ` | CPU package temperature and mean effective clock in MHz; both 0 when unknown, as they were before there were sensors |
+| | `POWER`, `SENSORS`, `TEMP_<die>` | package watts, what answered (`k10temp`, `LibreHardwareMonitor`...), and one temperature per die (`TEMP_CCD1`); each only when known |
 | `threads` | `CPU`, `<prefix>H/s` | thread number and its rate, prefix included |
+| | `BUSY` | the share of its CPU the thread got since the last call, in percent |
+| | `PIN`, `CLOCK` | on a CPU run with an affinity mask: the logical CPU the thread is pinned to and that CPU's effective MHz |
 | | `GPU`, `CARD`, `VENDOR`, `BUS` | the card, when mining on one |
+| | `TEMP`, `MEMTEMP`, `HOTSPOT`, `FAN`, `POWER`, `CLOCK`, `MEMCLOCK` | the card's readings: degrees, percent, watts and MHz, each only when its driver reports it |
 | | `SOL` | blocks this card has found |
 | `blocks` | `NUM`, `TS`, `HEIGHT` | which solve, when, and at what height |
 | | `CPU`, `GPU`, `CARD`, `BUS` | the card that found it, absent if unknown |
@@ -214,6 +219,57 @@ hour at the default five second interval. The miner keeps the last sixteen
 solves and no more. There is no database and no log, by design — this is a
 window onto a running miner, not a record of one.
 
-No per-card temperature, fan or power, because the miner does not have them:
-the backends report identity and nothing else. On HiveOS the agent reads
-those from the driver, which is a better source than a miner would be.
+The readings have gaps, each for a reason given in the next section: no AMD
+card readings on Windows, no memory temperature from consumer Nvidia boards,
+and no CPU temperature or power on Windows unless LibreHardwareMonitor is
+running. Where a reading is missing the page leaves the column out rather
+than showing a zero, and says underneath what it looked for.
+
+## Temperatures, power and clocks
+
+The miner reads these itself and puts them on the API, so the dashboard
+shows them from wherever it runs, and so can anything else that reads the
+API. Where they come from:
+
+* **Nvidia cards**: NVML, the driver's own monitoring library, loaded at run
+  time if it is installed, so the build needs no SDK and a machine without
+  the driver loses the readings and nothing else. Core temperature, fan,
+  board power, core and memory clock. The memory junction temperature that
+  tools like HWiNFO show on GDDR6X boards is not public in NVML; the field
+  that carries it answers on datacenter boards, and the miner reports it
+  when it does.
+* **AMD cards, Linux only**: the hwmon node the amdgpu driver puts under the
+  card's PCI device, found by the same bus number the API already reports.
+  Edge, junction and memory temperatures, fan, power, and the current DPM
+  level for both clocks. There is no ADL, so an AMD card on Windows reports
+  identity and rate alone.
+* **CPU on Linux**: the `k10temp`, `zenpower` or `coretemp` driver, found by
+  name rather than by hwmon number, which changes between boots. On Zen
+  that gives `Tctl` or `Tdie` for the package and one `Tccd` per die, which
+  arrive as `TEMP_CCD1`, `TEMP_CCD2`. Package power from RAPL when it is
+  readable, which on most kernels since 5.10 means as root — a rig, not a
+  desktop. Per-CPU clocks from cpufreq.
+* **CPU on Windows**: the effective clock of each logical CPU from the
+  `Processor Information` performance counters, which is the kernel's own
+  APERF/MPERF ratio and includes boost. Temperature and power only from
+  **LibreHardwareMonitor**, read over its WMI namespace while it is running.
+  Windows gives user mode no way to read either; every tool that shows them
+  — HWMonitor, HWiNFO, LibreHardwareMonitor itself — ships a kernel driver
+  to read the MSRs and SMN registers. A miner carrying a ring-0 driver is a
+  different kind of program, and exactly the one antivirus is right to
+  flag, so this one does not. Start LibreHardwareMonitor and the readings
+  appear within a poll; stop it and they go. On some AMD platforms Windows
+  reports the same clock for every core on a CCD.
+
+`BUSY` needs no driver and is the one that answers the question the rest
+cannot: whether a slow thread is hashing slowly or not being run. It is the
+thread's own CPU time over wall time between two API calls, by
+`GetThreadTimes` or `pthread_getcpuclockid`. A hasher with its logical CPU
+to itself reads 100 whatever its rate; one at a third of its neighbours'
+rate, at the same clock, with `BUSY` at 35, is being pre-empted — by
+something at a higher priority on the same logical CPU, which on a desktop
+is usually whatever else the machine is doing — and no amount of tuning the
+hash loop will change that. The page flags a CPU thread under 90.
+
+The miner says once in its log where each reading came from, or what it
+looked for and did not find, so a rig with no temperatures can read why.

@@ -134,7 +134,7 @@
     text-transform: uppercase; color: var(--muted);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .tile-value { font-size: 21px; font-weight: 600; line-height: 1.25; }
+  .tile-value { font-size: 21px; font-weight: 600; line-height: 1.25; white-space: nowrap; }
   .tile-value.found { color: var(--series-1); }
 
   /* ---- chart ---- */
@@ -198,6 +198,12 @@
   }
   .found-n { font-weight: 600; color: var(--series-1); }
   .found-0 { color: var(--muted); }
+  /* A reading past where its part throttles. The number is still there; the
+     colour only says look here. */
+  .hot { color: var(--critical); font-weight: 600; }
+  /* A second, smaller line under a cell's value for what qualifies it, so a
+     column stays as narrow as its main figure. */
+  .under { display: block; font-size: 11px; line-height: 1.3; color: var(--ink-2); font-weight: 400; }
   .spark { display: block; }
 
   .empty { color: var(--ink-2); font-size: 13px; padding: 4px 0 2px; }
@@ -276,6 +282,7 @@
         <tbody id="cards-body"></tbody>
       </table>
     </div>
+    <p class="empty" id="sensors-note" hidden></p>
   </div>
 
   <div class="card">
@@ -340,6 +347,33 @@ function diffText(d) {
   if (d >= 1e6) return (d / 1e6).toFixed(2) + "M";
   if (d >= 1e3) return (d / 1e3).toFixed(2) + "k";
   return d >= 100 ? d.toFixed(0) : d.toPrecision(4);
+}
+
+function has(v) { return v !== null && v !== undefined; }
+
+function tempText(t) { return has(t) ? Math.round(t) + " °C" : "—"; }
+
+function watts(w) {
+  return has(w) ? (w >= 100 ? Math.round(w) : w.toFixed(1)) + " W" : "—";
+}
+
+function mhz(v) {
+  if (!has(v)) return "—";
+  return v >= 1000 ? (v / 1000).toFixed(2) + " GHz" : Math.round(v) + " MHz";
+}
+
+/* Hashes per watt, which is what decides whether the power is worth it.
+   The rate's own unit with /s swapped for /W, as miners write it. */
+function perWatt(hs, w) {
+  if (!has(hs) || !has(w) || !(w > 0)) return "—";
+  var p = splitRate(hs / w);
+  return p ? p.value + " " + p.unit.replace("/s", "/W") : "—";
+}
+
+/* Core and memory throttle at different points, so one threshold each. */
+function hot(c) {
+  return (has(c.temp) && c.temp >= 90) || (has(c.mem_temp) && c.mem_temp >= 95)
+      || (has(c.hotspot) && c.hotspot >= 100);
 }
 
 function elapsed(seconds) {
@@ -739,6 +773,35 @@ function render(st) {
                                        ? "—" : tot.accmn.toFixed(2)));
   tiles.appendChild(tile("Difficulty", diffText(tot.diff)));
 
+  /* Power and heat, when the miner has them. A rig's power is summed only
+     when every card reports it; a partial sum would read as the whole. */
+  var cpu = st.cpu || {}, cards = st.cards || [];
+  if (st.gpu) {
+    var powered = cards.filter(function (c) { return has(c.power); });
+    if (powered.length && powered.length === cards.length) {
+      var sum = powered.reduce(function (a, c) { return a + c.power; }, 0);
+      tiles.appendChild(tile("Power", watts(sum)));
+      tiles.appendChild(tile("Efficiency", perWatt(tot.hashrate, sum)));
+    }
+    var hottest = null;
+    cards.forEach(function (c) {
+      if (has(c.temp) && (hottest === null || c.temp > hottest)) hottest = c.temp;
+    });
+    if (hottest !== null)
+      tiles.appendChild(tile("Hottest card", tempText(hottest), hottest >= 90 ? "hot" : null));
+  } else {
+    if (has(cpu.temp))
+      tiles.appendChild(tile("CPU temp", tempText(cpu.temp), cpu.temp >= 90 ? "hot" : null));
+    if (cpu.zones && cpu.zones.length)
+      tiles.appendChild(tile(cpu.zones.map(function (z) { return z.label; }).join(" / "),
+                             cpu.zones.map(function (z) { return Math.round(z.temp); }).join(" / ") + " °C"));
+    if (has(cpu.power)) {
+      tiles.appendChild(tile("CPU power", watts(cpu.power)));
+      tiles.appendChild(tile("Efficiency", perWatt(tot.hashrate, cpu.power)));
+    }
+    if (has(cpu.freq)) tiles.appendChild(tile("Clock", mhz(cpu.freq)));
+  }
+
   drawChart(st.history);
 
   clear(samplesBody);
@@ -756,18 +819,86 @@ function render(st) {
 function renderCards(st) {
   var cards = st.cards || [];
   var gpu = !!st.gpu;
+  var cpu = st.cpu || {};
   document.getElementById("cards-title").textContent = gpu ? "Cards" : "Threads";
+
+  /* A column appears when any row has something for it, so an older miner,
+     or a card whose driver gives no readings, gets the table it always had. */
+  var show = {};
+  ["busy", "pin", "clock", "temp", "fan", "power"].forEach(function (k) {
+    show[k] = cards.some(function (c) { return has(c[k]); });
+  });
+
+  var cols = [];
+  function col(label, cls, cell) { cols.push({ label: label, cls: cls, cell: cell }); }
+
+  col(gpu ? "GPU" : "Thread", null, function (c) {
+    var td = el("td");
+    td.appendChild(el("span", "idx", gpu && has(c.gpu) ? c.gpu : c.thr));
+    return td;
+  });
+  if (gpu) {
+    col("Card", null, function (c) {
+      var td = el("td");
+      td.appendChild(el("span", "cardname", cardLabel(c)));
+      if (c.vendor) {
+        td.appendChild(document.createTextNode(" "));
+        td.appendChild(el("span", "dim", c.vendor));
+      }
+      return td;
+    });
+    col("Bus", null, function (c) { return el("td", "dim", has(c.bus) ? c.bus : "—"); });
+  } else if (show.pin) {
+    col("CPU", null, function (c) { return el("td", "dim", has(c.pin) ? c.pin : "—"); });
+  }
+  col("Hash rate", "n", function (c) { return el("td", "n", rate(c.hashrate)); });
+  col("Trend", null, function (c) {
+    var td = el("td");
+    td.appendChild(sparkline(c.history));
+    return td;
+  });
+  /* How much of its CPU the thread got. A hasher below ninety is being
+     pre-empted by something, which is the usual reason one thread is slow.
+     A card's launcher thread is meant to be mostly idle, so for cards the
+     column would only ever say so, and is left out. */
+  if (show.busy && !gpu) col("Busy", "n", function (c) {
+    var starved = has(c.busy) && c.busy < 90;
+    return el("td", "n" + (starved ? " hot" : ""), has(c.busy) ? Math.round(c.busy) + "%" : "—");
+  });
+  if (show.temp) col("Temp", "n", function (c) {
+    var td = el("td", "n" + (hot(c) ? " hot" : ""));
+    td.appendChild(document.createTextNode(tempText(c.temp)));
+    var more = [];
+    if (has(c.mem_temp)) more.push("mem " + Math.round(c.mem_temp));
+    if (has(c.hotspot)) more.push("hot spot " + Math.round(c.hotspot));
+    if (more.length) td.appendChild(el("span", "under", more.join(" · ")));
+    return td;
+  });
+  if (show.fan) col("Fan", "n", function (c) {
+    return el("td", "n", has(c.fan) ? c.fan + "%" : "—");
+  });
+  /* Power and what it buys, together: a card's watts mean little without
+     the rate they are paying for. */
+  if (show.power) col("Power", "n", function (c) {
+    var td = el("td", "n");
+    td.appendChild(document.createTextNode(watts(c.power)));
+    if (has(c.power) && has(c.hashrate))
+      td.appendChild(el("span", "under", perWatt(c.hashrate, c.power)));
+    return td;
+  });
+  if (show.clock) col("Clock", "n", function (c) {
+    var td = el("td", "n");
+    td.appendChild(document.createTextNode(mhz(c.clock)));
+    if (has(c.mem_clock)) td.appendChild(el("span", "under", "mem " + mhz(c.mem_clock)));
+    return td;
+  });
+  col("Blocks found", "n", function (c) {
+    return el("td", "n " + (c.solved ? "found-n" : "found-0"), count(c.solved));
+  });
 
   clear(cardsHead);
   var hr = el("tr");
-  [gpu ? "GPU" : "Thread", gpu ? "Card" : "", gpu ? "Bus" : ""]
-    .forEach(function (label, i) {
-      if (!label && i) return;
-      hr.appendChild(el("th", null, label));
-    });
-  ["Hash rate", "Trend", "Blocks found"].forEach(function (label, i) {
-    hr.appendChild(el("th", i === 1 ? null : "n", label));
-  });
+  cols.forEach(function (k) { hr.appendChild(el("th", k.cls, k.label)); });
   cardsHead.appendChild(hr);
 
   clear(cardsBody);
@@ -775,35 +906,38 @@ function renderCards(st) {
     var tr = el("tr");
     var td = el("td", "empty", st.ok ? "No mining threads reported."
                                      : "Waiting for the miner…");
-    td.colSpan = 6;
+    td.colSpan = cols.length;
     cardsBody.appendChild(tr).appendChild(td);
-    return;
+  } else {
+    cards.forEach(function (c) {
+      var row = el("tr");
+      cols.forEach(function (k) { row.appendChild(k.cell(c)); });
+      cardsBody.appendChild(row);
+    });
   }
 
-  cards.forEach(function (c) {
-    var tr = el("tr");
-    tr.appendChild(el("td", null))
-      .appendChild(el("span", "idx",
-        gpu && c.gpu !== null && c.gpu !== undefined ? c.gpu : c.thr));
-
+  /* Where the readings come from, or why there are none. BUSY needs no
+     driver and every miner that knows about sensors sends it, so a reply
+     without it is an older miner, which has nothing to explain. */
+  var note = document.getElementById("sensors-note");
+  var text = "";
+  if (st.ok && cards.length && show.busy) {
     if (gpu) {
-      var nameCell = el("td");
-      nameCell.appendChild(el("span", "cardname", cardLabel(c)));
-      if (c.vendor) {
-        nameCell.appendChild(document.createTextNode(" "));
-        nameCell.appendChild(el("span", "dim", c.vendor));
-      }
-      tr.appendChild(nameCell);
-      tr.appendChild(el("td", "dim",
-        c.bus === null || c.bus === undefined ? "—" : c.bus));
+      if (!show.temp && !show.power)
+        text = "No card readings: the miner found neither NVML (Nvidia) nor " +
+               "an hwmon node for the card (AMD, Linux only).";
+    } else if (cpu.source) {
+      text = "CPU temperature" + (has(cpu.power) ? " and power" : "") +
+             " from " + cpu.source + ".";
+    } else {
+      text = "No CPU temperature or power: the miner found no source. On Linux " +
+             "that is the k10temp, zenpower or coretemp driver; on Windows it is " +
+             "LibreHardwareMonitor running alongside, since Windows itself gives " +
+             "none without a kernel driver.";
     }
-
-    tr.appendChild(el("td", "n", rate(c.hashrate)));
-    tr.appendChild(el("td")).appendChild(sparkline(c.history));
-    tr.appendChild(el("td", "n " + (c.solved ? "found-n" : "found-0"),
-                      count(c.solved)));
-    cardsBody.appendChild(tr);
-  });
+  }
+  note.textContent = text;
+  note.hidden = !text;
 }
 
 function renderBlocks(st) {

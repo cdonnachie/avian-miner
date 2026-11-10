@@ -711,6 +711,9 @@ static void shared_fail( struct shared *sh, const char *msg )
 /* polling                                                              */
 /* ------------------------------------------------------------------ */
 
+/* A reading the miner may or may not have sent. */
+struct sens { double v; bool ok; };
+
 struct card {
    long         thr;
    long         gpu, bus;
@@ -719,6 +722,10 @@ struct card {
    char         vendor[64];
    double       hashrate;
    long         solved;
+   /* busy, pin and clock for a CPU thread; the rest for a card. Whichever
+    * the miner does not have, it does not send. */
+   struct sens  busy, pin, clock, mem_clock, temp, mem_temp, hotspot, fan,
+                power;
    struct hist  hist;
 };
 
@@ -817,6 +824,61 @@ static void json_long_field( struct buf *b, const char *rec, size_t len,
    buf_json_num( b, (double) v, ok );
 }
 
+static void sens_field( struct sens *s, const char *rec, size_t len,
+                        const char *key )
+{
+   s->ok = field_num( rec, len, key, &s->v );
+}
+
+static void json_sens( struct buf *b, const char *key, const struct sens *s )
+{
+   buf_printf( b, ",\"%s\":", key );
+   buf_json_num( b, s->v, s->ok );
+}
+
+/* The next field of a record whose key starts with prefix, from *pos, which
+ * is 0 to begin and is left where the walk should resume. The key is given
+ * without its prefix. For the summary's TEMP_<die>= fields, whose names the
+ * miner takes from whatever driver answered. */
+static bool rec_next_prefixed( const char *rec, size_t len, const char *prefix,
+                               size_t *pos, char *key, size_t kn, double *v )
+{
+   size_t plen = strlen( prefix );
+   size_t i = *pos;
+
+   while ( i < len )
+   {
+      size_t start = i, eq, end, klen, vlen;
+      char tmp[64], *endp;
+
+      while ( i < len && rec[i] != ';' ) i++;
+      end = i;
+      if ( i < len ) i++;
+
+      for ( eq = start; eq < end && rec[eq] != '='; eq++ )
+         ;
+      if ( eq >= end || eq - start <= plen ) continue;
+      if ( memcmp( rec + start, prefix, plen ) != 0 ) continue;
+
+      klen = eq - start - plen;
+      if ( klen >= kn ) klen = kn - 1;
+      memcpy( key, rec + start + plen, klen );
+      key[ klen ] = '\0';
+
+      vlen = end - ( eq + 1 );
+      if ( vlen >= sizeof tmp ) vlen = sizeof tmp - 1;
+      memcpy( tmp, rec + eq + 1, vlen );
+      tmp[ vlen ] = '\0';
+      *v = strtod( tmp, &endp );
+      if ( endp == tmp ) continue;
+
+      *pos = i;
+      return true;
+   }
+   *pos = i;
+   return false;
+}
+
 static bool poll_once( struct poller *p, char *err, size_t errlen )
 {
    struct buf summary = {0}, threads = {0}, blocks = {0}, body = {0};
@@ -892,6 +954,43 @@ static bool poll_once( struct poller *p, char *err, size_t errlen )
    json_long_field( &body, rec, len, "FREQ" );
    buf_puts( &body, "}" );
 
+   /* ---- the CPU package, when the miner found a source for it ---- */
+
+   buf_puts( &body, ",\"cpu\":{\"source\":" );
+   if ( field_str( rec, len, "SENSORS", tmp, sizeof tmp ) && tmp[0] )
+      buf_json_str( &body, tmp );
+   else
+      buf_puts( &body, "null" );
+   /* TEMP and FREQ are always sent and were 0 for unknown long before there
+    * were sensors, so 0 means absent here. The two steps are deliberate;
+    * see json_num_field. */
+   {
+      double v = 0;
+      bool ok;
+      size_t pos = 0;
+      char label[32];
+
+      ok = field_num( rec, len, "TEMP", &v ) && v > 0;
+      buf_puts( &body, ",\"temp\":" );
+      buf_json_num( &body, v, ok );
+      ok = field_num( rec, len, "FREQ", &v ) && v > 0;
+      buf_puts( &body, ",\"freq\":" );
+      buf_json_num( &body, v, ok );
+      buf_puts( &body, ",\"power\":" );
+      json_num_field( &body, rec, len, "POWER" );
+
+      buf_puts( &body, ",\"zones\":[" );
+      i = 0;
+      while ( rec_next_prefixed( rec, len, "TEMP_", &pos, label, sizeof label, &v ) )
+      {
+         if ( i++ ) buf_puts( &body, "," );
+         buf_puts( &body, "{\"label\":" );
+         buf_json_str( &body, label );
+         buf_printf( &body, ",\"temp\":%.1f}", v );
+      }
+      buf_puts( &body, "]}" );
+   }
+
    /* ---- cards ---- */
 
    r.p = threads.p ? threads.p : "";
@@ -912,6 +1011,15 @@ static bool poll_once( struct poller *p, char *err, size_t errlen )
       field_str( rec, len, "CARD", c->name, sizeof c->name );
       field_str( rec, len, "VENDOR", c->vendor, sizeof c->vendor );
       if ( !field_long( rec, len, "SOL", &c->solved ) ) c->solved = 0;
+      sens_field( &c->busy,      rec, len, "BUSY" );
+      sens_field( &c->pin,       rec, len, "PIN" );
+      sens_field( &c->clock,     rec, len, "CLOCK" );
+      sens_field( &c->mem_clock, rec, len, "MEMCLOCK" );
+      sens_field( &c->temp,      rec, len, "TEMP" );
+      sens_field( &c->mem_temp,  rec, len, "MEMTEMP" );
+      sens_field( &c->hotspot,   rec, len, "HOTSPOT" );
+      sens_field( &c->fan,       rec, len, "FAN" );
+      sens_field( &c->power,     rec, len, "POWER" );
       c->has_rate = field_rate( rec, len, &c->hashrate );
       if ( c->has_gpu ) gpu = true;
       if ( c->has_rate )
@@ -923,7 +1031,17 @@ static bool poll_once( struct poller *p, char *err, size_t errlen )
                           c->has_bus, c->bus );
       buf_puts( &body, ",\"hashrate\":" );
       buf_json_num( &body, c->hashrate, c->has_rate );
-      buf_printf( &body, ",\"solved\":%ld,\"history\":", c->solved );
+      buf_printf( &body, ",\"solved\":%ld", c->solved );
+      json_sens( &body, "busy",      &c->busy );
+      json_sens( &body, "pin",       &c->pin );
+      json_sens( &body, "clock",     &c->clock );
+      json_sens( &body, "mem_clock", &c->mem_clock );
+      json_sens( &body, "temp",      &c->temp );
+      json_sens( &body, "mem_temp",  &c->mem_temp );
+      json_sens( &body, "hotspot",   &c->hotspot );
+      json_sens( &body, "fan",       &c->fan );
+      json_sens( &body, "power",     &c->power );
+      buf_puts( &body, ",\"history\":" );
       hist_json( &body, &c->hist );
       buf_puts( &body, "}" );
       i++;

@@ -152,9 +152,11 @@ else does.
 
 `avian-webui`, which ships beside the miner, is a read-only web dashboard
 that reads it and serves a page the rest of the LAN can open: hash rate and
-its trend, a row per card, and the recent blocks with the card that found
-each one. It carries its page inside itself, so it is one file with nothing
-to install.
+its trend, a row per card with its temperature, fan, power and clocks where
+the driver gives them, a row per CPU thread with its clock and the share of
+its CPU it is getting, and the recent blocks with the card that found each
+one. It carries its page inside itself, so it is one file with nothing to
+install.
 
 ```sh
 avian-miner --webui ...        # the miner runs it and restarts it if it stops
