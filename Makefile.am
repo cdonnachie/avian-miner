@@ -87,6 +87,7 @@ avian_miner_SOURCES = \
   util.c \
   api.c \
   webui-spawn.c \
+  sensors.c \
   sysinfos.c \
   algo-gate-api.c\
   malloc-huge.c \
@@ -226,6 +227,9 @@ if HAVE_WINDOWS
 # resolves static archives in the order given, so the -lws2_32 earlier on
 # the line has already been passed over by the time it is asked for.
 avian_miner_LDADD += -lws2_32 -lbcrypt -luserenv -lntdll -ladvapi32 -lsecur32
+# sensors.c: the Processor Information counters, and LibreHardwareMonitor's
+# sensors over WMI, which is COM.
+avian_miner_LDADD += -lpdh -lole32 -loleaut32 -lwbemuuid
 else
 # Rust's std uses dlopen on Linux.
 avian_miner_LDADD += -ldl

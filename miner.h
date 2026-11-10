@@ -681,6 +681,10 @@ extern time_t g_work_time;
 extern bool opt_stratum_stats;
 extern int num_cpus;
 extern int num_cpugroups;
+/* Which logical CPU each mining thread is pinned to, by thread, when
+ * opt_affinity is set and there is more than one CPU to pin to. */
+extern int *thread_affinity_map;
+extern uint64_t opt_affinity;
 extern int opt_priority;
 extern bool opt_hash_meter;
 extern uint32_t accepted_share_count;

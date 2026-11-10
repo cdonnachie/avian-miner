@@ -134,9 +134,10 @@ numbers CUDA cards before OpenCL ones, HiveOS follows the bus, and the two
 coincide only by luck. If a backend cannot report a bus, the mapping is
 omitted rather than guessed, and the rig page shows the total alone.
 
-Temperatures and fans for a GPU run are not reported here. They belong to the
-cards, and the HiveOS agent reads them from the driver, which is a better
-source than a miner. A CPU run does report its one temperature.
+Temperatures and fans for a GPU run are not reported here, although the
+miner's own API now has them: the HiveOS agent reads the same drivers
+itself, so they would arrive twice. A CPU run does report its one
+temperature, from HiveOS's `cpu-temp`.
 
 The API is bound to `127.0.0.1` and `--api-remote` is never passed. It is an
 unauthenticated control socket that can change the pool and stop the miner,

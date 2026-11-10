@@ -34,6 +34,7 @@
 
 #include "miner.h"
 #include "sysinfos.c"
+#include "sensors.h"
 #if defined(HAVE_CUDA)
 #include "cuda/avian-gpu-backend.h"
 #endif
@@ -135,18 +136,125 @@ static void clean_field( char *out, size_t n, const char *in )
    out[i] = '\0';
 }
 
+/* Appends ;KEY=value when there is a value. A sensor that is not there is
+ * left out rather than written as 0, which is a real temperature. */
+static void sensor_field( char *buf, size_t n, const char *key, double v,
+                          int decimals )
+{
+   char f[64];
+
+   if ( v < 0 ) return;
+   snprintf( f, sizeof(f), ";%s=%.*f", key, decimals, v );
+   strncat( buf, f, n - strlen(buf) - 1 );
+}
+
+/* CPU time a thread has used, in nanoseconds, or -1. Asked from the API
+ * thread, so by handle rather than by the thread asking about itself. */
+static long long thread_cpu_ns( pthread_t pth )
+{
+#if defined(WIN32)
+   FILETIME c, e, k, u;
+   ULARGE_INTEGER kt, ut;
+
+   if ( !GetThreadTimes( pthread_gethandle( pth ), &c, &e, &k, &u ) )
+      return -1;
+   kt.LowPart = k.dwLowDateTime;  kt.HighPart = k.dwHighDateTime;
+   ut.LowPart = u.dwLowDateTime;  ut.HighPart = u.dwHighDateTime;
+   return (long long) ( kt.QuadPart + ut.QuadPart ) * 100;
+#else
+   clockid_t cid;
+   struct timespec ts;
+
+   if ( pthread_getcpuclockid( pth, &cid ) || clock_gettime( cid, &ts ) )
+      return -1;
+   return (long long) ts.tv_sec * 1000000000LL + ts.tv_nsec;
+#endif
+}
+
+static long long wall_ns( void )
+{
+#if defined(WIN32)
+   LARGE_INTEGER f, c;
+
+   QueryPerformanceFrequency( &f );
+   QueryPerformanceCounter( &c );
+   return (long long) ( c.QuadPart * ( 1000000000.0 / f.QuadPart ) );
+#else
+   struct timespec ts;
+
+   clock_gettime( CLOCK_MONOTONIC, &ts );
+   return (long long) ts.tv_sec * 1000000000LL + ts.tv_nsec;
+#endif
+}
+
+/* How much of its CPU a thread got between two API calls, as a percentage.
+ * The per-thread rate alone cannot say whether a slow thread is hashing
+ * slowly or not being run; this is the difference. A hasher that has its
+ * CPU to itself reads 100 whatever its rate, and one sharing its logical
+ * CPU with something at a higher priority reads what is left. Updated only
+ * when at least half a second has passed, so two dashboards polling at once
+ * do not turn it into noise. */
+static struct { long long cpu_ns, wall_ns; float busy; } *thr_busy;
+
+static float thread_busy( int thr_id )
+{
+   long long cpu, wall;
+
+   if ( !thr_busy )
+   {
+      int i;
+
+      thr_busy = calloc( opt_n_threads, sizeof(*thr_busy) );
+      if ( !thr_busy ) return -1;
+      for ( i = 0; i < opt_n_threads; i++ ) thr_busy[i].busy = -1;
+   }
+
+   cpu = thread_cpu_ns( thr_info[thr_id].pth );
+   if ( cpu < 0 ) return -1;
+   wall = wall_ns();
+
+   if ( !thr_busy[thr_id].wall_ns
+        || wall - thr_busy[thr_id].wall_ns >= 500000000LL )
+   {
+      if ( thr_busy[thr_id].wall_ns )
+      {
+         double b = 100.0 * ( cpu - thr_busy[thr_id].cpu_ns )
+                          / ( wall - thr_busy[thr_id].wall_ns );
+
+         thr_busy[thr_id].busy = b < 0 ? 0 : b > 100 ? 100 : (float) b;
+      }
+      thr_busy[thr_id].cpu_ns  = cpu;
+      thr_busy[thr_id].wall_ns = wall;
+   }
+   return thr_busy[thr_id].busy;
+}
+
 static void cpustatus(int thr_id)
 {
    if ( thr_id >= 0 && thr_id < opt_n_threads )
    {
 //      struct cpu_info *cpu = &thr_info[thr_id].cpu;
-      char buf[512]; *buf = '\0';
+      char buf[768]; *buf = '\0';
       char units[4] = {0};
       double hashrate = thr_hashrates[thr_id];
 
       scale_hash_for_display ( &hashrate, units );
       snprintf( buf, sizeof(buf), "CPU=%d;%sH/s=%.2f", thr_id, units,
                 hashrate );
+
+      sensor_field( buf, sizeof(buf), "BUSY", thread_busy( thr_id ), 0 );
+
+      /* The logical CPU the thread is pinned to, and that CPU's clock. Only
+       * with an affinity mask: without one the thread is wherever the
+       * scheduler last put it, and naming a CPU would be a guess that the
+       * next sample contradicts. */
+      if ( !opt_gpu && opt_affinity && num_cpus > 1 )
+      {
+         int cpu = thread_affinity_map[ thr_id ];
+
+         sensor_field( buf, sizeof(buf), "PIN", cpu, 0 );
+         sensor_field( buf, sizeof(buf), "CLOCK", sensors_cpu_clock( cpu ), 0 );
+      }
 
 #if defined(HAVE_CUDA)
       /* The card this thread is on, for anything pairing a rate with a slot:
@@ -174,6 +282,24 @@ static void cpustatus(int thr_id)
          snprintf( card, sizeof(card), ";GPU=%d;CARD=%s;VENDOR=%s",
                    avian_gpu_device_index( thr_id ), name, vendor );
          strncat( buf, card, sizeof(buf) - strlen(buf) - 1 );
+
+         /* What the card is doing, from its driver, keyed by the same bus.
+          * Each field is there only when the card reports it. */
+         if ( bus >= 0 )
+         {
+            struct gpu_sensors g;
+
+            if ( sensors_gpu( bus, &g ) )
+            {
+               sensor_field( buf, sizeof(buf), "TEMP",     g.temp,      0 );
+               sensor_field( buf, sizeof(buf), "MEMTEMP",  g.mem_temp,  0 );
+               sensor_field( buf, sizeof(buf), "HOTSPOT",  g.hotspot,   0 );
+               sensor_field( buf, sizeof(buf), "FAN",      g.fan,       0 );
+               sensor_field( buf, sizeof(buf), "POWER",    g.power,     1 );
+               sensor_field( buf, sizeof(buf), "CLOCK",    g.clock,     0 );
+               sensor_field( buf, sizeof(buf), "MEMCLOCK", g.mem_clock, 0 );
+            }
+         }
       }
 #endif
       /* Blocks this thread found. On a GPU run that is per card, which is
@@ -206,12 +332,49 @@ static char *getsummary( char *params )
    char diff_str[16];
    double hrate = (double)global_hashrate;
    struct cpu_info cpu = { 0 };
-#ifdef USE_MONITORING
+   struct cpu_sensors cs;
+   char sens[512] = "";
+   int mhz_sum = 0, mhz_n = 0, i;
+
+   /* TEMP, FAN and FREQ predate the sensors and keep their places, 0 when
+    * unknown, as they always were. FREQ is MHz on every platform now; it
+    * used to be whatever cpufreq said, which on Linux was kHz. The mean
+    * clock is over the CPUs the threads are pinned to when they are, since
+    * a reserved core's idle clock says nothing about the hashing. */
+   sensors_cpu( &cs );
    cpu.has_monitoring = true;
-   cpu.cpu_temp = cpu_temp(0);
-   cpu.cpu_fan = cpu_fanpercent();
-   cpu.cpu_clock = cpu_clock(0);
-#endif
+   cpu.cpu_temp = cs.temp > 0 ? cs.temp : 0;
+   cpu.cpu_fan = 0;
+   if ( !opt_gpu && opt_affinity && num_cpus > 1 )
+   {
+      for ( i = 0; i < opt_n_threads; i++ )
+      {
+         int mhz = sensors_cpu_clock( thread_affinity_map[i] );
+         if ( mhz > 0 ) { mhz_sum += mhz; mhz_n++; }
+      }
+   }
+   else
+   {
+      for ( i = 0; i < num_cpus; i++ )
+      {
+         int mhz = sensors_cpu_clock( i );
+         if ( mhz > 0 ) { mhz_sum += mhz; mhz_n++; }
+      }
+   }
+   cpu.cpu_clock = mhz_n ? mhz_sum / mhz_n : 0;
+
+   /* The rest only when known. Zone labels are the kernel's or
+    * LibreHardwareMonitor's, cleaned of anything structural, so a reader
+    * can take every TEMP_ field as one die. */
+   if ( cs.power >= 0 )
+      snprintf( sens + strlen(sens), sizeof(sens) - strlen(sens),
+                "POWER=%.1f;", cs.power );
+   if ( cs.source )
+      snprintf( sens + strlen(sens), sizeof(sens) - strlen(sens),
+                "SENSORS=%s;", cs.source );
+   for ( i = 0; i < cs.nzones; i++ )
+      snprintf( sens + strlen(sens), sizeof(sens) - strlen(sens),
+                "TEMP_%s=%.1f;", cs.zone[i].label, cs.zone[i].temp );
 
    get_currentalgo(algo, sizeof(algo));
 
@@ -240,13 +403,13 @@ static char *getsummary( char *params )
 	  "NAME=%s;VER=%s;API=%s;"
           "ALGO=%s;CPUS=%d;URL=%s;"
           "HS=%.2f;KHS=%.2f;ACC=%d;REJ=%d;STALE=%d;SOL=%d;"
-          "ACCMN=%.3f;DIFF=%s;TEMP=%.1f;FAN=%d;FREQ=%d;"
+          "ACCMN=%.3f;DIFF=%s;TEMP=%.1f;FAN=%d;FREQ=%d;%s"
           "UPTIME=%.0f;TS=%u|",
            PACKAGE_NAME, PACKAGE_VERSION, APIVERSION,
            algo, opt_n_threads, endpoint,
 	   hrate, hrate/1000.0, accepted_share_count, rejected_share_count,
 		                      stale_share_count, solved_block_count,
-           accps, diff_str, cpu.cpu_temp, cpu.cpu_fan, cpu.cpu_clock,
+           accps, diff_str, cpu.cpu_temp, cpu.cpu_fan, cpu.cpu_clock, sens,
 	   uptime, (uint32_t) ts);
    return buffer;
 }
@@ -856,11 +1019,19 @@ static void api()
 }
 
 /* external access */
+/* The sensors say once where each reading comes from, or why it does not;
+ * that goes to the log like everything else. */
+static void sensors_applog( int level, const char *line )
+{
+   applog( level == SENSORS_LOG_DEBUG ? LOG_DEBUG : LOG_INFO, "%s", line );
+}
+
 void *api_thread(void *userdata)
 {
 	struct thr_info *mythr = (struct thr_info*)userdata;
 
 	startup = time(NULL);
+	sensors_set_log( sensors_applog );
 	api();
 	tq_freeze(mythr->q);
 

@@ -150,7 +150,7 @@ int opt_param_n = 0;
 int opt_param_r = 0;
 int opt_n_threads = 0;
 bool opt_sapling = false;
-static uint64_t opt_affinity = 0xFFFFFFFFFFFFFFFFULL;  // default, use all cores
+uint64_t opt_affinity = 0xFFFFFFFFFFFFFFFFULL;  // default, use all cores
 int opt_priority = 0;  // deprecated
 int num_cpus = 1;
 int num_cpugroups = 1;  // For Windows
@@ -263,7 +263,7 @@ char*  lp_id;
 
 static void   workio_cmd_free(struct workio_cmd *wc);
 
-static int *thread_affinity_map;
+int *thread_affinity_map;
 
 // display affinity mask graphically
 static void format_affinity_mask( char *mask_str, uint64_t mask )
@@ -2814,8 +2814,8 @@ static void *miner_thread( void *userdata )
                 /* The temperature and frequency are the host CPU's. On a GPU
                  * run they describe a core that is waiting on a card, so they
                  * read as an idle machine beside a real hash rate, which is
-                 * worse than saying nothing. The card's own are the backend's
-                 * to report and it does not yet. */
+                 * worse than saying nothing. The cards' own go out on the
+                 * API, per card, where they can be paired with a rate. */
                 if ( opt_gpu )
                    applog( LOG_NOTICE, "Total: %s %sH/s", hr, hr_units );
                 else
