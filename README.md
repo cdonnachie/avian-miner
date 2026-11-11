@@ -160,6 +160,24 @@ avian-miner -a x16rt --gpu --sv2=POOL:PORT \
             --sv2-authority=POOL_AUTHORITY_KEY
 ```
 
+The same pool pays a fresh address for every block if the identity carries a
+descriptor instead of an address, the string your wallet prints as
+`parent_desc` in `getaddressinfo` or in `listdescriptors`:
+
+```sh
+avian-miner -a x16rt --gpu --sv2=POOL:PORT \
+            --sv2-user='wpkh([595898c5/84h/921h/0h]xpub6BzVp1b.../0/*)#08kg29g5.worker' \
+            --sv2-authority=POOL_AUTHORITY_KEY
+```
+
+`pkh(...)` and `wpkh(...)` work; the part in square brackets and the
+`#checksum` may stay or go. Each block then pays the next address under the
+key, so no two of your blocks share one, and your wallet sees them all without
+being told anything. Quote it: the shell reads the parentheses otherwise. One
+thing to know: a wallet hands out the addresses of its own receive chain to
+anyone who asks it, so a payout can land on an address you also gave someone.
+A wallet kept for mining, or the change chain `/1/*`, avoids that.
+
 The percentage takes up to two decimal places, so `donate/2/`, `donate/0.5/`
 and `donate/12.34/` all work, and it adds to whatever fee the operator
 charges. One that does not parse refuses the channel rather than being read

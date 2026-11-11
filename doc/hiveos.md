@@ -58,6 +58,11 @@ The same sheet, with an `sv2://` scheme on the Pool URL:
 | Pool URL | `sv2://host:port` |
 | Pass | the authority key the pool publishes |
 
+The wallet may be a descriptor rather than an address, `wpkh(xpub.../0/*)` as
+the wallet's `listdescriptors` prints it, and a pool running avian-sv2-solo then
+pays a fresh address per block. HiveOS passes the string through untouched; the
+parentheses and slashes are fine in a wallet field.
+
 The scheme is what picks the protocol, because a bare `host:port` is also how
 people type a Stratum v1 pool. `stratum2://` and `stratum2+tcp://` are
 accepted too, and the scheme is stripped before the address reaches the miner,
