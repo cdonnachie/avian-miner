@@ -990,7 +990,20 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
                                                 nonce0 = h_resNonce[thr_id][0];
                                                 addstart = true;
                                         }
-                                        if (nextalgo == ECHO)
+                                        /* else, where upstream has a bare if.
+                                         * At the last stage nextalgo is 255,
+                                         * so without it the chain fell through
+                                         * to the plain kernel at the bottom and
+                                         * ran SIMD over the whole batch a
+                                         * second time, after the candidates had
+                                         * already been read back: one of the two
+                                         * dearest stages paid twice in every
+                                         * epoch whose order ends in SIMD, for a
+                                         * hash nothing reads. On a 3090 that
+                                         * was 32.7 MH/s where the chain is worth
+                                         * 39.5. The unsplit branch above has
+                                         * always chained these. */
+                                        else if (nextalgo == ECHO)
                                         {
                                                 for (int j = 0; j < 256; j += 16)
                                                 {
