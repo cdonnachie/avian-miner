@@ -555,7 +555,16 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
                 s_ntime = masked_ntime;
         }
 
+        /* What a card the name table below does not know is given, which is
+         * every card since Turing. Upstream's figure is 1<<19, and on Nvidia
+         * that is too small: see cuda_default_throughput in cuda/device.cu
+         * for the sweep. HIP keeps upstream's, because the only AMD cards
+         * this has run on were measured at it and nobody has swept them. */
+#if defined(__HIPCC__) || defined(__HIP_PLATFORM_AMD__)
         uint32_t default_throughput=1<<19;
+#else
+        uint32_t default_throughput=1<<21;
+#endif
         bool splitsimd = true;
         bool merge = false;
         if ((strstr(device_name[dev_id], "1060")) || (strstr(device_name[dev_id], "P106")))

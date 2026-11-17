@@ -118,26 +118,38 @@ uint32_t cuda_default_throughput(int thr_id, uint32_t defthr)
     const char *env;
 
     /* Upstream picks defthr from a chain of strstr() over the device name
-     * that stops at Turing, so an Ampere or later card lands on its 1<<19
-     * floor. That looks like an oversight worth correcting by scaling from
-     * device memory, and it is not: measured on a 3090 against a live pool,
-     * 45 seconds a point,
+     * that stops at Turing, so an Ampere or later card lands on whatever the
+     * driver gives an unlisted one. Upstream's figure for that is 1<<19, and
+     * the driver now passes 1<<21 on Nvidia. Measured on a 3090 with
+     * --gpu --benchmark, which pins the chain to FE17C8172501B98C, each
+     * figure the rate over thirty seconds of batches once the card is warm:
      *
-     *     1<<19   30.5 MH/s    0 bad candidates
-     *     1<<20   29.7 MH/s    2
-     *     1<<21   25.1 MH/s   17
-     *     1<<22   25.6 MH/s   19
+     *     1<<18   37.6 MH/s
+     *     1<<19   40.5 MH/s
+     *     1<<20   41.9 MH/s
+     *     1<<21   42.6 MH/s
+     *     1<<22   42.7 MH/s
      *
-     * bigger batches are slower *and* start producing candidates whose hash
-     * does not survive being recomputed on the CPU. The second column is the
-     * reason this is not merely a tuning preference. Those appear from 1<<21,
-     * which is what a buffer sized for one batch and used with another looks
-     * like; upstream gives x11_simd512_cpu_init throughput>>4 under
-     * splitsimd, which is the place to start.
+     * with no candidate failing its CPU check at any size. The time is not
+     * in the gap between batches, which is 0.2 ms whatever the size; it is
+     * in the launches, about fifty of them a batch once SIMD is split
+     * sixteen ways, each with a start and a tail in which the card is not
+     * full. 1<<21 is where that stops paying, at 49 ms a batch, and it
+     * costs about 550 MB of device memory with SIMD split. Running SIMD
+     * unsplit gets 3% of it back at 1<<19 and nothing at 1<<21, for 2 GB.
      *
-     * So the floor stands on evidence rather than on caution. Raising it
-     * means fixing that first, and AVIAN_CUDA_THROUGHPUT is how to
-     * experiment without a rebuild.
+     * A table that stood here said the opposite: slower from 1<<20 and
+     * producing candidates the CPU rejected from 1<<21. It was taken
+     * against a live pool at 45 seconds a point, so each point sat in a
+     * different 128-second epoch and the rate column compared chain orders
+     * rather than batch sizes. And it predates 28a0015 and e6ce169, either
+     * of which accounts for the rejected candidates: a verifier that hashed
+     * an uninitialised buffer when SIMD led the chain, and a share target
+     * read once per scan while the pool tightened it. At 1<<21 the device
+     * now agrees with the CPU at every stage of seventeen chain orders,
+     * which between them put every function first and in the middle.
+     *
+     * AVIAN_CUDA_THROUGHPUT is how to sweep another card without a rebuild.
      */
     env = getenv("AVIAN_CUDA_THROUGHPUT");
     if (env && *env)
