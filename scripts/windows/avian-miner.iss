@@ -92,21 +92,73 @@ Type: files; Name: "{commonappdata}\avian-miner\avian-sensors.log"
 var
   WalletPage: TInputQueryWizardPage;
 
-procedure InitializeWizard;
+{ Reads one `set "NAME=value"` back out of an existing settings.cmd, which
+  is where the last install left the address and this one is about to write
+  over it. The unquoted form is accepted too, since the file says it can be
+  edited by hand. '' if the file, or the line, is not there. }
+function SettingFromFile(const Name: String): String;
+var
+  Lines: TArrayOfString;
+  I, P: Integer;
+  Line, Rest, Key: String;
 begin
+  Result := '';
+  if not LoadStringsFromFile(
+       ExpandConstant('{commonappdata}\avian-miner\settings.cmd'), Lines) then
+    Exit;
+  Key := Uppercase(Name) + '=';
+  for I := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    Line := Trim(Lines[I]);
+    Rest := '';
+    if Uppercase(Copy(Line, 1, 5)) = 'SET "' then
+      Rest := Trim(Copy(Line, 6, Length(Line)))
+    else if Uppercase(Copy(Line, 1, 4)) = 'SET ' then
+      Rest := Trim(Copy(Line, 5, Length(Line)));
+    if (Rest <> '') and (Uppercase(Copy(Rest, 1, Length(Key))) = Key) then
+    begin
+      Rest := Copy(Rest, Length(Key) + 1, Length(Rest));
+      P := Length(Rest);
+      if (P > 0) and (Rest[P] = '"') then
+        Rest := Copy(Rest, 1, P - 1);
+      { the last line wins, which is what cmd would do with the file }
+      Result := Trim(Rest);
+    end;
+  end;
+end;
+
+procedure InitializeWizard;
+var
+  Wallet, Worker, Note: String;
+begin
+  { /WALLET=... and /WORKER=... on the command line fill the page in, which
+    is what a silent install (/VERYSILENT) has instead of a wizard. Failing
+    that, an upgrade reads back what the last install wrote, so an address
+    is typed once per machine rather than once per release. That also stops
+    a silent upgrade with no parameters from writing an empty WALLET over a
+    good one, which is what it did before. }
+  Wallet := ExpandConstant('{param:WALLET|}');
+  if Wallet = '' then
+    Wallet := SettingFromFile('WALLET');
+  Worker := ExpandConstant('{param:WORKER|}');
+  if Worker = '' then
+    Worker := SettingFromFile('WORKER');
+  if Worker = '' then
+    Worker := GetComputerNameString;
+
+  if Wallet <> '' then
+    Note := 'Filled in from the settings.cmd already on this machine. '
+  else
+    Note := '';
   WalletPage := CreateInputQueryPage(wpSelectDir,
     'Your Avian address', 'Where the rewards go',
     'The address mined coins are paid to, and a name for this machine on the ' +
-    'pool. Both are kept in ' + ExpandConstant('{commonappdata}') +
+    'pool. ' + Note + 'Both are kept in ' + ExpandConstant('{commonappdata}') +
     '\avian-miner\settings.cmd and can be changed there later.');
   WalletPage.Add('Avian address (avn1...):', False);
   WalletPage.Add('Worker name:', False);
-  { /WALLET=... and /WORKER=... on the command line fill the page in, which
-    is what a silent install (/VERYSILENT) has instead of a wizard. }
-  WalletPage.Values[0] := ExpandConstant('{param:WALLET|}');
-  WalletPage.Values[1] := ExpandConstant('{param:WORKER|}');
-  if WalletPage.Values[1] = '' then
-    WalletPage.Values[1] := GetComputerNameString;
+  WalletPage.Values[0] := Wallet;
+  WalletPage.Values[1] := Worker;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
