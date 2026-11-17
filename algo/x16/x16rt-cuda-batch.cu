@@ -93,6 +93,10 @@ extern void x13_hamsi512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t *d_h
 
 static uint32_t *d_hash[MAX_GPUS];
 
+/* How many nonces of SIMD scratch each device was given at init: the whole
+ * batch, or a sixteenth of it where SIMD is split. */
+static uint32_t simd_scratch[MAX_GPUS];
+
 /* ---- upstream x16r.cu:66-105, the function ordering ---- */
 enum Algo {
 	BLAKE = 0,
@@ -615,6 +619,12 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
         uint32_t throughput = cuda_default_throughput(thr_id, default_throughput);
 
         if (throughput > (1<<22)) splitsimd = true;
+        /* Nor is a batch this small worth splitting, and below it the
+         * rounding further down would have nothing left to round to: a
+         * sixteenth has to be at least one 4096-nonce step. Only
+         * AVIAN_CUDA_THROUGHPUT gets here, since every default is 1<<19 or
+         * more, and unsplit the scratch for it is 64 MB at most. */
+        if (throughput < (1<<16)) splitsimd = false;
 
         if (init[thr_id])
         {
@@ -658,6 +668,7 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
                 {
                         x11_simd512_cpu_init(thr_id, (throughput));
                 }
+                simd_scratch[thr_id] = splitsimd ? (throughput >> 4) : throughput;
                 x13_hamsi512_cpu_init(thr_id, throughput);
                 x16_fugue512_cpu_init(thr_id, throughput);
                 x15_whirlpool_cpu_init(thr_id, throughput, 0);
@@ -679,6 +690,40 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
                 cuda_check_cpu_init(thr_id, throughput);
                 sleep(2);
                 init[thr_id] = true;
+        }
+
+        /* Whether this batch runs SIMD in sixteenths, which is not the same
+         * question as whether the device was set up to.
+         *
+         * The two kernels that fuse SIMD with the stage after it, Echo and
+         * Hamsi, take no thread count and hash every thread of every block
+         * they are launched with, 256 and 128 to a block. Run whole, the
+         * mask above makes the batch a multiple of 256 and that is exact.
+         * Run in sixteenths it is not: a sixteenth of a batch that is not a
+         * multiple of 4096 ends part way through a block, and the rest of
+         * that block belongs to the next sixteenth. Those hashes were
+         * compressed from scratch the expand had not filled, then hashed
+         * again from the result when their own turn came, so they were
+         * wrong from that stage to the end of the chain.
+         *
+         * Every default batch is a power of two and never met it. The short
+         * batch at the end of a nonce range always did: of 768 nonces the
+         * stage trace found the first 48 right and the rest wrong, in
+         * every order that has SIMD before Echo or Hamsi. It cost hashes
+         * rather than shares, because a wrong hash that happens to pass
+         * the device's target is refused by the CPU check.
+         *
+         * So a batch that fits the scratch whole is run whole, which also
+         * saves it thirty launches. One that does not fit is rounded down
+         * to sixteenths of whole blocks, and the few nonces that drops are
+         * the start of the next batch. */
+        bool split_now = splitsimd;
+        if (splitsimd)
+        {
+                if (throughput <= simd_scratch[thr_id])
+                        split_now = false;
+                else
+                        throughput &= 0xFFFFF000;
         }
 
 
@@ -954,7 +999,7 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
                                 }
                                 break;
                         case SIMD:
-                                if (!splitsimd)
+                                if (!split_now)
                                 {
                                         if (i == 15 && !avian_no_final())
                                         {
