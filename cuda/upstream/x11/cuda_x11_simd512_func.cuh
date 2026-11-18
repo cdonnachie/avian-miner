@@ -1,5 +1,14 @@
 ﻿/* AVIAN_NO_PTX and avian_lop3. See scripts/make-ptx-portable.py. */
 #include "avian-ptx-portable.h"
+/* The expanded message is 64 uint4 a hash, and it is stored transposed
+ * within groups of 32 hashes: word k of hash h is at
+ * (h/32)*2048 + k*32 + h%32. A compress warp of 32 hashes then reads 512
+ * contiguous bytes a load. Hash-major, the same load touched 32 lines
+ * 1 KB apart, and one thread a hash was slower than eight. Every kernel
+ * that reads the buffer goes through these two. */
+#define SIMD_FFT_BASE(h) ((((h) >> 5) << 11) + ((h) & 31))
+#define SIMD_FFT_NEXT(t) ((t += 32) - 32)
+
 static __constant__  const uint32_t c_perm[8][8] = {
 	{ 2, 3, 6, 7, 0, 1, 4, 5 }, { 6, 7, 2, 3, 4, 5, 0, 1 }, { 7, 6, 5, 4, 3, 2, 1, 0 }, { 1, 0, 3, 2, 5, 4, 7, 6 },
 	{ 0, 1, 4, 5, 6, 7, 2, 3 }, { 6, 7, 2, 3, 0, 1, 4, 5 }, { 6, 7, 0, 1, 4, 5, 2, 3 }, { 4, 5, 2, 3, 6, 7, 0, 1 }
@@ -201,109 +210,109 @@ static void Round8(uint32_t*const __restrict__  A, const uint32_t thr_offset, co
 
 	uint32_t r = 3, s = 23, t = 17, u = 27;
 
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 0, r, s, A, &A[8], &A[16], &A[24]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 1, s, t, &A[24], A, &A[8], &A[16]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 2, t, u, &A[16], &A[24], A, &A[8]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 3, u, r, &A[8], &A[16], &A[24], A);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 4, r, s, A, &A[8], &A[16], &A[24]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 5, s, t, &A[24], A, &A[8], &A[16]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 6, t, u, &A[16], &A[24], A, &A[8]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 7, u, r, &A[8], &A[16], &A[24], A);
 
 	r = 28; s = 19; t = 22; u = 7;
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 8, r, s, A, &A[8], &A[16], &A[24]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 9, s, t, &A[24], A, &A[8], &A[16]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 10, t, u, &A[16], &A[24], A, &A[8]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 11, u, r, &A[8], &A[16], &A[24], A);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 12, r, s, A, &A[8], &A[16], &A[24]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 13, s, t, &A[24], A, &A[8], &A[16]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 14, t, u, &A[16], &A[24], A, &A[8]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 15, u, r, &A[8], &A[16], &A[24], A);
 
 	r = 29; s = 9; t = 15; u = 5;
 
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 16, r, s, A, &A[8], &A[16], &A[24]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 17, s, t, &A[24], A, &A[8], &A[16]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 18, t, u, &A[16], &A[24], A, &A[8]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 19, u, r, &A[8], &A[16], &A[24], A);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 20, r, s, A, &A[8], &A[16], &A[24]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 21, s, t, &A[24], A, &A[8], &A[16]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 22, t, u, &A[16], &A[24], A, &A[8]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 23, u, r, &A[8], &A[16], &A[24], A);
 
 	r = 4; s = 13; t = 10; u = 25;
 
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 24, r, s, A, &A[8], &A[16], &A[24]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 25, s, t, &A[24], A, &A[8], &A[16]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 26, t, u, &A[16], &A[24], A, &A[8]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_IF(w, 27, u, r, &A[8], &A[16], &A[24], A);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 28, r, s, A, &A[8], &A[16], &A[24]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 29, s, t, &A[24], A, &A[8], &A[16]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 30, t, u, &A[16], &A[24], A, &A[8]);
-	expanded_vector(&w[0], &g_fft4[tmp++]);
-	expanded_vector(&w[4], &g_fft4[tmp++]);
+	expanded_vector(&w[0], &g_fft4[SIMD_FFT_NEXT(tmp)]);
+	expanded_vector(&w[4], &g_fft4[SIMD_FFT_NEXT(tmp)]);
 	STEP8_MAJ(w, 31, u, r, &A[8], &A[16], &A[24], A);
 
 }
@@ -485,7 +494,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		const uint32_t data1 = __ldg(&inpHash[thr + 8]);
 
 		// Puffer für expandierte Nachricht
-		uint4 *temp4 = &g_temp4[hashPosition << 2];
+		uint4 *temp4 = &g_temp4[SIMD_FFT_BASE(threadBloc)];
 
 #pragma unroll 4
 		for (uint32_t i = 0; i < 4; i++) {
@@ -547,7 +556,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P1 = expanded[12]; P2 = __shfl(expanded[14], (threadIdx.x - 1) & 7, 8); P = even ? P1 : P2;
 		Q1 = expanded[28]; Q2 = __shfl(expanded[30], (threadIdx.x - 1) & 7, 8); Q = even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(185 * P, 185 * Q, 0x5410), c_perm[0][thr], 8);
-		temp4[thr] = vec0;
+		temp4[(thr) << 5] = vec0;
 
 		P1 = expanded[1]; P2 = __shfl(expanded[3], (threadIdx.x - 1) & 7, 8); P = even ? P1 : P2;
 		Q1 = expanded[17]; Q2 = __shfl(expanded[19], (threadIdx.x - 1) & 7, 8); Q = even ? Q1 : Q2;
@@ -561,7 +570,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P1 = expanded[13]; P2 = __shfl(expanded[15], (threadIdx.x - 1) & 7, 8); P = even ? P1 : P2;
 		Q1 = expanded[29]; Q2 = __shfl(expanded[31], (threadIdx.x - 1) & 7, 8); Q = even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(185 * P, 185 * Q, 0x5410), c_perm[1][thr], 8);
-		temp4[8 + (thr)] = vec0;
+		temp4[(8 + (thr)) << 5] = vec0;
 
 		P1 = hi ? expanded[1] : expanded[0]; P2 = __shfl(hi ? expanded[3] : expanded[2], (threadIdx.x + 1) & 7, 8); P = !even ? P1 : P2;
 		Q1 = hi ? expanded[17] : expanded[16]; Q2 = __shfl(hi ? expanded[19] : expanded[18], (threadIdx.x + 1) & 7, 8); Q = !even ? Q1 : Q2;
@@ -575,7 +584,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P1 = hi ? expanded[13] : expanded[12]; P2 = __shfl(hi ? expanded[15] : expanded[14], (threadIdx.x + 1) & 7, 8); P = !even ? P1 : P2;
 		Q1 = hi ? expanded[29] : expanded[28]; Q2 = __shfl(hi ? expanded[31] : expanded[30], (threadIdx.x + 1) & 7, 8); Q = !even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(185 * P, 185 * Q, 0x5410), c_perm[2][thr], 8);
-		temp4[16 + (thr)] = vec0;
+		temp4[(16 + (thr)) << 5] = vec0;
 
 		P1 = lo ? expanded[1] : expanded[0]; P2 = __shfl(lo ? expanded[3] : expanded[2], (threadIdx.x + 1) & 7, 8); P = !even ? P1 : P2;
 		Q1 = lo ? expanded[17] : expanded[16]; Q2 = __shfl(lo ? expanded[19] : expanded[18], (threadIdx.x + 1) & 7, 8); Q = !even ? Q1 : Q2;
@@ -589,7 +598,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P1 = lo ? expanded[13] : expanded[12]; P2 = __shfl(lo ? expanded[15] : expanded[14], (threadIdx.x + 1) & 7, 8); P = !even ? P1 : P2;
 		Q1 = lo ? expanded[29] : expanded[28]; Q2 = __shfl(lo ? expanded[31] : expanded[30], (threadIdx.x + 1) & 7, 8); Q = !even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(185 * P, 185 * Q, 0x5410), c_perm[3][thr], 8);
-		temp4[24 + (thr)] = vec0;
+		temp4[(24 + (thr)) << 5] = vec0;
 
 		P1 = sel ? expanded[0] : expanded[1]; Q1 = __shfl(P1, (threadIdx.x ^ 1) & 7, 8);
 		Q2 = sel ? expanded[2] : expanded[3]; P2 = __shfl(Q2, (threadIdx.x ^ 1) & 7, 8);
@@ -608,7 +617,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P = even ? P1 : P2; Q = even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(233 * P, 233 * Q, 0x5410), c_perm[4][thr], 8);
 
-		temp4[32 + thr] = vec0;
+		temp4[(32 + thr) << 5] = vec0;
 
 		P1 = sel ? expanded[1] : expanded[0]; Q1 = __shfl(P1, (threadIdx.x ^ 1) & 7, 8);
 		Q2 = sel ? expanded[3] : expanded[2]; P2 = __shfl(Q2, (threadIdx.x ^ 1) & 7, 8);
@@ -627,7 +636,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P = even ? P1 : P2; Q = even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(233 * P, 233 * Q, 0x5410), c_perm[5][thr], 8);
 
-		temp4[40 + thr] = vec0;
+		temp4[(40 + thr) << 5] = vec0;
 
 		uint32_t t;
 		t = __shfl(expanded[17], (threadIdx.x + 4) & 7, 8); P1 = sel ? t : expanded[16]; Q1 = __shfl(P1, (threadIdx.x ^ 1) & 7, 8);
@@ -647,7 +656,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P = even ? P1 : P2; Q = even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(233 * P, 233 * Q, 0x5410), c_perm[6][thr], 8);
 
-		temp4[48 + thr] = vec0;
+		temp4[(48 + thr) << 5] = vec0;
 
 		t = __shfl(expanded[16], (threadIdx.x + 4) & 7, 8); P1 = sel ? expanded[17] : t; Q1 = __shfl(P1, (threadIdx.x ^ 1) & 7, 8);
 		t = __shfl(expanded[18], (threadIdx.x + 4) & 7, 8); Q2 = sel ? expanded[19] : t; P2 = __shfl(Q2, (threadIdx.x ^ 1) & 7, 8);
@@ -666,6 +675,6 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P = even ? P1 : P2; Q = even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(233 * P, 233 * Q, 0x5410), c_perm[7][thr], 8);
 
-		temp4[56 + thr] = vec0;
+		temp4[(56 + thr) << 5] = vec0;
 	}
 }

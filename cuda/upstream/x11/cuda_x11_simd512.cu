@@ -594,8 +594,8 @@ static void echo_round_sp(const uint32_t sharedMemory[8 * 1024], uint32_t *W, ui
 __global__ __launch_bounds__(128,5)
 static void x11_simd512_gpu_compress_64(uint32_t threads, uint32_t *g_hash,const uint4 *const __restrict__ g_fft4)
 {
-	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x)>>3;
-	const uint32_t thr_offset = thread << 6; // thr_id * 128 (je zwei elemente)
+	const uint32_t thread = blockDim.x * blockIdx.x + threadIdx.x;
+	const uint32_t thr_offset = SIMD_FFT_BASE(thread);
 	uint32_t IV[32];
 	if (thread < threads){
 
@@ -651,8 +651,8 @@ __global__
 __launch_bounds__(128, 5)
 void x11_simd512_gpu_compress_64_pascal_final(uint32_t threads, uint32_t startnonce, uint32_t *g_hash, const uint4 *const __restrict__ g_fft4, uint32_t *d_resNonce, const uint64_t target)
 {
-	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x)>>3;
-	const uint32_t thr_offset = thread << 6; // thr_id * 128 (je zwei elemente)
+	const uint32_t thread = blockDim.x * blockIdx.x + threadIdx.x;
+	const uint32_t thr_offset = SIMD_FFT_BASE(thread);
 	uint32_t IV[32];
 	if (thread < threads){
 
@@ -725,7 +725,8 @@ void x11_simd512_gpu_compress_64_pascal_final(uint32_t threads, uint32_t startno
 __host__
 int x11_simd512_cpu_init(int thr_id, uint32_t threads)
 {
-	cudaMalloc(&d_temp4[thr_id], 64*sizeof(uint4)*threads);
+	/* whole groups of 32, see SIMD_FFT_BASE */
+	cudaMalloc(&d_temp4[thr_id], 64*sizeof(uint4)*(size_t)((threads + 31) & ~31u));
 
 	// whirlpool
 	uint64_t* table0 = NULL;
@@ -787,7 +788,7 @@ __global__ //__launch_bounds__(128, 5)
 static void x16_simd512_gpu_compress_64_fugue512(uint32_t *g_hash, const uint4 *const __restrict__ g_fft4)
 {
 	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
-	const uint32_t thr_offset = thread << 6; // thr_id * 128 (je zwei elemente)
+	const uint32_t thr_offset = SIMD_FFT_BASE(thread);
 	__shared__ uint32_t shared[4][256];
 
 	if (threadIdx.x<128)
@@ -919,7 +920,7 @@ __global__ //__launch_bounds__(128, 5)
 static void x16_simd512_gpu_compress_64_hamsi512(uint32_t *g_hash, const uint4 *const __restrict__ g_fft4)
 {
 	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
-	const uint32_t thr_offset = thread << 6; // thr_id * 128 (je zwei elemente)
+	const uint32_t thr_offset = SIMD_FFT_BASE(thread);
 
 	const uint32_t P[48] = {
 		0xe7e9f5f5, 0xf5e7e9f5, 0xb3b36b23, 0xb3dbe7af, 0xa4213d7e, 0xf5e7e9f5, 0xb3b36b23, 0xb3dbe7af,
@@ -1063,7 +1064,7 @@ __launch_bounds__(256, 3)
 static void x16_simd512_gpu_compress_64_echo512(uint32_t *g_hash, const uint4 *const __restrict__ g_fft4)
 {
 	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
-	const uint32_t thr_offset = thread << 6; // thr_id * 128 (je zwei elemente)
+	const uint32_t thr_offset = SIMD_FFT_BASE(thread);
 
 	__shared__ uint32_t sharedMemory[8 * 1024];
 
@@ -1227,7 +1228,7 @@ __global__ __launch_bounds__(256, 3)
 void x16_simd512_gpu_compress_64_maxwell_echo512_final(const uint32_t* __restrict__ g_hash, uint32_t startnonce, const uint4 *const __restrict__ g_fft4, uint32_t* resNonce, const uint64_t target)
 {
 	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
-	const uint32_t thr_offset = thread << 6; // thr_id * 128 (je zwei elemente)
+	const uint32_t thr_offset = SIMD_FFT_BASE(thread);
 
 	__shared__ uint32_t sharedMemory[1024 * 8];
 
@@ -1432,7 +1433,7 @@ __global__ //__launch_bounds__(128, 5)
 static void x16_simd512_gpu_compress_64_whirlpool512(uint32_t *g_hash, const uint4 *const __restrict__ g_fft4)
 {
 	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
-	const uint32_t thr_offset = thread << 6; // thr_id * 128 (je zwei elemente)
+	const uint32_t thr_offset = SIMD_FFT_BASE(thread);
 
 	const uint32_t P[48] = {
 		0xe7e9f5f5, 0xf5e7e9f5, 0xb3b36b23, 0xb3dbe7af, 0xa4213d7e, 0xf5e7e9f5, 0xb3b36b23, 0xb3dbe7af,
@@ -1606,13 +1607,16 @@ void x11_simd512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t startNounce,
 	const dim3 grid1((8*threads + tpb - 1) / tpb);
 	const dim3 block1(tpb);
 
-//	tpb = TPB52_2;
-//	if (device_sm[dev_id] <= 500) tpb = TPB50_2;
-//	const dim3 grid2((threads + tpb - 1) / tpb);
-//	const dim3 block2(tpb);
-	
+	/* Compress holds all eight lanes in one thread, so it is one thread a
+	 * hash. Upstream launched it on the expand's grid, eight a hash, and
+	 * every hash was compressed eight times over. */
+	tpb = TPB52_2;
+	if (device_sm[dev_id] <= 500) tpb = TPB50_2;
+	const dim3 grid2((threads + tpb - 1) / tpb);
+	const dim3 block2(tpb);
+
 	x11_simd512_gpu_expand_64 <<<grid1, block1>>> (threads, d_hash, d_temp4[thr_id]);
-	x11_simd512_gpu_compress_64 <<< grid1, block1 >>> (threads, d_hash, d_temp4[thr_id]);
+	x11_simd512_gpu_compress_64 <<< grid2, block2 >>> (threads, d_hash, d_temp4[thr_id]);
 }
 
 
@@ -1626,13 +1630,13 @@ void x11_simd512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t startn
 	const dim3 grid1((8 * threads + tpb - 1) / tpb);
 	const dim3 block1(tpb);
 
-	//	tpb = TPB52_2;
-	//	if (device_sm[dev_id] <= 500) tpb = TPB50_2;
-	//	const dim3 grid2((threads + tpb - 1) / tpb);
-	//	const dim3 block2(tpb);
+	tpb = TPB52_2;
+	if (device_sm[dev_id] <= 500) tpb = TPB50_2;
+	const dim3 grid2((threads + tpb - 1) / tpb);
+	const dim3 block2(tpb);
 
 	x11_simd512_gpu_expand_64 <<<grid1, block1 >>> (threads, d_hash, d_temp4[thr_id]);
-	x11_simd512_gpu_compress_64_pascal_final <<< grid1, block1 >>> (threads, startnonce, d_hash, d_temp4[thr_id], d_resNonce, target);
+	x11_simd512_gpu_compress_64_pascal_final <<< grid2, block2 >>> (threads, startnonce, d_hash, d_temp4[thr_id], d_resNonce, target);
 }
 
 
