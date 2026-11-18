@@ -1597,9 +1597,177 @@ static void x16_simd512_gpu_compress_64_whirlpool512(uint32_t *g_hash, const uin
 }
 
 
+/* SIMD-512 in one kernel, eight lanes a hash.
+ *
+ * The lanes run the expansion, leave the 1 KB expanded message in shared
+ * memory and compress together, lane j holding state words j, 8+j, 16+j and
+ * 24+j: a step is local to its lane but for one xor-shuffle. The two-kernel
+ * form above writes that kilobyte to global memory and reads it back, and
+ * both halves of it run at the card's memory bandwidth instead of its
+ * arithmetic. From tpfuemp's ccminer (algos/stages/cuda_simd512.cu).
+ *
+ * CUDA only: HIP has no __syncwarp, and nobody has timed this there. */
+#if !defined(__HIPCC__)
+#define SIMD_LANE_KERNELS 1
+#define SIMDL_TPB 128
+#define SIMDL_ROW 264	/* 256 and 8 more, so the four hashes of a warp start on different banks */
+
+#define SIMDL_STEP(w, p, r1, r2, ga, gb, gc, gd, F) { \
+	const uint32_t R = ROTL32(ga, r1); \
+	gd += (w) + F(ga, gb, gc); \
+	gd = __shfl_xor_sync(gmask, R, p, 8) + ROTL32(gd, r2); \
+	ga = R; }
+
+/* w: this hash's row of shared memory. o0, o1: state words lane and 8 + lane. */
+__device__ __forceinline__
+static void simd512_lanes(uint32_t *const w, const uint32_t gmask, const uint32_t lane,
+	const uint32_t data0, const uint32_t data1, uint32_t &o0, uint32_t &o1)
+{
+	uint4 v[8];
+	simd512_expand_lane(data0, data1, v);
+	#pragma unroll
+	for (int k = 0; k < 8; k++)
+		*(uint4*)&w[(k * 8 + lane) * 4] = v[k];
+	__syncwarp(gmask);
+
+	const uint32_t iv0 = c_IV_512[lane], iv1 = c_IV_512[8 + lane], iv2 = c_IV_512[16 + lane], iv3 = c_IV_512[24 + lane];
+	uint32_t g0 = data0 ^ iv0, g1 = data1 ^ iv1, g2 = iv2, g3 = iv3;
+
+	SIMDL_STEP(w[0 + lane], 1, 3, 23, g0, g1, g2, g3, IF);
+	SIMDL_STEP(w[8 + lane], 6, 23, 17, g3, g0, g1, g2, IF);
+	SIMDL_STEP(w[16 + lane], 2, 17, 27, g2, g3, g0, g1, IF);
+	SIMDL_STEP(w[24 + lane], 3, 27, 3, g1, g2, g3, g0, IF);
+	SIMDL_STEP(w[32 + lane], 5, 3, 23, g0, g1, g2, g3, MAJ);
+	SIMDL_STEP(w[40 + lane], 7, 23, 17, g3, g0, g1, g2, MAJ);
+	SIMDL_STEP(w[48 + lane], 4, 17, 27, g2, g3, g0, g1, MAJ);
+	SIMDL_STEP(w[56 + lane], 1, 27, 3, g1, g2, g3, g0, MAJ);
+	SIMDL_STEP(w[64 + lane], 6, 28, 19, g0, g1, g2, g3, IF);
+	SIMDL_STEP(w[72 + lane], 2, 19, 22, g3, g0, g1, g2, IF);
+	SIMDL_STEP(w[80 + lane], 3, 22, 7, g2, g3, g0, g1, IF);
+	SIMDL_STEP(w[88 + lane], 5, 7, 28, g1, g2, g3, g0, IF);
+	SIMDL_STEP(w[96 + lane], 7, 28, 19, g0, g1, g2, g3, MAJ);
+	SIMDL_STEP(w[104 + lane], 4, 19, 22, g3, g0, g1, g2, MAJ);
+	SIMDL_STEP(w[112 + lane], 1, 22, 7, g2, g3, g0, g1, MAJ);
+	SIMDL_STEP(w[120 + lane], 6, 7, 28, g1, g2, g3, g0, MAJ);
+	SIMDL_STEP(w[128 + lane], 2, 29, 9, g0, g1, g2, g3, IF);
+	SIMDL_STEP(w[136 + lane], 3, 9, 15, g3, g0, g1, g2, IF);
+	SIMDL_STEP(w[144 + lane], 5, 15, 5, g2, g3, g0, g1, IF);
+	SIMDL_STEP(w[152 + lane], 7, 5, 29, g1, g2, g3, g0, IF);
+	SIMDL_STEP(w[160 + lane], 4, 29, 9, g0, g1, g2, g3, MAJ);
+	SIMDL_STEP(w[168 + lane], 1, 9, 15, g3, g0, g1, g2, MAJ);
+	SIMDL_STEP(w[176 + lane], 6, 15, 5, g2, g3, g0, g1, MAJ);
+	SIMDL_STEP(w[184 + lane], 2, 5, 29, g1, g2, g3, g0, MAJ);
+	SIMDL_STEP(w[192 + lane], 3, 4, 13, g0, g1, g2, g3, IF);
+	SIMDL_STEP(w[200 + lane], 5, 13, 10, g3, g0, g1, g2, IF);
+	SIMDL_STEP(w[208 + lane], 7, 10, 25, g2, g3, g0, g1, IF);
+	SIMDL_STEP(w[216 + lane], 4, 25, 4, g1, g2, g3, g0, IF);
+	SIMDL_STEP(w[224 + lane], 1, 4, 13, g0, g1, g2, g3, MAJ);
+	SIMDL_STEP(w[232 + lane], 6, 13, 10, g3, g0, g1, g2, MAJ);
+	SIMDL_STEP(w[240 + lane], 2, 10, 25, g2, g3, g0, g1, MAJ);
+	SIMDL_STEP(w[248 + lane], 3, 25, 4, g1, g2, g3, g0, MAJ);
+
+	SIMDL_STEP(iv0, 5, 4, 13, g0, g1, g2, g3, IF);
+	SIMDL_STEP(iv1, 7, 13, 10, g3, g0, g1, g2, IF);
+	SIMDL_STEP(iv2, 4, 10, 25, g2, g3, g0, g1, IF);
+	SIMDL_STEP(iv3, 1, 25, 4, g1, g2, g3, g0, IF);
+
+	/* the closing block: the length, 512 bits, and its precomputed expansion */
+	const uint32_t f0 = g0, f1 = g1, f2 = g2, f3 = g3;
+	if (lane == 0) g0 ^= 512;
+
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][0 + lane]), 1, 3, 23, g0, g1, g2, g3, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][8 + lane]), 6, 23, 17, g3, g0, g1, g2, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][16 + lane]), 2, 17, 27, g2, g3, g0, g1, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][24 + lane]), 3, 27, 3, g1, g2, g3, g0, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][32 + lane]), 5, 3, 23, g0, g1, g2, g3, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][40 + lane]), 7, 23, 17, g3, g0, g1, g2, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][48 + lane]), 4, 17, 27, g2, g3, g0, g1, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][56 + lane]), 1, 27, 3, g1, g2, g3, g0, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][64 + lane]), 6, 28, 19, g0, g1, g2, g3, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][72 + lane]), 2, 19, 22, g3, g0, g1, g2, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][80 + lane]), 3, 22, 7, g2, g3, g0, g1, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][88 + lane]), 5, 7, 28, g1, g2, g3, g0, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][96 + lane]), 7, 28, 19, g0, g1, g2, g3, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][104 + lane]), 4, 19, 22, g3, g0, g1, g2, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][112 + lane]), 1, 22, 7, g2, g3, g0, g1, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][120 + lane]), 6, 7, 28, g1, g2, g3, g0, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][128 + lane]), 2, 29, 9, g0, g1, g2, g3, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][136 + lane]), 3, 9, 15, g3, g0, g1, g2, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][144 + lane]), 5, 15, 5, g2, g3, g0, g1, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][152 + lane]), 7, 5, 29, g1, g2, g3, g0, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][160 + lane]), 4, 29, 9, g0, g1, g2, g3, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][168 + lane]), 1, 9, 15, g3, g0, g1, g2, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][176 + lane]), 6, 15, 5, g2, g3, g0, g1, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][184 + lane]), 2, 5, 29, g1, g2, g3, g0, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][192 + lane]), 3, 4, 13, g0, g1, g2, g3, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][200 + lane]), 5, 13, 10, g3, g0, g1, g2, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][208 + lane]), 7, 10, 25, g2, g3, g0, g1, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][216 + lane]), 4, 25, 4, g1, g2, g3, g0, IF);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][224 + lane]), 1, 4, 13, g0, g1, g2, g3, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][232 + lane]), 6, 13, 10, g3, g0, g1, g2, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][240 + lane]), 2, 10, 25, g2, g3, g0, g1, MAJ);
+	SIMDL_STEP(__ldg(&d_cw_lane[0][0][248 + lane]), 3, 25, 4, g1, g2, g3, g0, MAJ);
+
+	SIMDL_STEP(f0, 5, 4, 13, g0, g1, g2, g3, IF);
+	SIMDL_STEP(f1, 7, 13, 10, g3, g0, g1, g2, IF);
+	SIMDL_STEP(f2, 4, 10, 25, g2, g3, g0, g1, IF);
+	SIMDL_STEP(f3, 1, 25, 4, g1, g2, g3, g0, IF);
+
+	o0 = g0;
+	o1 = g1;
+}
+
+__global__ __launch_bounds__(SIMDL_TPB, 4)
+static void x11_simd512_gpu_lanes_64(const uint32_t threads, uint32_t *const g_hash)
+{
+	__shared__ uint32_t s_w[SIMDL_TPB / 8][SIMDL_ROW];
+	const uint32_t hash = (blockDim.x * blockIdx.x + threadIdx.x) >> 3;
+	const uint32_t lane = threadIdx.x & 7;
+	const uint32_t gmask = 0xFFu << (threadIdx.x & 24);
+
+	if (hash < threads) {
+		uint32_t *const Hash = &g_hash[hash << 4];
+		uint32_t g0, g1;
+		simd512_lanes(s_w[threadIdx.x >> 3], gmask, lane, __ldg(&Hash[lane]), __ldg(&Hash[lane + 8]), g0, g1);
+		Hash[lane] = g0;
+		Hash[lane + 8] = g1;
+	}
+}
+
+__global__ __launch_bounds__(SIMDL_TPB, 4)
+static void x11_simd512_gpu_lanes_64_final(const uint32_t threads, const uint32_t startnonce, const uint32_t *const g_hash,
+	uint32_t *const d_resNonce, const uint64_t target)
+{
+	__shared__ uint32_t s_w[SIMDL_TPB / 8][SIMDL_ROW];
+	const uint32_t hash = (blockDim.x * blockIdx.x + threadIdx.x) >> 3;
+	const uint32_t lane = threadIdx.x & 7;
+	const uint32_t gmask = 0xFFu << (threadIdx.x & 24);
+
+	if (hash < threads) {
+		const uint32_t *const Hash = &g_hash[hash << 4];
+		uint32_t g0, g1;
+		simd512_lanes(s_w[threadIdx.x >> 3], gmask, lane, __ldg(&Hash[lane]), __ldg(&Hash[lane + 8]), g0, g1);
+		/* words 6 and 7 of the hash are in lanes 6 and 7 */
+		const uint32_t w6 = __shfl_xor_sync(gmask, g0, 1, 8);
+		if (lane == 7 && (((uint64_t)g0 << 32) | w6) <= target) {
+			const uint32_t nonce = hash + startnonce;
+			const uint32_t tmp = atomicExch(&d_resNonce[0], nonce);
+			if (tmp != UINT32_MAX)
+				if (tmp != d_resNonce[0]) d_resNonce[1] = tmp;
+		}
+	}
+}
+
+extern void x13_hamsi512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t *d_hash);
+#endif
+
 __host__
 void x11_simd512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t startNounce, uint32_t *d_nonceVector, uint32_t *d_hash, int order)
 {
+#ifdef SIMD_LANE_KERNELS
+	x11_simd512_gpu_lanes_64 <<<(8 * threads + SIMDL_TPB - 1) / SIMDL_TPB, SIMDL_TPB>>> (threads, d_hash);
+	return;
+#endif
 	int dev_id = device_map[thr_id];
 
 	uint32_t tpb = TPB52_1;
@@ -1623,6 +1791,10 @@ void x11_simd512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t startNounce,
 __host__
 void x11_simd512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t startnonce, uint32_t *d_hash, uint32_t *d_resNonce, uint64_t target)
 {
+#ifdef SIMD_LANE_KERNELS
+	x11_simd512_gpu_lanes_64_final <<<(8 * threads + SIMDL_TPB - 1) / SIMDL_TPB, SIMDL_TPB>>> (threads, startnonce, d_hash, d_resNonce, target);
+	return;
+#endif
 	int dev_id = device_map[thr_id];
 
 	uint32_t tpb = 32;
@@ -1698,6 +1870,13 @@ void x16_simd_whirlpool512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t *d
 
 __host__
 void x16_simd_hamsi512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t *d_hash){
+#ifdef SIMD_LANE_KERNELS
+	/* Two kernels beat the fused one now that neither goes through the
+	 * expansion buffer: 265 against 189 Mhash/s on a 3090. */
+	x11_simd512_gpu_lanes_64 <<<(8 * threads + SIMDL_TPB - 1) / SIMDL_TPB, SIMDL_TPB>>> (threads, d_hash);
+	x13_hamsi512_cpu_hash_64(thr_id, threads, d_hash);
+	return;
+#endif
 
 	int dev_id = device_map[thr_id];
 

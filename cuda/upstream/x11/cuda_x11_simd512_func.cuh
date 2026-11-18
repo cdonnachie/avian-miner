@@ -140,6 +140,30 @@ static __constant__ uint32_t d_cw[4][8][8] = {
 
 };
 
+/* The same words in global memory: the lane kernel reads them at eight
+ * addresses a warp-load, which the constant bank would serialise. */
+#if !defined(__HIPCC__)
+static __device__ const uint32_t d_cw_lane[4][8][8] = {
+	0x531B1720, 0xAC2CDE09, 0x0B902D87, 0x2369B1F4, 0x2931AA01, 0x02E4B082, 0xC914C914, 0xC1DAE1A6, 0xF18C2B5C, 0x08AC306B, 0x27BFC914, 0xCEDC548D, 0xC630C4BE, 0xF18C4335, 0xF0D3427C, 0xBE3DA380,
+	0x143C02E4, 0xA948C630, 0xA4F2DE09, 0xA71D2085, 0xA439BD84, 0x109FCD6A, 0xEEA8EF61, 0xA5AB1CE8, 0x0B90D4A4, 0x3D6D039D, 0x25944D53, 0xBAA0E034, 0x5BC71E5A, 0xB1F4F2FE, 0x12CADE09, 0x548D41C3,
+	0x3CB4F80D, 0x36ECEBC4, 0xA66443EE, 0x43351ABD, 0xC7A20C49, 0xEB0BB366, 0xF5293F98, 0x49B6DE09, 0x531B29EA, 0x02E402E4, 0xDB25C405, 0x53D4E543, 0x0AD71720, 0xE1A61A04, 0xB87534C1, 0x3EDF43EE,
+	0x213E50F0, 0x39173EDF, 0xA9485B0E, 0xEEA82EF9, 0x14F55771, 0xFAF15546, 0x3D6DD9B3, 0xAB73B92E, 0x582A48FD, 0xEEA81892, 0x4F7EAA01, 0xAF10A88F, 0x11581720, 0x34C124DB, 0xD1C0AB73, 0x1E5AF0D3,
+	0xC34C07F3, 0xC914143C, 0x599CBC12, 0xBCCBE543, 0x385EF3B7, 0x14F54C9A, 0x0AD7C068, 0xB64A21F7, 0xDEC2AF10, 0xC6E9C121, 0x56B8A4F2, 0x1158D107, 0xEB0BA88F, 0x050FAABA, 0xC293264D, 0x548D46D2,
+	0xACE5E8E0, 0x53D421F7, 0xF470D279, 0xDC974E0C, 0xD6CF55FF, 0xFD1C4F7E, 0x36EC36EC, 0x3E261E5A, 0xEBC4FD1C, 0x56B839D0, 0x5B0E21F7, 0x58E3DF7B, 0x5BC7427C, 0xEF613296, 0x1158109F, 0x5A55E318,
+	0xA7D6B703, 0x1158E76E, 0xB08255FF, 0x50F05771, 0xEEA8E8E0, 0xCB3FDB25, 0x2E40548D, 0xE1A60F2D, 0xACE5D616, 0xFD1CFD1C, 0x24DB3BFB, 0xAC2C1ABD, 0xF529E8E0, 0x1E5AE5FC, 0x478BCB3F, 0xC121BC12,
+	0xF4702B5C, 0xC293FC63, 0xDA6CB2AD, 0x45601FCC, 0xA439E1A6, 0x4E0C0D02, 0xED3621F7, 0xAB73BE3D, 0x0E74D4A4, 0xF754CF95, 0xD84136EC, 0x3124AB73, 0x39D03B42, 0x0E74BCCB, 0x0F2DBD84, 0x41C35C80,
+	0xA4135BED, 0xE10E1EF2, 0x6C4F93B1, 0x6E2191DF, 0xE2E01D20, 0xD1952E6B, 0x6A7D9583, 0x131DECE3, 0x369CC964, 0xFB73048D, 0x9E9D6163, 0x280CD7F4, 0xD9C6263A, 0x1062EF9E, 0x2AC7D539, 0xAD2D52D3,
+	0x0A03F5FD, 0x197CE684, 0xAA72558E, 0xDE5321AD, 0xF0870F79, 0x607A9F86, 0xAFE85018, 0x2AC7D539, 0xE2E01D20, 0x2AC7D539, 0xC6A93957, 0x624C9DB4, 0x6C4F93B1, 0x641E9BE2, 0x452CBAD4, 0x263AD9C6,
+	0xC964369C, 0xC3053CFB, 0x452CBAD4, 0x95836A7D, 0x4AA2B55E, 0xAB5B54A5, 0xAC4453BC, 0x74808B80, 0xCB3634CA, 0xFC5C03A4, 0x4B8BB475, 0x21ADDE53, 0xE2E01D20, 0xDF3C20C4, 0xBD8F4271, 0xAA72558E,
+	0xFC5C03A4, 0x48D0B730, 0x2AC7D539, 0xD70B28F5, 0x53BCAC44, 0x3FB6C04A, 0x14EFEB11, 0xDB982468, 0x9A1065F0, 0xB0D14F2F, 0x8D5272AE, 0xC4D73B29, 0x91DF6E21, 0x949A6B66, 0x303DCFC3, 0x5932A6CE,
+	0x1234EDCC, 0xF5140AEC, 0xCDF1320F, 0x3DE4C21C, 0x48D0B730, 0x1234EDCC, 0x131DECE3, 0x52D3AD2D, 0xE684197C, 0x6D3892C8, 0x72AE8D52, 0x6FF3900D, 0x73978C69, 0xEB1114EF, 0x15D8EA28, 0x71C58E3B,
+	0x90F66F0A, 0x15D8EA28, 0x9BE2641E, 0x65F09A10, 0xEA2815D8, 0xBD8F4271, 0x3A40C5C0, 0xD9C6263A, 0xB38C4C74, 0xBAD4452C, 0x70DC8F24, 0xAB5B54A5, 0x46FEB902, 0x1A65E59B, 0x0DA7F259, 0xA32A5CD6,
+	0xD62229DE, 0xB81947E7, 0x6D3892C8, 0x15D8EA28, 0xE59B1A65, 0x065FF9A1, 0xB2A34D5D, 0x6A7D9583, 0x975568AB, 0xFC5C03A4, 0x2E6BD195, 0x966C6994, 0xF2590DA7, 0x263AD9C6, 0x5A1BA5E5, 0xB0D14F2F,
+	0x975568AB, 0x6994966C, 0xF1700E90, 0xD3672C99, 0xCC1F33E1, 0xFC5C03A4, 0x452CBAD4, 0x4E46B1BA, 0xF1700E90, 0xB2A34D5D, 0xD0AC2F54, 0x5760A8A0, 0x8C697397, 0x624C9DB4, 0xE85617AA, 0x95836A7D
+
+};
+#endif
+
 __device__ __forceinline__
 static void Round8_0_final(uint32_t *const __restrict__  A, const uint32_t r, const  uint32_t s, const uint32_t t, const uint32_t u){
 
@@ -464,14 +488,12 @@ static void FFT_16(int *const __restrict__ y){
 }
 
 /***************************************************/
-#if __CUDA_ARCH__ > 500 || defined(__HIPCC__)
-__global__ __launch_bounds__(TPB52_1, 9)
-#else
-__global__ __launch_bounds__(TPB50_1, 9)
-#endif
-static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restrict__ g_hash, uint4 * __restrict__ g_temp4)
+/* Expansion of one message by the eight lanes of its hash: lane thr returns
+ * rows k * 8 + thr, k = 0..7, of the 64-row expanded message. Every lane of
+ * the eight must call it, for the shuffles. */
+__device__ __forceinline__
+static void simd512_expand_lane(const uint32_t data0, const uint32_t data1, uint4 *const out)
 {
-	const uint32_t threadBloc = (blockDim.x * blockIdx.x + threadIdx.x) >> 3;
 	const uint8_t thr = (threadIdx.x & 7);
 	/* Message Expansion using Number Theoretical Transform similar to FFT */
 	int expanded[32];
@@ -484,18 +506,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 	const bool lo = (thr)<4;
 	const bool sel = ((threadIdx.x + 2) & 7) >= 4;  // 2,3,4,5
 
-	if (threadBloc < threads){
-
-		const uint32_t hashPosition = threadBloc << 4;
-
-		const uint32_t *inpHash = &g_hash[hashPosition];
-
-		const uint32_t data0 = __ldg(&inpHash[thr]);
-		const uint32_t data1 = __ldg(&inpHash[thr + 8]);
-
-		// Puffer für expandierte Nachricht
-		uint4 *temp4 = &g_temp4[SIMD_FFT_BASE(threadBloc)];
-
+	{
 #pragma unroll 4
 		for (uint32_t i = 0; i < 4; i++) {
 			expanded[i] = bfe(__byte_perm(__shfl(data0, i << 1, 8), __shfl(data0, (i << 1) + 1, 8), thr), 0, 8);
@@ -556,7 +567,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P1 = expanded[12]; P2 = __shfl(expanded[14], (threadIdx.x - 1) & 7, 8); P = even ? P1 : P2;
 		Q1 = expanded[28]; Q2 = __shfl(expanded[30], (threadIdx.x - 1) & 7, 8); Q = even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(185 * P, 185 * Q, 0x5410), c_perm[0][thr], 8);
-		temp4[(thr) << 5] = vec0;
+		out[0] = vec0;
 
 		P1 = expanded[1]; P2 = __shfl(expanded[3], (threadIdx.x - 1) & 7, 8); P = even ? P1 : P2;
 		Q1 = expanded[17]; Q2 = __shfl(expanded[19], (threadIdx.x - 1) & 7, 8); Q = even ? Q1 : Q2;
@@ -570,7 +581,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P1 = expanded[13]; P2 = __shfl(expanded[15], (threadIdx.x - 1) & 7, 8); P = even ? P1 : P2;
 		Q1 = expanded[29]; Q2 = __shfl(expanded[31], (threadIdx.x - 1) & 7, 8); Q = even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(185 * P, 185 * Q, 0x5410), c_perm[1][thr], 8);
-		temp4[(8 + (thr)) << 5] = vec0;
+		out[1] = vec0;
 
 		P1 = hi ? expanded[1] : expanded[0]; P2 = __shfl(hi ? expanded[3] : expanded[2], (threadIdx.x + 1) & 7, 8); P = !even ? P1 : P2;
 		Q1 = hi ? expanded[17] : expanded[16]; Q2 = __shfl(hi ? expanded[19] : expanded[18], (threadIdx.x + 1) & 7, 8); Q = !even ? Q1 : Q2;
@@ -584,7 +595,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P1 = hi ? expanded[13] : expanded[12]; P2 = __shfl(hi ? expanded[15] : expanded[14], (threadIdx.x + 1) & 7, 8); P = !even ? P1 : P2;
 		Q1 = hi ? expanded[29] : expanded[28]; Q2 = __shfl(hi ? expanded[31] : expanded[30], (threadIdx.x + 1) & 7, 8); Q = !even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(185 * P, 185 * Q, 0x5410), c_perm[2][thr], 8);
-		temp4[(16 + (thr)) << 5] = vec0;
+		out[2] = vec0;
 
 		P1 = lo ? expanded[1] : expanded[0]; P2 = __shfl(lo ? expanded[3] : expanded[2], (threadIdx.x + 1) & 7, 8); P = !even ? P1 : P2;
 		Q1 = lo ? expanded[17] : expanded[16]; Q2 = __shfl(lo ? expanded[19] : expanded[18], (threadIdx.x + 1) & 7, 8); Q = !even ? Q1 : Q2;
@@ -598,7 +609,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P1 = lo ? expanded[13] : expanded[12]; P2 = __shfl(lo ? expanded[15] : expanded[14], (threadIdx.x + 1) & 7, 8); P = !even ? P1 : P2;
 		Q1 = lo ? expanded[29] : expanded[28]; Q2 = __shfl(lo ? expanded[31] : expanded[30], (threadIdx.x + 1) & 7, 8); Q = !even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(185 * P, 185 * Q, 0x5410), c_perm[3][thr], 8);
-		temp4[(24 + (thr)) << 5] = vec0;
+		out[3] = vec0;
 
 		P1 = sel ? expanded[0] : expanded[1]; Q1 = __shfl(P1, (threadIdx.x ^ 1) & 7, 8);
 		Q2 = sel ? expanded[2] : expanded[3]; P2 = __shfl(Q2, (threadIdx.x ^ 1) & 7, 8);
@@ -617,7 +628,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P = even ? P1 : P2; Q = even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(233 * P, 233 * Q, 0x5410), c_perm[4][thr], 8);
 
-		temp4[(32 + thr) << 5] = vec0;
+		out[4] = vec0;
 
 		P1 = sel ? expanded[1] : expanded[0]; Q1 = __shfl(P1, (threadIdx.x ^ 1) & 7, 8);
 		Q2 = sel ? expanded[3] : expanded[2]; P2 = __shfl(Q2, (threadIdx.x ^ 1) & 7, 8);
@@ -636,7 +647,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P = even ? P1 : P2; Q = even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(233 * P, 233 * Q, 0x5410), c_perm[5][thr], 8);
 
-		temp4[(40 + thr) << 5] = vec0;
+		out[5] = vec0;
 
 		uint32_t t;
 		t = __shfl(expanded[17], (threadIdx.x + 4) & 7, 8); P1 = sel ? t : expanded[16]; Q1 = __shfl(P1, (threadIdx.x ^ 1) & 7, 8);
@@ -656,7 +667,7 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P = even ? P1 : P2; Q = even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(233 * P, 233 * Q, 0x5410), c_perm[6][thr], 8);
 
-		temp4[(48 + thr) << 5] = vec0;
+		out[6] = vec0;
 
 		t = __shfl(expanded[16], (threadIdx.x + 4) & 7, 8); P1 = sel ? expanded[17] : t; Q1 = __shfl(P1, (threadIdx.x ^ 1) & 7, 8);
 		t = __shfl(expanded[18], (threadIdx.x + 4) & 7, 8); Q2 = sel ? expanded[19] : t; P2 = __shfl(Q2, (threadIdx.x ^ 1) & 7, 8);
@@ -675,6 +686,30 @@ static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restri
 		P = even ? P1 : P2; Q = even ? Q1 : Q2;
 		vec0.w = __shfl(__byte_perm(233 * P, 233 * Q, 0x5410), c_perm[7][thr], 8);
 
-		temp4[(56 + thr) << 5] = vec0;
+		out[7] = vec0;
+	}
+}
+
+#if __CUDA_ARCH__ > 500 || defined(__HIPCC__)
+__global__ __launch_bounds__(TPB52_1, 9)
+#else
+__global__ __launch_bounds__(TPB50_1, 9)
+#endif
+static void x11_simd512_gpu_expand_64(uint32_t threads, const uint32_t* __restrict__ g_hash, uint4 * __restrict__ g_temp4)
+{
+	const uint32_t threadBloc = (blockDim.x * blockIdx.x + threadIdx.x) >> 3;
+	const uint8_t thr = (threadIdx.x & 7);
+
+	if (threadBloc < threads){
+		const uint32_t *inpHash = &g_hash[threadBloc << 4];
+		uint4 v[8];
+
+		simd512_expand_lane(__ldg(&inpHash[thr]), __ldg(&inpHash[thr + 8]), v);
+
+		// Puffer für expandierte Nachricht
+		uint4 *temp4 = &g_temp4[SIMD_FFT_BASE(threadBloc)];
+#pragma unroll
+		for (int i = 0; i < 8; i++)
+			temp4[(8 * i + thr) << 5] = v[i];
 	}
 }
