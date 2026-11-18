@@ -200,6 +200,24 @@ static int get_hash( void *output, const void *input, TortureGarden *garden,
 
 static __thread TortureGarden garden;
 
+/* The nodes the last hash on this thread went through, kept for the
+ * solved-block log. Seven deep: the garden is a tree that narrows to node 21. */
+#define MINOTAUR_PATH_MAX 8
+static __thread uint8_t minotaur_path[ MINOTAUR_PATH_MAX ];
+static __thread int minotaur_path_len = 0;
+
+/* get_hash numbers the sixteen functions alphabetically. These are the same
+ * functions as X16R enum digits, and Y for yespower. */
+void minotaur_share_path( char *out )
+{
+   static const char digit[] = "017AC2BF346D895EY";
+   int i;
+
+   for ( i = 0; i < minotaur_path_len; i++ )
+      out[i] = digit[ minotaur_path[i] ];
+   out[i] = '\0';
+}
+
 bool initialize_torture_garden()
 {
    // Create torture garden nodes. Note that both sides of 19 and 20 lead to 21, and 21 has no children (to make traversal complete).
@@ -282,11 +300,14 @@ int minotaur_hash( void *output, const void *input, int thr_id )
     
     // Send the initial hash through the torture garden
     TortureNode *node = &garden.nodes[0];
+    int depth = 0;
     while ( rc && node )
     {
+      if ( depth < MINOTAUR_PATH_MAX ) minotaur_path[ depth++ ] = node->algo;
       rc = get_hash( hash, hash, &garden, node->algo, thr_id );
       node = node->child[ hash[63] & 1 ];
     }
+    minotaur_path_len = depth;
 
     memcpy( output, hash, 32 );
     return rc;

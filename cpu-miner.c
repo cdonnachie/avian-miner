@@ -1026,6 +1026,7 @@ struct share_stats_t
    double target_diff;
    uint32_t height;
    char   job_id[32];
+   char   order[ SHARE_ORDER_LEN ];
 };
 
 #define s_stats_size 8
@@ -1052,6 +1053,7 @@ static void record_solved_block( const struct share_stats_t *s )
    b->thr_id     = s->thr_id;
    b->share_diff = s->share_diff;
    b->net_diff   = s->net_diff;
+   memcpy( b->order, s->order, sizeof b->order );
    solved_log_put = ( solved_log_put + 1 ) % solved_log_size;
 
    /* A share whose stats were lost to an overflowed queue has no thread to
@@ -1991,6 +1993,9 @@ static void update_submit_stats( struct work *work, const void *hash,
    share_stats[ s_put_ptr ].stratum_diff = stratum_diff;
    share_stats[ s_put_ptr ].target_diff = work->targetdiff;
    share_stats[ s_put_ptr ].height = work->height; 
+   /* Asked here because this is the thread that hashed it, and the order is
+    * that thread's to know. */
+   x16_share_order( share_stats[ s_put_ptr ].order );
    if ( have_stratum )
       strncpy( share_stats[ s_put_ptr ].job_id, work->job_id, 30 );
    s_put_ptr = stats_ptr_incr( s_put_ptr );

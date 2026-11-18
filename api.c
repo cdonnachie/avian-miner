@@ -454,6 +454,14 @@ static char *getsummary( char *params )
       snprintf( sens + strlen(sens), sizeof(sens) - strlen(sens),
                 "TEMP_%s=%.1f;", cs.zone[i].label, cs.zone[i].temp );
 
+   /* The X16RT epoch, once a scan has computed one. ORDERCOST is the colour
+    * the log gives each function of ORDER: 0 cheap, 1 middling, 2 dear. */
+   char epoch[80] = "", order[17], cost[17];
+   uint32_t ntime;
+   if ( x16rt_current_order( order, cost, &ntime ) )
+      snprintf( epoch, sizeof(epoch), "ORDER=%s;ORDERCOST=%s;NTIME=%08x;",
+                order, cost, ntime );
+
    get_currentalgo(algo, sizeof(algo));
    host_fields( host, sizeof(host) );
 
@@ -482,13 +490,14 @@ static char *getsummary( char *params )
 	  "NAME=%s;VER=%s;API=%s;"
           "ALGO=%s;CPUS=%d;%sURL=%s;"
           "HS=%.2f;KHS=%.2f;ACC=%d;REJ=%d;STALE=%d;SOL=%d;"
-          "ACCMN=%.3f;DIFF=%s;TEMP=%.1f;FAN=%d;FREQ=%d;%s"
+          "ACCMN=%.3f;DIFF=%s;TEMP=%.1f;FAN=%d;FREQ=%d;%s%s"
           "UPTIME=%.0f;TS=%u|",
            PACKAGE_NAME, PACKAGE_VERSION, APIVERSION,
            algo, opt_n_threads, host, endpoint,
 	   hrate, hrate/1000.0, accepted_share_count, rejected_share_count,
 		                      stale_share_count, solved_block_count,
            accps, diff_str, cpu.cpu_temp, cpu.cpu_fan, cpu.cpu_clock, sens,
+           epoch,
 	   uptime, (uint32_t) ts);
    return buffer;
 }
@@ -529,6 +538,15 @@ static char *getblocks(char *params)
 			"NUM=%u;TS=%u;HEIGHT=%u;DIFF=%.6f;NETDIFF=%.6f",
 			b->number, (uint32_t) b->when, b->height,
 			b->share_diff, b->net_diff);
+
+		if (b->order[0]) {
+			char cost[SHARE_ORDER_LEN], ord[64];
+
+			x16_order_cost(b->order, cost);
+			snprintf(ord, sizeof(ord), ";ORDER=%s;ORDERCOST=%s",
+			         b->order, cost);
+			strncat(rec, ord, sizeof(rec) - strlen(rec) - 1);
+		}
 
 		if (b->thr_id >= 0) {
 			char who[320];

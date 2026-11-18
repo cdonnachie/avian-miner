@@ -824,6 +824,33 @@ static void json_long_field( struct buf *b, const char *rec, size_t len,
    buf_json_num( b, (double) v, ok );
 }
 
+/* A record's ORDER and ORDERCOST as an object, or null: the functions behind
+ * a hash, a character each, and the cost digit that colours each one. Checked
+ * for shape because the page indexes its name table with every character. */
+static void json_order( struct buf *b, const char *rec, size_t len )
+{
+   char order[32], cost[32], ntime[16];
+   size_t n;
+
+   if ( field_str( rec, len, "ORDER", order, sizeof order )
+        && field_str( rec, len, "ORDERCOST", cost, sizeof cost )
+        && ( n = strlen( order ) ) >= 1 && n <= 16
+        && strspn( order, "0123456789ABCDEFY" ) == n
+        && strlen( cost ) == n && strspn( cost, "012" ) == n )
+   {
+      buf_puts( b, "{\"hex\":" ); buf_json_str( b, order );
+      buf_puts( b, ",\"cost\":" ); buf_json_str( b, cost );
+      buf_puts( b, ",\"ntime\":" );
+      if ( field_str( rec, len, "NTIME", ntime, sizeof ntime ) && ntime[0] )
+         buf_json_str( b, ntime );
+      else
+         buf_puts( b, "null" );
+      buf_puts( b, "}" );
+   }
+   else
+      buf_puts( b, "null" );
+}
+
 static void sens_field( struct sens *s, const char *rec, size_t len,
                         const char *key )
 {
@@ -928,6 +955,9 @@ static bool poll_once( struct poller *p, char *err, size_t errlen )
    buf_json_num( &body, field_num( rec, len, "UPTIME", &t ) ? t : 0, true );
    buf_puts( &body, ",\"ts\":" );
    json_long_field( &body, rec, len, "TS" );
+   /* The X16RT epoch, from a miner new enough to send it. */
+   buf_puts( &body, ",\"order\":" );
+   json_order( &body, rec, len );
    buf_puts( &body, "}" );
 
    /* ---- the machine ---- */
@@ -1129,6 +1159,8 @@ static bool poll_once( struct poller *p, char *err, size_t errlen )
       if ( name[0] ) buf_json_str( &body, name ); else buf_puts( &body, "null" );
       buf_puts( &body, ",\"bus\":" );
       buf_json_num( &body, (double) bus, has_bus );
+      buf_puts( &body, ",\"order\":" );
+      json_order( &body, rec, len );
       buf_puts( &body, "}" );
       i++;
    }

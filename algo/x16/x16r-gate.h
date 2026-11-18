@@ -113,8 +113,14 @@ void x16rt_getTimeHash( const uint32_t timeStamp, void* timeHash );
 
 // Log the epoch's order and decode it into names, coloured by what each
 // function costs this build. Call it where the order is recomputed, which
-// is where the scan loops notice the 128-second epoch has rolled.
+// is where the scan loops notice the 128-second epoch has rolled. It also
+// keeps the order for the API, so it is called under --quiet too and does
+// the not logging itself.
 void x16rt_log_hash_order( const char *order, const uint32_t ntime );
+
+// The nodes the calling thread's last Minotaur hash went through, in the
+// characters miner.h describes beside x16_share_order.
+void minotaur_share_path( char *out );
 
 bool register_x16rt_algo( algo_gate_t* gate );
 

@@ -18,6 +18,7 @@
     --series-1:       #2a78d6;
     --series-1-faint: #86b6ef;
     --good:           #0ca30c;
+    --warning:        #9a6700;
     --critical:       #d03b3b;
     --radius: 10px;
   }
@@ -34,6 +35,7 @@
       --border:         rgba(255, 255, 255, 0.10);
       --series-1:       #3987e5;
       --series-1-faint: #1c5cab;
+      --warning:        #d4a72c;
     }
   }
   :root[data-theme="dark"] {
@@ -48,6 +50,7 @@
     --border:         rgba(255, 255, 255, 0.10);
     --series-1:       #3987e5;
     --series-1-faint: #1c5cab;
+    --warning:        #d4a72c;
   }
 
   * { box-sizing: border-box; }
@@ -143,6 +146,22 @@
   }
   .tile-value { font-size: 21px; font-weight: 600; line-height: 1.25; white-space: nowrap; }
   .tile-value.found { color: var(--series-1); }
+
+  /* ---- the X16RT epoch ---- */
+
+  .order { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .order-line { display: flex; flex-wrap: wrap; gap: 4px 20px; align-items: baseline; margin-top: 2px; }
+  .order-names { display: flex; flex-wrap: wrap; gap: 0 10px; font-size: 16px; font-weight: 600; }
+  td .order-names { flex-wrap: nowrap; gap: 0 7px; font-size: 13px; }
+  /* The colours the miner log gives the same names: what each function
+     costs that build, cheap to expensive. */
+  .cost-0 { color: var(--good); }
+  .cost-1 { color: var(--warning); }
+  .cost-2 { color: var(--critical); }
+  .order-hex {
+    color: var(--muted);
+    font: 500 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
 
   /* ---- chart ---- */
 
@@ -261,6 +280,13 @@
         <div class="hero" id="hero">&mdash;</div>
       </div>
       <div class="tiles" id="tiles"></div>
+    </div>
+    <div class="order" id="order" hidden>
+      <div class="tile-label">Hash order</div>
+      <div class="order-line">
+        <div class="order-names" id="order-names"></div>
+        <div class="order-hex" id="order-hex"></div>
+      </div>
     </div>
   </div>
 
@@ -725,6 +751,54 @@ function tile(label, value, extra) {
   return box;
 }
 
+/* ---------- the X16RT epoch ---------- */
+
+/* The sixteen functions in the order the hex digits index, abbreviated the
+   way the miner log abbreviates them so the two read the same. */
+var ORDER_ABBR = ["Blk", "Bmw", "Gro", "Jh5", "Kck", "Ske", "Luf", "Cub",
+                  "Shv", "Sim", "Ech", "Ham", "Fug", "Shb", "Wrl", "Sha", "Ysp"];
+var ORDER_NAME = ["Blake", "BMW", "Groestl", "JH", "Keccak", "Skein", "Luffa",
+                  "CubeHash", "SHAvite", "SIMD", "Echo", "Hamsi", "Fugue",
+                  "Shabal", "Whirlpool", "SHA-512", "yespower"];
+var ORDER_COST = ["cheap", "middling", "expensive"];
+
+/* An order is a character a function: a hex digit, or Y for the yespower
+   that ends a MinotaurX path. */
+function orderValid(o) {
+  return !!o && /^[0-9A-FY]{1,16}$/.test(o.hex) &&
+         /^[012]+$/.test(o.cost) && o.cost.length === o.hex.length;
+}
+
+function orderFill(node, o) {
+  clear(node);
+  for (var i = 0; i < o.hex.length; i++) {
+    var ch = o.hex.charAt(i), a = ch === "Y" ? 16 : parseInt(ch, 16);
+    var c = +o.cost.charAt(i);
+    var name = el("span", "cost-" + c, ORDER_ABBR[a]);
+    name.title = (i + 1) + ". " + ORDER_NAME[a] + ", " + ORDER_COST[c];
+    node.appendChild(name);
+  }
+}
+
+var orderBox = document.getElementById("order"),
+    orderNames = document.getElementById("order-names"),
+    orderHex = document.getElementById("order-hex"),
+    orderShown = null;
+
+function renderOrder(o) {
+  var ok = orderValid(o);
+  orderBox.hidden = !ok;
+  if (!ok) { orderShown = null; return; }
+
+  /* Rebuilt only when the epoch rolls, so a tooltip survives the polls. */
+  var key = o.hex + o.cost + (o.ntime || "");
+  if (key === orderShown) return;
+  orderShown = key;
+
+  orderFill(orderNames, o);
+  orderHex.textContent = o.hex + (o.ntime ? " \u00b7 ntime " + o.ntime : "");
+}
+
 var minerApiEl = document.getElementById("miner-api");
 
 function render(st) {
@@ -760,6 +834,7 @@ function render(st) {
   } else {
     ident.textContent = st.ok ? "—" : "waiting for the miner…";
   }
+  renderOrder(m.order);
 
   var h = splitRate(tot.hashrate);
   clear(hero);
@@ -1019,9 +1094,15 @@ function renderBlocks(st) {
   var thead = el("thead"), hr = el("tr");
   var cols = ["", "Found", "Height"];
   if (gpu) cols.push("By card"); else cols.push("By thread");
+  /* X16RT: the epoch the block was found in. Minotaur: the path that one
+     nonce took through the garden, which no other nonce shares. */
+  var ordered = blocks.some(function (b) { return orderValid(b.order); });
+  if (ordered)
+    cols.push(/^minotaur/.test((st.miner || {}).algo || "") ? "Garden path" : "Hash order");
+  var numeric = cols.length;
   cols.push("Share diff", "Net diff");
   cols.forEach(function (label, i) {
-    hr.appendChild(el("th", i >= 4 ? "n" : null, label));
+    hr.appendChild(el("th", i >= numeric ? "n" : null, label));
   });
   thead.appendChild(hr);
   table.appendChild(thead);
@@ -1047,6 +1128,19 @@ function renderBlocks(st) {
       who.appendChild(el("span", "idx", b.thr));
     }
     tr.appendChild(who);
+
+    if (ordered) {
+      var how = el("td");
+      if (orderValid(b.order)) {
+        var names = el("div", "order-names");
+        orderFill(names, b.order);
+        names.title = b.order.hex;
+        how.appendChild(names);
+      } else {
+        how.appendChild(el("span", "dim", "—"));
+      }
+      tr.appendChild(how);
+    }
 
     tr.appendChild(el("td", "n", diffText(b.diff)));
     tr.appendChild(el("td", "n dim", diffText(b.netdiff)));

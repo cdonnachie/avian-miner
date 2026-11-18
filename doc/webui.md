@@ -6,7 +6,10 @@ serves a page the rest of the network can open.
 
 It shows the hash rate and its trend, a row per card with that card's own
 rate and the blocks it has found, and the recent solves with the card that
-found each one.
+found each one. On X16RT it also shows the current epoch's hash order, in the
+names and colours of the miner's own log, and beside each solve the order it
+was found in. On MinotaurX a solve shows the path its nonce took through the
+garden instead.
 
     ./avian-webui          # Linux, HiveOS
     avian-webui.exe        # Windows
@@ -196,6 +199,7 @@ does not already report, so anything here can be scripted without it:
 | | `ALGO`, `VER`, `URL`, `UPTIME` | what is running, where, and for how long |
 | | `CPUS`, `CPU`, `LCPUS`, `CORES`, `CPUSET`, `FEATURES` | the machine: threads running, what the CPU calls itself, its logical CPUs and cores, the CPUs this miner is kept to, and the instruction sets it has that the hashing can use; `CORES` only when how the CPUs pair could be read, `CPUSET` only when `--cpu-affinity` confines it |
 | | `DIFF`, `ACCMN` | network difficulty, accepted shares per minute |
+| | `ORDER`, `ORDERCOST`, `NTIME` | X16RT only: the sixteen functions of the current epoch as hex digits, the cost the log colours each with (0 cheap, 1 middling, 2 expensive), and the nTime that chose them |
 | | `TEMP`, `FREQ` | CPU package temperature and mean effective clock in MHz; both 0 when unknown, as they were before there were sensors |
 | | `POWER`, `SENSORS`, `TEMP_<die>` | package watts, what answered (`k10temp`, `LibreHardwareMonitor`...), and one temperature per die (`TEMP_CCD1`); each only when known |
 | `threads` | `CPU`, `<prefix>H/s` | thread number and its rate, prefix included |
@@ -205,6 +209,7 @@ does not already report, so anything here can be scripted without it:
 | | `TEMP`, `MEMTEMP`, `HOTSPOT`, `FAN`, `POWER`, `CLOCK`, `MEMCLOCK` | the card's readings: degrees, percent, watts and MHz, each only when its driver reports it |
 | | `SOL` | blocks this card has found |
 | `blocks` | `NUM`, `TS`, `HEIGHT` | which solve, when, and at what height |
+| | `ORDER`, `ORDERCOST` | the functions behind the solving hash, a character each (the X16R numbering as a hex digit, `Y` for yespower), and their costs as in `summary`. On X16RT it is the epoch the block was found in; on MinotaurX the seven nodes that one nonce took through the garden. Absent for other algorithms |
 | | `CPU`, `GPU`, `CARD`, `BUS` | the card that found it, absent if unknown |
 | | `DIFF`, `NETDIFF` | the share's difficulty and the network's |
 

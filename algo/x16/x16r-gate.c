@@ -96,10 +96,72 @@ static const uint8_t x16r_algo_cost[ X16R_HASH_FUNC_COUNT ] =
    0               // SHA_512
 };
 
+/* The epoch the API reports. The order is one word, a nibble a function, so
+ * the API thread reads a whole order or the one before it, never half of
+ * each. */
+static volatile uint64_t x16rt_api_order = 0;
+static volatile uint32_t x16rt_api_ntime = 0;
+static volatile bool x16rt_api_known = false;
+
+bool x16rt_current_order( char *order, char *cost, uint32_t *ntime )
+{
+   const uint64_t o = x16rt_api_order;
+
+   if ( !x16rt_api_known ) return false;
+   for ( int i = 0; i < X16R_HASH_FUNC_COUNT; i++ )
+   {
+      const int algo = ( o >> ( 4 * ( X16R_HASH_FUNC_COUNT - 1 - i ) ) ) & 0xf;
+
+      order[i] = "0123456789ABCDEF"[ algo ];
+      cost[i] = '0' + x16r_algo_cost[ algo ];
+   }
+   order[ X16R_HASH_FUNC_COUNT ] = cost[ X16R_HASH_FUNC_COUNT ] = '\0';
+   *ntime = x16rt_api_ntime;
+   return true;
+}
+
+void x16_order_cost( const char *order, char *cost )
+{
+   int i = 0;
+
+   for ( ; order[i]; i++ )
+   {
+      const char c = order[i];
+      const int algo = ( c >= 'A' ) ? ( c - 'A' + 10 ) : ( c - '0' );
+
+      /* Anything past the sixteen is yespower, which outweighs them all. */
+      cost[i] = ( algo >= 0 && algo < X16R_HASH_FUNC_COUNT )
+                ? '0' + x16r_algo_cost[ algo ] : '2';
+   }
+   cost[i] = '\0';
+}
+
+void x16_share_order( char *out )
+{
+   out[0] = '\0';
+   if ( opt_algo == ALGO_X16RT )
+      memcpy( out, x16r_hash_order, X16R_HASH_FUNC_COUNT + 1 );
+   else if ( opt_algo == ALGO_MINOTAUR || opt_algo == ALGO_MINOTAURX )
+      minotaur_share_path( out );
+}
+
 void x16rt_log_hash_order( const char *order, const uint32_t ntime )
 {
    char line[ X16R_HASH_FUNC_COUNT * 20 + 1 ];
    int len = 0;
+   uint64_t packed = 0;
+
+   for ( int i = 0; i < X16R_HASH_FUNC_COUNT; i++ )
+   {
+      const char c = order[i];
+
+      packed = ( packed << 4 ) | ( ( c >= 'A' ? c - 'A' + 10 : c - '0' ) & 0xf );
+   }
+   x16rt_api_order = packed;
+   x16rt_api_ntime = ntime;
+   x16rt_api_known = true;
+
+   if ( opt_quiet ) return;
 
    for ( int i = 0; i < X16R_HASH_FUNC_COUNT; i++ )
    {

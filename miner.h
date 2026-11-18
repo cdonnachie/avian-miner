@@ -691,6 +691,21 @@ extern uint32_t accepted_share_count;
 extern uint32_t rejected_share_count;
 extern uint32_t solved_block_count;
 
+/* The functions behind a hash, in the order they ran, for the algorithms
+ * where that varies: X16RT's epoch order, or the path one nonce took through
+ * the Minotaur garden. A character a function: the X16R enum as a hex digit,
+ * and Y for yespower. All of it is in algo/x16/x16r-gate.c.
+ *
+ * x16_share_order is for the thread about to submit, and leaves an empty
+ * string for every other algorithm. x16_order_cost gives the digit the log
+ * colours each function with, 0 cheap to 2 expensive. x16rt_current_order is
+ * the epoch being hashed now, false until a scan has computed one; its
+ * buffers hold seventeen bytes. */
+#define SHARE_ORDER_LEN 20
+void x16_share_order( char *out );
+void x16_order_cost( const char *order, char *cost );
+bool x16rt_current_order( char *order, char *cost, uint32_t *ntime );
+
 /* One block this run solved. Kept so the API can name the card that found
  * it, which the counters alone cannot: a rig's question after a solve is
  * which slot earned it. */
@@ -702,6 +717,7 @@ struct solved_block
    int      thr_id;      /* the thread, so the card, or -1 if it was lost */
    double   share_diff;
    double   net_diff;
+   char     order[ SHARE_ORDER_LEN ];   /* see x16_share_order; may be empty */
 };
 
 /* Blocks solved per mining thread, opt_n_threads long. On a GPU run a
