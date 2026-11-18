@@ -228,8 +228,66 @@ __device__ __forceinline__ uint32_t hamxorxor(uint32_t a, uint32_t b, uint32_t c
 		HAMSI_L(c[13], m[12], c[14], m[15]); \
 	}
 
-__global__ __launch_bounds__(384, 2)
-void x13_hamsi512_gpu_hash_64(uint32_t threads, uint32_t *g_hash){
+/* The message expansion is a GF(2) map of 64 bits to 512, and upstream walked
+ * it a bit at a time: 64 masked xors of 16 words a block, most of the kernel.
+ * Folded by nibble it is 16 lookups of 16 words. hamsi_nt[k][16 * p + v] is
+ * words 2k and 2k+1 of the xor of d_T512[4p + b] over the set bits b of v.
+ * 16 KB, built once a device and copied into shared memory by every block.
+ * The idea is from tpfuemp's ccminer (hamsi512_device.cuh). */
+#define HAMSI_TPB 256
+#define HAMSI_NT_WORDS (8 * 256)
+
+static uint2 *d_hamsi_nt[MAX_GPUS];
+
+__global__
+void hamsi512_fill_nt(uint2 *nt)
+{
+	const int i = blockIdx.x * blockDim.x + threadIdx.x;
+	if (i >= HAMSI_NT_WORDS) return;
+	const int k = i >> 8, e = i & 255, p = e >> 4, v = e & 15;
+	uint32_t x = 0, y = 0;
+	for (int b = 0; b < 4; b++)
+		if (v & (1 << b)) {
+			x ^= d_T512[(4 * p + b) * 16 + 2 * k];
+			y ^= d_T512[(4 * p + b) * 16 + 2 * k + 1];
+		}
+	nt[i] = make_uint2(x, y);
+}
+
+/* One mining thread a device, so no lock. */
+__host__
+static const uint2 *hamsi512_nt(const int thr_id)
+{
+	const int dev = device_map[thr_id];
+	if (!d_hamsi_nt[dev]) {
+		CUDA_SAFE_CALL(cudaMalloc(&d_hamsi_nt[dev], HAMSI_NT_WORDS * sizeof(uint2)));
+		hamsi512_fill_nt<<<HAMSI_NT_WORDS / 256, 256>>>(d_hamsi_nt[dev]);
+		CUDA_SAFE_CALL(cudaDeviceSynchronize());
+	}
+	return d_hamsi_nt[dev];
+}
+
+#define HAMSI_NT_LOAD(nt, gnt) \
+	__shared__ uint2 nt[8][256]; \
+	for (int i_ = threadIdx.x; i_ < HAMSI_NT_WORDS; i_ += blockDim.x) nt[i_ >> 8][i_ & 255] = gnt[i_]; \
+	__syncthreads();
+
+/* m = expansion of the eight message bytes at b */
+#define HAMSI_EXPAND(m, nt, b) { \
+	const uint32_t w0_ = *(const uint32_t*)(b), w1_ = *(const uint32_t*)((b) + 4); \
+	for (int k_ = 0; k_ < 16; k_++) m[k_] = 0; \
+	for (int p_ = 0; p_ < 16; p_++) { \
+		const uint32_t e_ = 16 * p_ + (((p_ < 8 ? w0_ : w1_) >> (4 * (p_ & 7))) & 15); \
+		for (int k_ = 0; k_ < 8; k_++) { \
+			const uint2 t_ = nt[k_][e_]; \
+			m[2 * k_] ^= t_.x; m[2 * k_ + 1] ^= t_.y; \
+		} \
+	} }
+
+__global__ __launch_bounds__(HAMSI_TPB, 3)
+void x13_hamsi512_gpu_hash_64(uint32_t threads, uint32_t *g_hash, const uint2 *__restrict__ gnt){
+	HAMSI_NT_LOAD(nt, gnt)
+
 
 	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
 	if (thread < threads)
@@ -248,49 +306,7 @@ void x13_hamsi512_gpu_hash_64(uint32_t threads, uint32_t *g_hash){
 
 		for (int i = 0; i < 64; i += 8)
 		{
-			tp = &d_T512[0];
-
-			dm = -(h1[i] & 1);
-			m[0] = dm & tp[0]; m[1] = dm & tp[1];
-			m[2] = dm & tp[2]; m[3] = dm & tp[3];
-			m[4] = dm & tp[4]; m[5] = dm & tp[5];
-			m[6] = dm & tp[6]; m[7] = dm & tp[7];
-			m[8] = dm & tp[8]; m[9] = dm & tp[9];
-			m[10] = dm & tp[10]; m[11] = dm & tp[11];
-			m[12] = dm & tp[12]; m[13] = dm & tp[13];
-			m[14] = dm & tp[14]; m[15] = dm & tp[15];
-			tp += 16;
-#pragma unroll 7
-			for (int v = 1; v < 8; v++)
-			{
-				dm = -(bfe(h1[i], v, 1));
-				m[0] ^= dm & tp[0]; m[1] ^= dm & tp[1];
-				m[2] ^= dm & tp[2]; m[3] ^= dm & tp[3];
-				m[4] ^= dm & tp[4]; m[5] ^= dm & tp[5];
-				m[6] ^= dm & tp[6]; m[7] ^= dm & tp[7];
-				m[8] ^= dm & tp[8]; m[9] ^= dm & tp[9];
-				m[10] ^= dm & tp[10]; m[11] ^= dm & tp[11];
-				m[12] ^= dm & tp[12]; m[13] ^= dm & tp[13];
-				m[14] ^= dm & tp[14]; m[15] ^= dm & tp[15];
-				tp += 16;
-			}
-
-#pragma unroll
-			for (int u = 1; u < 8; u++) {
-#pragma unroll 8
-				for (int v = 0; v < 8; v++) {
-					dm = -(bfe(h1[i + u], v, 1));
-					m[0] ^= dm & tp[0]; m[1] ^= dm & tp[1];
-					m[2] ^= dm & tp[2]; m[3] ^= dm & tp[3];
-					m[4] ^= dm & tp[4]; m[5] ^= dm & tp[5];
-					m[6] ^= dm & tp[6]; m[7] ^= dm & tp[7];
-					m[8] ^= dm & tp[8]; m[9] ^= dm & tp[9];
-					m[10] ^= dm & tp[10]; m[11] ^= dm & tp[11];
-					m[12] ^= dm & tp[12]; m[13] ^= dm & tp[13];
-					m[14] ^= dm & tp[14]; m[15] ^= dm & tp[15];
-					tp += 16;
-				}
-			}
+			HAMSI_EXPAND(m, nt, &h1[i]);
 
 			//#pragma unroll 6
 			for (int r = 0; r < 6; r++) {
@@ -468,9 +484,11 @@ void x13_hamsi512_gpu_hash_80(uint32_t threads, uint32_t startNounce, uint32_t *
 	}
 }
 
-__global__ __launch_bounds__(384, 2)
-void x13_hamsi512_gpu_hash_64_final(uint32_t threads, uint32_t *g_hash, uint32_t *resNonce, const uint64_t target)
+__global__ __launch_bounds__(HAMSI_TPB, 3)
+void x13_hamsi512_gpu_hash_64_final(uint32_t threads, uint32_t *g_hash, uint32_t *resNonce, const uint64_t target, const uint2 *__restrict__ gnt)
 {
+	HAMSI_NT_LOAD(nt, gnt)
+
 
 	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
 	if (thread < threads)
@@ -489,48 +507,7 @@ void x13_hamsi512_gpu_hash_64_final(uint32_t threads, uint32_t *g_hash, uint32_t
 
 		for (int i = 0; i < 64; i += 8)
 		{
-			tp = &d_T512[0];
-
-			dm = -(h1[i] & 1);
-			m[0] = dm & tp[0]; m[1] = dm & tp[1];
-			m[2] = dm & tp[2]; m[3] = dm & tp[3];
-			m[4] = dm & tp[4]; m[5] = dm & tp[5];
-			m[6] = dm & tp[6]; m[7] = dm & tp[7];
-			m[8] = dm & tp[8]; m[9] = dm & tp[9];
-			m[10] = dm & tp[10]; m[11] = dm & tp[11];
-			m[12] = dm & tp[12]; m[13] = dm & tp[13];
-			m[14] = dm & tp[14]; m[15] = dm & tp[15];
-			tp += 16;
-			//#pragma unroll 7
-			for (int v = 1; v < 8; v++) {
-				dm = -((h1[i] >> v) & 1);
-				m[0] ^= dm & tp[0]; m[1] ^= dm & tp[1];
-				m[2] ^= dm & tp[2]; m[3] ^= dm & tp[3];
-				m[4] ^= dm & tp[4]; m[5] ^= dm & tp[5];
-				m[6] ^= dm & tp[6]; m[7] ^= dm & tp[7];
-				m[8] ^= dm & tp[8]; m[9] ^= dm & tp[9];
-				m[10] ^= dm & tp[10]; m[11] ^= dm & tp[11];
-				m[12] ^= dm & tp[12]; m[13] ^= dm & tp[13];
-				m[14] ^= dm & tp[14]; m[15] ^= dm & tp[15];
-				tp += 16;
-			}
-
-			//#pragma unroll
-			for (int u = 1; u < 8; u++) {
-#pragma unroll 8
-				for (int v = 0; v < 8; v++) {
-					dm = -((h1[i + u] >> v) & 1);
-					m[0] ^= dm & tp[0]; m[1] ^= dm & tp[1];
-					m[2] ^= dm & tp[2]; m[3] ^= dm & tp[3];
-					m[4] ^= dm & tp[4]; m[5] ^= dm & tp[5];
-					m[6] ^= dm & tp[6]; m[7] ^= dm & tp[7];
-					m[8] ^= dm & tp[8]; m[9] ^= dm & tp[9];
-					m[10] ^= dm & tp[10]; m[11] ^= dm & tp[11];
-					m[12] ^= dm & tp[12]; m[13] ^= dm & tp[13];
-					m[14] ^= dm & tp[14]; m[15] ^= dm & tp[15];
-					tp += 16;
-				}
-			}
+			HAMSI_EXPAND(m, nt, &h1[i]);
 
 			//#pragma unroll 6
 			for (int r = 0; r < 6; r++) {
@@ -615,12 +592,12 @@ void x16_hamsi512_setBlock_80(uint64_t *pdata)
 __host__
 void x13_hamsi512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t *d_hash)
 {
-	const uint32_t threadsperblock = 384;
+	const uint32_t threadsperblock = HAMSI_TPB;
 
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	x13_hamsi512_gpu_hash_64 <<<grid, block >>>(threads, d_hash);
+	x13_hamsi512_gpu_hash_64 <<<grid, block >>>(threads, d_hash, hamsi512_nt(thr_id));
 }
 
 /*
@@ -637,10 +614,10 @@ void x16_hamsi512_cuda_hash_80(int thr_id, const uint32_t threads, uint32_t star
 
 void x13_hamsi512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t *d_hash, uint32_t *d_resNonce, const uint64_t target)
 {
-	const uint32_t threadsperblock = 384;
+	const uint32_t threadsperblock = HAMSI_TPB;
 
 	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
 	dim3 block(threadsperblock);
 
-	x13_hamsi512_gpu_hash_64_final <<<grid, block >>>(threads, d_hash, d_resNonce, target);
+	x13_hamsi512_gpu_hash_64_final <<<grid, block >>>(threads, d_hash, d_resNonce, target, hamsi512_nt(thr_id));
 }
