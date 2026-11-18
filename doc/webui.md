@@ -199,7 +199,7 @@ does not already report, so anything here can be scripted without it:
 | | `ALGO`, `VER`, `URL`, `UPTIME` | what is running, where, and for how long |
 | | `CPUS`, `CPU`, `LCPUS`, `CORES`, `CPUSET`, `FEATURES` | the machine: threads running, what the CPU calls itself, its logical CPUs and cores, the CPUs this miner is kept to, and the instruction sets it has that the hashing can use; `CORES` only when how the CPUs pair could be read, `CPUSET` only when `--cpu-affinity` confines it |
 | | `DIFF`, `ACCMN` | network difficulty, accepted shares per minute |
-| | `ORDER`, `ORDERCOST`, `NTIME` | X16RT only: the sixteen functions of the current epoch as hex digits, the cost the log colours each with (0 cheap, 1 middling, 2 expensive), and the nTime that chose them |
+| | `ORDER`, `ORDERCOST`, `NTIME` | X16RT only: the sixteen functions of the current epoch as hex digits, the cost the log colours each with (0 cheap, 1 middling, 2 expensive; on a GPU run these are a card, not the CPU), and the nTime that chose them |
 | | `TEMP`, `FREQ` | CPU package temperature and mean effective clock in MHz; both 0 when unknown, as they were before there were sensors |
 | | `POWER`, `SENSORS`, `TEMP_<die>` | package watts, what answered (`k10temp`, `LibreHardwareMonitor`...), and one temperature per die (`TEMP_CCD1`); each only when known |
 | `threads` | `CPU`, `<prefix>H/s` | thread number and its rate, prefix included |

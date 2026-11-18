@@ -112,7 +112,7 @@ void x16rt_getAlgoString( const uint32_t *timeHash, char *output );
 void x16rt_getTimeHash( const uint32_t timeStamp, void* timeHash );
 
 // Log the epoch's order and decode it into names, coloured by what each
-// function costs this build. Call it where the order is recomputed, which
+// function costs this build, or a card on a GPU run. Call it where the order is recomputed, which
 // is where the scan loops notice the 128-second epoch has rolled. It also
 // keeps the order for the API, so it is called under --quiet too and does
 // the not logging itself.

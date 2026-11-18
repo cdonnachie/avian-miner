@@ -68,15 +68,14 @@ static const char *const x16r_algo_names[ X16R_HASH_FUNC_COUNT ] =
  * them, which is a large enough difference to be worth tracking rather than
  * hard-coding one answer for both builds.
  *
- * These are CPU costs, so the colours will not always agree with a GPU
- * miner's. JH is the clearest case: cheap here, middling there. */
+ * These are CPU costs. A GPU run takes the table after this one. */
 #if defined(__AES__) || defined(__ARM_FEATURE_AES)
   #define X16R_AES_COST 1
 #else
   #define X16R_AES_COST 2
 #endif
 
-static const uint8_t x16r_algo_cost[ X16R_HASH_FUNC_COUNT ] =
+static const uint8_t x16r_cpu_cost[ X16R_HASH_FUNC_COUNT ] =
 {
    0,              // BLAKE
    0,              // BMW
@@ -96,6 +95,37 @@ static const uint8_t x16r_algo_cost[ X16R_HASH_FUNC_COUNT ] =
    0               // SHA_512
 };
 
+/* The same tiers on a card, where nothing has an instruction set to lean on
+ * and cost is instruction count. Timed a kernel at a time on an RTX 3090: the
+ * cheap six take 0.2 to 0.5 ns a hash, the middle six 1.0 to 1.6, and SIMD,
+ * Hamsi, Groestl and Echo 1.9 to 2.5. One table for every card, because the
+ * log prints one line for the whole rig. AMD cards run other kernels and
+ * have not been timed against it. */
+static const uint8_t x16r_gpu_cost[ X16R_HASH_FUNC_COUNT ] =
+{
+   0,  // BLAKE
+   0,  // BMW
+   2,  // GROESTL
+   1,  // JH
+   0,  // KECCAK
+   0,  // SKEIN
+   1,  // LUFFA
+   1,  // CUBEHASH
+   1,  // SHAVITE
+   2,  // SIMD
+   2,  // ECHO
+   2,  // HAMSI
+   1,  // FUGUE
+   0,  // SHABAL
+   1,  // WHIRLPOOL
+   0   // SHA_512
+};
+
+static inline int x16r_algo_cost( const int algo )
+{
+   return opt_gpu ? x16r_gpu_cost[ algo ] : x16r_cpu_cost[ algo ];
+}
+
 /* The epoch the API reports. The order is one word, a nibble a function, so
  * the API thread reads a whole order or the one before it, never half of
  * each. */
@@ -113,7 +143,7 @@ bool x16rt_current_order( char *order, char *cost, uint32_t *ntime )
       const int algo = ( o >> ( 4 * ( X16R_HASH_FUNC_COUNT - 1 - i ) ) ) & 0xf;
 
       order[i] = "0123456789ABCDEF"[ algo ];
-      cost[i] = '0' + x16r_algo_cost[ algo ];
+      cost[i] = '0' + x16r_algo_cost( algo );
    }
    order[ X16R_HASH_FUNC_COUNT ] = cost[ X16R_HASH_FUNC_COUNT ] = '\0';
    *ntime = x16rt_api_ntime;
@@ -131,7 +161,7 @@ void x16_order_cost( const char *order, char *cost )
 
       /* Anything past the sixteen is yespower, which outweighs them all. */
       cost[i] = ( algo >= 0 && algo < X16R_HASH_FUNC_COUNT )
-                ? '0' + x16r_algo_cost[ algo ] : '2';
+                ? '0' + x16r_algo_cost( algo ) : '2';
    }
    cost[i] = '\0';
 }
@@ -173,7 +203,7 @@ void x16rt_log_hash_order( const char *order, const uint32_t ntime )
       if ( algo < 0 || algo >= X16R_HASH_FUNC_COUNT ) continue;
       if ( use_colors )
       {
-         switch ( x16r_algo_cost[ algo ] )
+         switch ( x16r_algo_cost( algo ) )
          {
             case 0:  colour = CL_GRN; break;
             case 2:  colour = CL_RED; break;
