@@ -67,6 +67,8 @@ void whirlpool_midstate(void *state, const void *input)
 static uint32_t *d_resNonce[MAX_GPUS];
 static uint32_t h_resNonce[MAX_GPUS][4];
 
+extern int cuda_check_hash_others(int thr_id, uint32_t threads, uint32_t startNounce, uint32_t *d_inputHash, uint32_t skip, uint32_t *out, int max);
+
 extern void quark_bmw512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t *d_nonceVector, uint32_t *d_hash, uint32_t *resNonce, const uint64_t target);
 extern void x11_luffa512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t *d_hash, uint64_t target, uint32_t *d_resNonce);
 extern void x11_echo512_cpu_hash_64_final_sp(int thr_id, uint32_t threads, uint32_t *d_hash, uint32_t *d_resNonce, const uint64_t target);
@@ -1227,23 +1229,20 @@ extern "C" AVIAN_CUDA_API int avian_cuda_scan_batch( const avian_cuda_job *job,
                         int found = 0;
                         if (found < max_out) out_nonces[found++] = nonce0;
 
-                        /* A batch can hold a second solution, reported one of
-                         * two ways depending on whether the last stage ran a
-                         * _final kernel. Kept exactly as the original driver
-                         * had it: the two paths count nonces in different
-                         * frames, so conflating them would offer a nonce from
-                         * the wrong place in the batch. */
+                        /* A batch can hold more solutions, reported one of two
+                         * ways depending on whether the last stage ran a
+                         * _final kernel. The two paths count nonces in
+                         * different frames, so conflating them would offer a
+                         * nonce from the wrong place in the batch. A _final
+                         * kernel keeps two; the check path reports them all. */
                         if (addstart) {
                                 uint32_t second = h_resNonce[thr_id][1];
                                 if (second != UINT32_MAX && found < max_out) {
                                         out_nonces[found++] = second + start;
                                 }
                         } else {
-                                uint32_t second = cuda_check_hash_suppl(thr_id, throughput,
-                                                                        start, d_hash[thr_id], 1);
-                                if (second != 0 && second != UINT32_MAX && found < max_out) {
-                                        out_nonces[found++] = second;
-                                }
+                                found += cuda_check_hash_others(thr_id, throughput, start, d_hash[thr_id],
+                                                                nonce0, out_nonces + found, max_out - found);
                         }
                         if (throughput_used) *throughput_used = throughput;
                         avian_batch_end(dev_id);

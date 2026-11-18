@@ -224,6 +224,45 @@ uint32_t cuda_check_hash_suppl(int thr_id, uint32_t threads, uint32_t startNounc
 	return result;
 }
 
+__global__ __launch_bounds__(512, 4)
+void cuda_checkhash_64_all(uint32_t threads, uint32_t startNounce, uint32_t *hash, uint32_t *resNonces)
+{
+	const uint32_t thread = (blockDim.x * blockIdx.x + threadIdx.x);
+	if (thread < threads && hashbelowtarget(&hash[thread << 4], pTarget)) {
+		const uint32_t n = atomicAdd(&resNonces[0], 1);
+		if (n < 7)
+			resNonces[1 + n] = (startNounce + thread);
+	}
+}
+
+/* The nonces of the batch under the target other than skip, the one
+ * cuda_check_hash returned. cuda_check_hash_suppl offers the second entry of
+ * its own list instead, and that is the nonce already in hand more often than
+ * not: on a 3090 three second shares in four were dropped. */
+__host__
+int cuda_check_hash_others(int thr_id, uint32_t threads, uint32_t startNounce, uint32_t *d_inputHash, uint32_t skip, uint32_t *out, int max)
+{
+	const uint32_t threadsperblock = 512;
+	dim3 grid((threads + threadsperblock - 1) / threadsperblock);
+	dim3 block(threadsperblock);
+
+	if (!init_done[thr_id]) {
+		applog(LOG_ERR, "missing call to cuda_check_cpu_init");
+		return 0;
+	}
+
+	cudaMemset(d_resNonces[thr_id], 0, sizeof(uint32_t));
+	cuda_checkhash_64_all <<<grid, block>>> (threads, startNounce, d_inputHash, d_resNonces[thr_id]);
+	cudaMemcpy(h_resNonces[thr_id], d_resNonces[thr_id], 32, cudaMemcpyDeviceToHost);
+
+	const uint32_t cnt = h_resNonces[thr_id][0] < 7 ? h_resNonces[thr_id][0] : 7;
+	int n = 0;
+	for (uint32_t i = 0; i < cnt && n < max; i++)
+		if (h_resNonces[thr_id][1 + i] != skip)
+			out[n++] = h_resNonces[thr_id][1 + i];
+	return n;
+}
+
 /* --------------------------------------------------------------------------------------------- */
 
 __global__
