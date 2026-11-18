@@ -154,14 +154,25 @@ uint32_t cuda_default_throughput(int thr_id, uint32_t defthr)
     env = getenv("AVIAN_CUDA_THROUGHPUT");
     if (env && *env)
     {
+        /* Said once a device. The driver asks for this at the top of every
+         * batch, so saying it each time was a line a batch: fifty a second
+         * on a 3070 at 1<<19, which scrolls the Benchmark line the variable
+         * is there to produce off the screen. */
+        static bool said[MAX_GPUS] = { false };
+        const bool first = thr_id >= 0 && thr_id < MAX_GPUS && !said[thr_id];
         unsigned long v = strtoul(env, NULL, 0);
+
+        if (first)
+            said[thr_id] = true;
         if (v >= 0x100)
         {
-            applog(LOG_INFO, "GPU #%d: throughput %lu, from AVIAN_CUDA_THROUGHPUT",
-                   (int) device_map[thr_id], v);
+            if (first)
+                applog(LOG_INFO, "GPU #%d: throughput %lu, from AVIAN_CUDA_THROUGHPUT",
+                       (int) device_map[thr_id], v);
             return (uint32_t) (v & 0xFFFFFF00);
         }
-        applog(LOG_WARNING, "ignoring AVIAN_CUDA_THROUGHPUT=%s, below the 256 minimum", env);
+        if (first)
+            applog(LOG_WARNING, "ignoring AVIAN_CUDA_THROUGHPUT=%s, below the 256 minimum", env);
     }
 
     return defthr;
