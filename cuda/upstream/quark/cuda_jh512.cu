@@ -92,56 +92,26 @@ static void SWAP1(uint32_t &x) {
 }
 */
 
+/* Swap the N-bit groups of four words. With PTX that is two shifts and one
+ * select, (a & c) | (b & ~c), where upstream spent four instructions. This
+ * form and the S-box below are from tpfuemp's ccminer (jh512_device.cuh). */
+template <int N, uint32_t LO>
 __device__ __forceinline__
-static void SWAP4x4(uint32_t *x) {
+static void jh_swapx4(uint32_t *x) {
+	#pragma unroll
+	for (int i = 0; i < 4; i++) {
 #if AVIAN_NO_PTX
-	for (uint32_t i = 0; i < 4; i++, ++x)
-		*x = ((*x & 0x0F0F0F0Fu) << 4) | ((*x & 0xF0F0F0F0u) >> 4);
+		x[i] = ((x[i] & LO) << N) | ((x[i] & ~LO) >> N);
 #else
-	#pragma nounroll
-	// y is used as tmp register too
-	for (uint32_t y=0; y<4; y++, ++x) {
-		asm("and.b32 %1, %0, 0xF0F0F0F0;\n\t"
-		"xor.b32 %0, %0, %1; shr.b32 %1, %1, 4;\n\t"
-		"vshl.u32.u32.u32.clamp.add %0, %0, 4, %1;"
-		: "+r"(*x) : "r"(y));
-	}
+		uint32_t r;
+		asm("lop3.b32 %0, %1, %2, %3, 0xE4;" : "=r"(r) : "r"(x[i] >> N), "r"(x[i] << N), "n"(LO));
+		x[i] = r;
 #endif
-}
-
-__device__ __forceinline__
-static void SWAP2x4(uint32_t *x) {
-#if AVIAN_NO_PTX
-	for (uint32_t i = 0; i < 4; i++, ++x)
-		*x = ((*x & 0x33333333u) << 2) | ((*x & 0xCCCCCCCCu) >> 2);
-#else
-	#pragma nounroll
-	// y is used as tmp register too
-	for (uint32_t y=0; y<4; y++, ++x) {
-		asm("and.b32 %1, %0, 0xCCCCCCCC;\n\t"
-		"xor.b32 %0, %0, %1; shr.b32 %1, %1, 2; \n\t"
-		"vshl.u32.u32.u32.clamp.add %0, %0, 2, %1;"
-		: "+r"(*x) : "r"(y));
 	}
-#endif
 }
-
-__device__ __forceinline__
-static void SWAP1x4(uint32_t *x) {
-#if AVIAN_NO_PTX
-	for (uint32_t i = 0; i < 4; i++, ++x)
-		*x = ((*x & 0x55555555u) << 1) | ((*x & 0xAAAAAAAAu) >> 1);
-#else
-	#pragma nounroll
-	// y is used as tmp register too
-	for (uint32_t y=0; y<4; y++, ++x) {
-		asm("and.b32 %1, %0, 0xAAAAAAAA;\n\t"
-		"xor.b32 %0, %0, %1; shr.b32 %1, %1, 1; \n\t"
-		"vshl.u32.u32.u32.clamp.add %0, %0, 1, %1;"
-		: "+r"(*x) : "r"(y));
-	}
-#endif
-}
+#define SWAP4x4(x) jh_swapx4<4, 0x0F0F0F0Fu>(x)
+#define SWAP2x4(x) jh_swapx4<2, 0x33333333u>(x)
+#define SWAP1x4(x) jh_swapx4<1, 0x55555555u>(x)
 
 /* The MDS transform */
 #define L(m0,m1,m2,m3,m4,m5,m6,m7) \
@@ -166,6 +136,7 @@ static void SWAP1x4(uint32_t *x) {
       m3 ^= m4;
 */
 
+#if AVIAN_NO_PTX
 #define Sbox( x0, x1, x2, x3, cc )   \
     x3 = ~x3; \
     x0 = xorandnot( x0, x2, cc ); \
@@ -178,6 +149,23 @@ static void SWAP1x4(uint32_t *x) {
     x3 = xorand( x3, x1, x2 ); \
     x1 = xorand( x1, temp0, x0 ); \
     x2 ^= temp0;
+#else
+/* The same S-box with the inversion of x3 folded into the tables, one lop3 a
+ * statement and the asm so that the compiler keeps it that way. */
+#define JH_L3(d, a, b, c, lut) asm("lop3.b32 %0, %1, %2, %3, " #lut ";" : "=r"(d) : "r"(a), "r"(b), "r"(c))
+#define Sbox( x0, x1, x2, x3, cc ) { \
+    uint32_t n_; \
+    JH_L3(n_, x0, x2, cc, 0xD2);    x0 = n_; /* x0 ^= ~x2 & cc       */ \
+    JH_L3(temp0, cc, x0, x1, 0x78);          /* t0 = cc ^ (x0 & x1)   */ \
+    JH_L3(n_, x0, x2, x3, 0xB4);    x0 = n_; /* x0 ^= x2 & ~x3        */ \
+    JH_L3(n_, x3, x1, x2, 0x2D);    x3 = n_; /* x3 = ~x3 ^ (~x1 & x2) */ \
+    JH_L3(n_, x1, x0, x2, 0x78);    x1 = n_; /* x1 ^= x0 & x2         */ \
+    JH_L3(n_, x2, x0, x3, 0xB4);    x2 = n_; /* x2 ^= x0 & ~x3        */ \
+    JH_L3(n_, x0, x1, x3, 0x1E);    x0 = n_; /* x0 ^= x1 | x3         */ \
+    JH_L3(n_, x3, x1, x2, 0x78);    x3 = n_; /* x3 ^= x1 & x2         */ \
+    JH_L3(n_, x1, temp0, x0, 0x78); x1 = n_; /* x1 ^= t0 & x0         */ \
+    x2 ^= temp0; }
+#endif
 
 /* The Sbox */
 /*
