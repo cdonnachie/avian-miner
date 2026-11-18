@@ -40,6 +40,117 @@ uint32_t bfi(uint32_t x, uint32_t a, uint32_t bit, uint32_t numBits) {
 }
 
 
+/* The bitsliced kernels, two hashes a thread: see quark/groestl512_bs.h. Timed
+ * on sm_86 only, so older cards and HIP stay on the quad path below until
+ * someone measures them there. */
+#if !defined(__HIPCC__)
+#define GBS_KERNELS 1
+#define GBS_MIN_SM 800
+#include "quark/groestl512_bs.h"
+
+/* A 64-byte hash as a padded block: 0x80 at byte 64, block count 1 at byte 127. */
+__device__ __forceinline__
+void gbs_block64(const uint32_t *const h, uint32_t *const b)
+{
+	*(uint2x4*)&b[0] = __ldg4((uint2x4*)&h[0]);
+	*(uint2x4*)&b[8] = __ldg4((uint2x4*)&h[8]);
+	b[16] = 0x80;
+#pragma unroll
+	for (int i = 17; i < 31; i++) b[i] = 0;
+	b[31] = 0x01000000;
+}
+
+__global__ __launch_bounds__(GBS_TPB, 2)
+void quark_groestl512_gpu_hash_64_bs(const uint32_t threads, uint32_t *const g_hash)
+{
+	__shared__ uint32_t st[GBS_ST_WORDS * GBS_TPB];
+	const uint32_t i0 = 2 * (blockDim.x * blockIdx.x + threadIdx.x);
+	if (i0 >= threads) return;
+	/* an odd count pairs the last hash with itself */
+	const uint32_t i1 = (i0 + 1 < threads) ? i0 + 1 : i0;
+	uint32_t *const h0 = &g_hash[i0 << 4], *const h1 = &g_hash[i1 << 4];
+	uint32_t b0[32], b1[32], s[64];
+
+	gbs_block64(h0, b0);
+	gbs_block64(h1, b1);
+	gbs_load(b0, b1, s);
+	gbs_compress(s, st + threadIdx.x, blockDim.x);
+	gbs_store(s, b0, b1);
+	*(uint2x4*)&h0[0] = *(uint2x4*)&b0[0];
+	*(uint2x4*)&h0[8] = *(uint2x4*)&b0[8];
+	*(uint2x4*)&h1[0] = *(uint2x4*)&b1[0];
+	*(uint2x4*)&h1[8] = *(uint2x4*)&b1[8];
+}
+
+__device__ __forceinline__
+void gbs_report(uint32_t *const resNonce, const uint32_t nonce)
+{
+	const uint32_t tmp = atomicExch(&resNonce[0], nonce);
+	if (tmp != UINT32_MAX)
+		resNonce[1] = tmp;
+}
+
+__global__ __launch_bounds__(GBS_TPB, 2)
+void quark_groestl512_gpu_hash_64_bs_final(const uint32_t threads, uint32_t *const g_hash, uint32_t *const resNonce, const uint64_t target)
+{
+	__shared__ uint32_t st[GBS_ST_WORDS * GBS_TPB];
+	const uint32_t i0 = 2 * (blockDim.x * blockIdx.x + threadIdx.x);
+	if (i0 >= threads) return;
+	const uint32_t i1 = (i0 + 1 < threads) ? i0 + 1 : i0;
+	uint32_t b0[32], b1[32], s[64];
+
+	gbs_block64(&g_hash[i0 << 4], b0);
+	gbs_block64(&g_hash[i1 << 4], b1);
+	gbs_load(b0, b1, s);
+	gbs_compress(s, st + threadIdx.x, blockDim.x);
+	gbs_store(s, b0, b1);
+	if ((((uint64_t)b0[7] << 32) | b0[6]) <= target)
+		gbs_report(resNonce, i0);
+	if (i1 != i0 && (((uint64_t)b1[7] << 32) | b1[6]) <= target)
+		gbs_report(resNonce, i1);
+}
+
+__global__ __launch_bounds__(GBS_TPB, 2)
+void groestl512_gpu_hash_80_bs(const uint32_t threads, const uint32_t startNounce, uint32_t *const g_outhash)
+{
+	__shared__ uint32_t st[GBS_ST_WORDS * GBS_TPB];
+	const uint32_t i0 = 2 * (blockDim.x * blockIdx.x + threadIdx.x);
+	if (i0 >= threads) return;
+	uint32_t b0[32], b1[32], s[64];
+
+#pragma unroll
+	for (int i = 0; i < 19; i++) b0[i] = b1[i] = c_Message80[i];
+	b0[19] = cuda_swab32(startNounce + i0);
+	b1[19] = cuda_swab32(startNounce + i0 + 1);
+	b0[20] = b1[20] = 0x80;
+#pragma unroll
+	for (int i = 21; i < 31; i++) b0[i] = b1[i] = 0;
+	b0[31] = b1[31] = 0x01000000;
+
+	gbs_load(b0, b1, s);
+	gbs_compress(s, st + threadIdx.x, blockDim.x);
+	gbs_store(s, b0, b1);
+	uint32_t *const h0 = &g_outhash[i0 << 4];
+	*(uint2x4*)&h0[0] = *(uint2x4*)&b0[0];
+	*(uint2x4*)&h0[8] = *(uint2x4*)&b0[8];
+	if (i0 + 1 < threads) {
+		*(uint2x4*)&h0[16] = *(uint2x4*)&b1[0];
+		*(uint2x4*)&h0[24] = *(uint2x4*)&b1[8];
+	}
+}
+
+__host__ static bool gbs_usable(const int thr_id)
+{
+	return device_sm[device_map[thr_id]] >= GBS_MIN_SM;
+}
+
+__host__ static dim3 gbs_grid(const uint32_t threads)
+{
+	return dim3(((threads + 1) / 2 + GBS_TPB - 1) / GBS_TPB);
+}
+#endif
+
+
 #if __CUDA_ARCH__ > 500 || defined(__HIPCC__)
 __global__ __launch_bounds__(TPB52, 2)
 #else
@@ -197,6 +308,12 @@ void quark_groestl512_gpu_hash_64_quad_final(uint32_t threads, uint32_t* g_hash,
 __host__
 void quark_groestl512_cpu_hash_64(int thr_id, uint32_t threads, uint32_t startNounce, uint32_t *d_nonceVector, uint32_t *d_hash, int order)
 {
+#ifdef GBS_KERNELS
+	if (d_nonceVector == NULL && gbs_usable(thr_id)) {
+		quark_groestl512_gpu_hash_64_bs<<<gbs_grid(threads), GBS_TPB>>>(threads, d_hash);
+		return;
+	}
+#endif
 	// Compute 3.0 benutzt die registeroptimierte Quad Variante mit Warp Shuffle
 	// mit den Quad Funktionen brauchen wir jetzt 4 threads pro Hash, daher Faktor 4 bei der Blockzahl
 	// berechne wie viele Thread Blocks wir brauchen
@@ -333,6 +450,12 @@ void groestl512_gpu_hash_80_quad(const uint32_t threads, const uint32_t startNou
 __host__
 void groestl512_cuda_hash_80(const int thr_id, const uint32_t threads, const uint32_t startNounce, uint32_t *d_hash)
 {
+#ifdef GBS_KERNELS
+	if (gbs_usable(thr_id)) {
+		groestl512_gpu_hash_80_bs<<<gbs_grid(threads), GBS_TPB>>>(threads, startNounce, d_hash);
+		return;
+	}
+#endif
 	const uint32_t threadsperblock = 512;
 	const uint32_t factor = THF;
 
@@ -609,6 +732,12 @@ void quark_groestl512_gpu_hash_64_quad_final(uint32_t threads, uint32_t* g_hash,
 __host__
 void quark_groestl512_cpu_hash_64_final(int thr_id, uint32_t threads, uint32_t *d_hash, uint32_t *d_resNonce, const uint64_t target)
 {
+#ifdef GBS_KERNELS
+	if (gbs_usable(thr_id)) {
+		quark_groestl512_gpu_hash_64_bs_final<<<gbs_grid(threads), GBS_TPB>>>(threads, d_hash, d_resNonce, target);
+		return;
+	}
+#endif
 
 	const int dev_id = device_map[thr_id];
 	// Compute 3.0 benutzt die registeroptimierte Quad Variante mit Warp Shuffle
